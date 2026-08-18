@@ -1,0 +1,69 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getSession } from '../../../../lib/auth';
+import { query } from '../../../../lib/db';
+import { normalizeSiteInput } from '../../../../lib/site-validation';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function errorResponse(message: string, status = 400) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+function parseId(value: string) {
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getSession();
+  if (!session) return errorResponse('Unauthorized', 401);
+  const siteId = parseId(params.id);
+  if (!siteId) return errorResponse('Invalid site ID');
+
+  let body: Record<string, unknown>;
+  try {
+    body = await req.json();
+  } catch {
+    return errorResponse('Request body must be valid JSON');
+  }
+
+  try {
+    const input = normalizeSiteInput(body, true);
+    const keys = Object.keys(input) as Array<keyof typeof input>;
+    if (!keys.length) return errorResponse('No editable fields supplied');
+
+    const duplicateDomain = input.domain
+      ? await query('SELECT id FROM sites WHERE user_id = $1 AND domain = $2 AND id <> $3 LIMIT 1', [session.uid, input.domain, siteId])
+      : { rows: [] };
+    if (duplicateDomain.rows[0]) return errorResponse('You are already monitoring this domain', 409);
+
+    const values: unknown[] = [];
+    const updates = keys.map((key) => {
+      values.push(input[key]);
+      return `${String(key)} = $${values.length}`;
+    });
+    values.push(siteId, session.uid);
+
+    const result = await query(
+      `UPDATE sites SET ${updates.join(', ')} WHERE id = $${values.length - 1} AND user_id = $${values.length} RETURNING id`,
+      values
+    );
+    if (!result.rows[0]) return errorResponse('Site not found', 404);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('site update error:', error);
+    return errorResponse(error instanceof Error ? error.message : 'Unable to update site');
+  }
+}
+
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getSession();
+  if (!session) return errorResponse('Unauthorized', 401);
+  const siteId = parseId(params.id);
+  if (!siteId) return errorResponse('Invalid site ID');
+
+  const result = await query('DELETE FROM sites WHERE id = $1 AND user_id = $2 RETURNING id', [siteId, session.uid]);
+  if (!result.rows[0]) return errorResponse('Site not found', 404);
+  return NextResponse.json({ ok: true });
+}

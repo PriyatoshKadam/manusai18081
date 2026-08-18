@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html, body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  color: #0a0b0d;
+  background: #ffffff;
+}
+
+.mono { font-family: var(--font-mono); }
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(91, 108, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 108, 255, 0.06) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.kbd {
+  border: 1px solid #d3d7df;
+  background: #fafbfc;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #3a3f4b;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d3d7df; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #b8bec8; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.fade-in { animation: fadeIn 0.18s ease-out; }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
