@@ -921,6 +921,10 @@ function getPurchaseCurrency(
 
     params['epn.currency'],
 
+    // GA4 network collection parameter.
+    // Example from HAR: cu=USD
+    params.cu,
+
     params.ecommerce?.currency,
 
     params.items?.[0]?.currency
