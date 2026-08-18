@@ -199,7 +199,7 @@
     } else if (typeof item === 'object') { name = item.event || item.event_name || item.eventName || null; }
     if (!name) return null;
     if (/^gtm(?:\.|$)/i.test(String(name))) vendor = 'gtm';
-    return currentEvent(name, params && typeof params === 'object' ? params : {}, source, source === 'gtag' ? 'gtm' : 'datalayer', pushIndex, vendor);
+    return currentEvent(name, params && typeof params === 'object' ? params : {}, source, 'datalayer', pushIndex, vendor);
   }
   function matchPending(name, params, ts, requestSig) {
     var target = normalize(name);

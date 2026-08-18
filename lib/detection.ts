@@ -33,6 +33,7 @@ const AUTOMATIC_EVENTS = new Set([
 ]);
 const INTERNAL_EVENTS = new Set(['exception', 'debug', 'monitor_event', 'monitor_ready']);
 const EXPECTED_REPEAT_EVENTS = new Set(['scroll', 'user_engagement', 'click', 'video_progress']);
+const REPEAT_SENSITIVE_EVENTS = new Set(['login', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe']);
 
 export function classifyEvent(eventName: string | null, vendor?: string | null): string {
   if (vendor && vendor.toLowerCase() === 'gtm') return 'internal';
@@ -145,6 +146,7 @@ export function classifyDuplicateRootCause(current: ParsedEvent, previous: Pick<
 
 async function findRecentCandidates(event: ParsedEvent, windowSeconds: number) {
   const pageUrl = normalizePageUrl(event.pageUrl || '');
+  const crossNavigation = REPEAT_SENSITIVE_EVENTS.has((event.eventName || '').trim().toLowerCase());
   const result = await query(
     `SELECT id, dl_push_index, source, raw_url, page_url, client_id, params, received_at,
             observation_kind, session_id, occurrence_id, network_occurrence_id,
@@ -155,11 +157,11 @@ async function findRecentCandidates(event: ParsedEvent, windowSeconds: number) {
         AND LOWER(COALESCE(event_name, '')) = $3
         AND id <> $4
         AND received_at >= NOW() - ($5 * INTERVAL '1 second')
-        AND COALESCE(page_url, '') = $6
-        AND ($7::text IS NULL OR session_id = $7)
+        AND ($6::boolean OR COALESCE(page_url, '') = $7)
+        AND ($8::text IS NULL OR session_id = $8)
       ORDER BY received_at DESC
       LIMIT 100`,
-    [event.siteId, event.vendor, (event.eventName || '').trim().toLowerCase(), event.eventId, windowSeconds, pageUrl, event.sessionId || null],
+    [event.siteId, event.vendor, (event.eventName || '').trim().toLowerCase(), event.eventId, windowSeconds, crossNavigation, pageUrl, event.sessionId || null],
   );
   return result.rows as DuplicateMatch[];
 }
@@ -192,8 +194,9 @@ function asEvent(row: DuplicateMatch, current: ParsedEvent): DuplicateMatch {
 
 export async function checkDuplicateEvent(event: ParsedEvent): Promise<DuplicateMatch | null> {
   if (!event.eventName) return null;
-  const eventName = event.eventName.trim().toLowerCase();
-  const rows = await findRecentCandidates(event, getStrongIdentity(event) || event.requestSignature ? 30 : 8);
+  const eventName = (event.eventName || '').trim().toLowerCase();
+  const windowSeconds = REPEAT_SENSITIVE_EVENTS.has(eventName) ? 120 : getStrongIdentity(event) || event.requestSignature ? 30 : 8;
+  const rows = await findRecentCandidates(event, windowSeconds);
 
   for (const raw of rows) {
     const previous = asEvent(raw, event);
@@ -202,7 +205,7 @@ export async function checkDuplicateEvent(event: ParsedEvent): Promise<Duplicate
       if (event.observationKind === 'network' && event.networkOccurrenceId && event.networkOccurrenceId === previous.networkOccurrenceId) return null;
     }
     if (event.observationKind === 'datalayer' && previous.observationKind === 'datalayer' && sameSession(event, previous)) {
-      if (event.navigationId && previous.navigationId && event.navigationId !== previous.navigationId) continue;
+      if (!REPEAT_SENSITIVE_EVENTS.has(eventName) && event.navigationId && previous.navigationId && event.navigationId !== previous.navigationId) continue;
       if (EXPECTED_REPEAT_EVENTS.has(eventName)) continue;
       if (paramsSignature(event.params) === paramsSignature(previous.params)) return previous;
     }
@@ -307,7 +310,7 @@ export async function runDetection(event: ParsedEvent) {
     await checkFirstSeenCustomEvent(event);
     const duplicate = await checkDuplicateEvent(event);
     if (duplicate) {
-      if (event.observationKind === 'datalayer' || event.observationKind === 'gtm' || duplicate.observationKind === 'datalayer' || duplicate.observationKind === 'gtm') {
+      if (event.vendor === 'gtm' || duplicate.vendor === 'gtm') {
         await createGtmAlert(event, duplicate);
       } else {
         await createAlert({ siteId: event.siteId, severity: event.eventName?.trim().toLowerCase() === 'purchase' ? 'critical' : 'warning', code: event.observationKind === 'network' ? 'duplicate_network_request' : 'duplicate_event', category: 'analytics', vendor: event.vendor, eventName: event.eventName, message: `${event.eventName} fired more than once with the same deterministic identity.`, rootCause: classifyDuplicateRootCause(event, duplicate), fixSteps: ['Check whether more than one GTM tag or trigger sends this event.', 'Check direct gtag() or vendor SDK implementations.', 'For purchase, verify transaction_id is unique.', 'For SPA page views, compare navigation IDs before treating a repeat as a defect.'], pageUrl: event.pageUrl, raw: { eventId: event.eventId, duplicateOf: duplicate.id, sessionId: event.sessionId, requestSignature: event.requestSignature, transport: event.transport, params: event.params } });
