@@ -117,19 +117,60 @@ function Metric({ label, value, detail }: { label: string; value: string; detail
 }
 
 function describeMethod(method: string) {
+  if (!method) {
+    return 'Unknown';
+  }
+
+  /*
+   * GA4 event-specific detection.
+   *
+   * Backend stores:
+   *
+   *   ga4_event_blocked:run_audit
+   *   ga4_event_blocked:purchase
+   *   ga4_event_blocked:signup
+   *
+   * Display:
+   *
+   *   GA4 event blocked: run_audit
+   *   GA4 event blocked: purchase
+   *   GA4 event blocked: signup
+   */
+  if (method.startsWith('ga4_event_blocked:')) {
+    const eventName = method
+      .slice('ga4_event_blocked:'.length)
+      .trim();
+
+    return eventName
+      ? `GA4 event blocked: ${eventName}`
+      : 'GA4 event blocked';
+  }
+
   const labels: Record<string, string> = {
     bait_blocked: 'Ad script blocked',
     bait_timeout: 'Ad script timeout',
+
     script_error: 'Monitor failed to load',
     script_timeout: 'Monitor load timeout',
     timeout: 'Monitor timeout',
+
     get_beacon: 'Fallback beacon',
+
     ga4_event_blocked: 'GA4 event blocked',
-    google_analytics_script_blocked: 'Google Analytics script blocked',
-    google_ads_script_blocked: 'Google Ads script blocked',
-    meta_script_blocked: 'Meta script blocked',
-    tiktok_script_blocked: 'TikTok script blocked',
+
+    google_analytics_script_blocked:
+      'Google Analytics script blocked',
+
+    google_ads_script_blocked:
+      'Google Ads script blocked',
+
+    meta_script_blocked:
+      'Meta script blocked',
+
+    tiktok_script_blocked:
+      'TikTok script blocked',
   };
+
   return labels[method] || method || 'Unknown';
 }
 
