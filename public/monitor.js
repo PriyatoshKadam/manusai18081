@@ -3,12 +3,12 @@
 
   /*
    * =========================================================
-   * GA4FIX MONITOR
+   * GA4FIX MONITOR v6
    * =========================================================
    *
    * Captures:
-   *   - dataLayer events
-   *   - gtag events
+   *   - dataLayer
+   *   - gtag
    *   - fetch
    *   - XMLHttpRequest
    *   - sendBeacon
@@ -32,15 +32,25 @@
    *   - Klaviyo
    *   - Intercom
    *
-   * Also detects potential GA4 blocking:
+   * Important:
    *
-   *   dataLayer GA4 event
-   *          ↓
-   *   wait for GA4 network request
-   *          ↓
-   *   no request
-   *          ↓
-   *   report ga4_event_blocked
+   * GA4 event names are NOT hardcoded.
+   *
+   * Therefore:
+   *
+   *   purchase
+   *   run_audit
+   *   generate_report
+   *   foo_bar
+   *
+   * are all valid event candidates.
+   *
+   * GA4 is identified from:
+   *
+   *   - official GA4 endpoints
+   *   - first-party GA4 proxy endpoints
+   *   - measurement ID
+   *   - GA4 collect path
    *
    * =========================================================
    */
@@ -68,27 +78,29 @@
   }
 
   var API_KEY =
-    scriptParams.get('apiKey') ||
-    '';
+    scriptParams.get('apiKey') || '';
 
   var GTM_ID =
-    scriptParams.get('gtmContainerId') ||
-    '';
+    scriptParams.get('gtmContainerId') || '';
 
   if (!API_KEY) {
     return;
   }
 
-  var ORIGIN =
-    new URL(scriptUrl).origin;
+  var ORIGIN;
+
+  try {
+    ORIGIN =
+      new URL(scriptUrl).origin;
+  } catch (e) {
+    return;
+  }
 
   var INGEST =
-    ORIGIN +
-    '/api/ingest';
+    ORIGIN + '/api/ingest';
 
   var BLOCKED =
-    ORIGIN +
-    '/api/blocked';
+    ORIGIN + '/api/blocked';
 
   /*
    * ---------------------------------------------------------
@@ -100,34 +112,53 @@
     window.__g4f ||
     {};
 
-  g.k =
-    API_KEY;
+  g.k = API_KEY;
+  g.c = GTM_ID;
+  g.q = g.q || [];
+  g.installed = true;
 
-  g.c =
-    GTM_ID;
+  window.__g4f = g;
 
-  g.q =
-    g.q || [];
-
-  g.installed =
-    true;
-
-  window.__g4f =
-    g;
-
-  /*
-   * Prevent installing twice.
-   */
-
-  if (g.__monitor_v5_installed) {
+  if (g.__monitor_v6_installed) {
     return;
   }
 
-  g.__monitor_v5_installed =
-    true;
+  g.__monitor_v6_installed = true;
+
   g.r = false;
   g.ready = false;
-  g.version = '5.0';
+  g.version = '6.0';
+
+  /*
+   * ---------------------------------------------------------
+   * State
+   * ---------------------------------------------------------
+   */
+
+  var dataLayer =
+    window.dataLayer ||
+    [];
+
+  window.dataLayer =
+    dataLayer;
+
+  var dlPushIndex = 0;
+
+  var recentDataLayerEvents = [];
+
+  var pendingEvents = [];
+
+  var observedGA4Events = {};
+
+  var observedGA4 = false;
+
+  var blockedReported = {};
+
+  var MAX_RECENT_EVENTS = 100;
+
+  var NETWORK_MATCH_WINDOW = 5000;
+
+  var BLOCKED_WAIT_MS = 3500;
 
   /*
    * ---------------------------------------------------------
@@ -135,12 +166,8 @@
    * ---------------------------------------------------------
    */
 
-  function safePageUrl() {
-    try {
-      return window.location.href;
-    } catch (e) {
-      return '';
-    }
+  function now() {
+    return Date.now();
   }
 
   function normalize(value) {
@@ -157,6 +184,14 @@
         .toLowerCase();
     } catch (e) {
       return null;
+    }
+  }
+
+  function safePageUrl() {
+    try {
+      return window.location.href;
+    } catch (e) {
+      return '';
     }
   }
 
@@ -192,6 +227,33 @@
     return result;
   }
 
+  function mergeParams(
+    first,
+    second
+  ) {
+    var result = {};
+
+    Object.keys(
+      first || {}
+    ).forEach(
+      function (key) {
+        result[key] =
+          first[key];
+      }
+    );
+
+    Object.keys(
+      second || {}
+    ).forEach(
+      function (key) {
+        result[key] =
+          second[key];
+      }
+    );
+
+    return result;
+  }
+
   function parseBody(body) {
     var result = {};
 
@@ -216,7 +278,8 @@
          */
 
         if (
-          text.charAt(0) === '{'
+          text.charAt(0) ===
+          '{'
         ) {
           try {
             var json =
@@ -225,7 +288,7 @@
             if (
               json &&
               typeof json ===
-                'object'
+              'object'
             ) {
               return json;
             }
@@ -236,22 +299,24 @@
          * Query string
          */
 
-        var params =
-          new URLSearchParams(
-            text
+        try {
+          var params =
+            new URLSearchParams(
+              text
+            );
+
+          params.forEach(
+            function (
+              value,
+              key
+            ) {
+              result[key] =
+                value;
+            }
           );
 
-        params.forEach(
-          function (
-            value,
-            key
-          ) {
-            result[key] =
-              value;
-          }
-        );
-
-        return result;
+          return result;
+        } catch (e) {}
       }
 
       /*
@@ -259,8 +324,10 @@
        */
 
       if (
+        typeof URLSearchParams !==
+          'undefined' &&
         body instanceof
-        URLSearchParams
+          URLSearchParams
       ) {
         body.forEach(
           function (
@@ -276,26 +343,14 @@
       }
 
       /*
-       * Blob cannot safely be
-       * synchronously read here.
-       */
-
-      if (
-        typeof Blob !==
-          'undefined' &&
-        body instanceof Blob
-      ) {
-        return result;
-      }
-
-      /*
        * FormData
        */
 
       if (
         typeof FormData !==
           'undefined' &&
-        body instanceof FormData
+        body instanceof
+          FormData
       ) {
         body.forEach(
           function (
@@ -316,32 +371,54 @@
 
   /*
    * ---------------------------------------------------------
-   * Vendor detection
+   * Vendor definitions
    * ---------------------------------------------------------
    */
 
   var VENDORS = [
     {
       name: 'ga4',
+
       patterns: [
+        /*
+         * Official GA4
+         */
         /google-analytics\.com\/g\/collect/i,
         /google-analytics\.com\/mp\/collect/i,
         /analytics\.google\.com\/g\/collect/i,
-        /analytics\.google\.com\/mp\/collect/i
+        /analytics\.google\.com\/mp\/collect/i,
+
+        /*
+         * First-party GA4 proxy
+         *
+         * Examples:
+         *
+         * /metrics/g/collect
+         * /metrics/mp/collect
+         * /analytics/g/collect
+         * /g/collect
+         */
+        /\/(?:metrics\/)?g\/collect(?:\?|$)/i,
+        /\/(?:metrics\/)?mp\/collect(?:\?|$)/i,
+        /\/analytics\/g\/collect(?:\?|$)/i,
+        /\/analytics\/mp\/collect(?:\?|$)/i
       ]
     },
 
     {
       name: 'gads',
+
       patterns: [
         /googleadservices\.com\/pagead\/conversion/i,
         /googleadservices\.com\/pagead\/1p-conversion/i,
-        /googlesyndication\.com\/pagead/i
+        /googlesyndication\.com\/pagead/i,
+        /googleadservices\.com\/pagead\/viewthroughconversion/i
       ]
     },
 
     {
       name: 'meta',
+
       patterns: [
         /facebook\.com\/tr/i,
         /facebook\.net\/tr/i
@@ -350,14 +427,17 @@
 
     {
       name: 'tiktok',
+
       patterns: [
         /analytics\.tiktok\.com/i,
-        /business-api\.tiktok\.com/i
+        /business-api\.tiktok\.com/i,
+        /tiktok\.com\/api/i
       ]
     },
 
     {
       name: 'linkedin',
+
       patterns: [
         /px\.ads\.linkedin\.com/i,
         /snap\.licdn\.com/i
@@ -366,6 +446,7 @@
 
     {
       name: 'snapchat',
+
       patterns: [
         /tr\.snapchat\.com/i,
         /sc-static\.net/i
@@ -374,6 +455,7 @@
 
     {
       name: 'pinterest',
+
       patterns: [
         /ct\.pinterest\.com/i,
         /pintrk/i
@@ -382,6 +464,7 @@
 
     {
       name: 'reddit',
+
       patterns: [
         /events\.redditmedia\.com/i,
         /www\.redditstatic\.com/i
@@ -390,6 +473,7 @@
 
     {
       name: 'twitter',
+
       patterns: [
         /analytics\.twitter\.com/i,
         /t\.co\/i\/adsct/i
@@ -398,6 +482,7 @@
 
     {
       name: 'clarity',
+
       patterns: [
         /clarity\.ms/i
       ]
@@ -405,6 +490,7 @@
 
     {
       name: 'mixpanel',
+
       patterns: [
         /api\.mixpanel\.com/i
       ]
@@ -412,6 +498,7 @@
 
     {
       name: 'amplitude',
+
       patterns: [
         /api2\.amplitude\.com/i,
         /api\.amplitude\.com/i
@@ -420,6 +507,7 @@
 
     {
       name: 'segment',
+
       patterns: [
         /api\.segment\.io/i,
         /cdn\.segment\.com/i
@@ -428,6 +516,7 @@
 
     {
       name: 'hubspot',
+
       patterns: [
         /hubspot\.com/i,
         /hubspot\.net/i
@@ -436,6 +525,7 @@
 
     {
       name: 'klaviyo',
+
       patterns: [
         /klaviyo\.com/i,
         /klaviyo\.js/i
@@ -444,6 +534,7 @@
 
     {
       name: 'intercom',
+
       patterns: [
         /intercom\.io/i,
         /intercom\.com/i
@@ -451,10 +542,150 @@
     }
   ];
 
+  /*
+   * ---------------------------------------------------------
+   * GA4 identification
+   * ---------------------------------------------------------
+   *
+   * This is intentionally NOT based on
+   * a hardcoded event-name list.
+   */
+
+  function isGA4Request(
+    url,
+    params
+  ) {
+    if (!params) {
+      params = {};
+    }
+
+    var parsed =
+      safeUrl(url);
+
+    if (!parsed) {
+      return false;
+    }
+
+    var hostname =
+      parsed.hostname || '';
+
+    var pathname =
+      parsed.pathname || '';
+
+    var officialEndpoint =
+      /(^|\.)google-analytics\.com$/i.test(
+        hostname
+      ) ||
+      /(^|\.)analytics\.google\.com$/i.test(
+        hostname
+      );
+
+    var collectEndpoint =
+      /\/(?:metrics\/)?(?:g|mp)\/collect$/i.test(
+        pathname
+      ) ||
+      /\/analytics\/(?:g|mp)\/collect$/i.test(
+        pathname
+      );
+
+    var measurementId =
+      String(
+        params.tid ||
+        params.measurement_id ||
+        ''
+      );
+
+    var hasMeasurementId =
+      /^G-[A-Z0-9]+$/i.test(
+        measurementId
+      );
+
+    var eventName =
+      params.en ||
+      params.event_name ||
+      params.event ||
+      null;
+
+    /*
+     * Official GA4 endpoint.
+     */
+
+    if (
+      officialEndpoint &&
+      (
+        hasMeasurementId ||
+        !!eventName
+      )
+    ) {
+      return true;
+    }
+
+    /*
+     * First-party GA4 proxy.
+     *
+     * This is what your HAR uses:
+     *
+     * /metrics/g/collect
+     *
+     * tid=G-...
+     * en=...
+     */
+
+    if (
+      collectEndpoint &&
+      hasMeasurementId &&
+      !!eventName
+    ) {
+      return true;
+    }
+
+    /*
+     * If this is clearly a GA4 collect
+     * request and has a measurement ID,
+     * accept it even if the path is a
+     * custom first-party path.
+     *
+     * Example:
+     *
+     * /custom-analytics
+     *
+     * ?tid=G-XXX&en=purchase
+     */
+
+    if (
+      hasMeasurementId &&
+      !!eventName
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Vendor detection
+   * ---------------------------------------------------------
+   */
+
   function detectVendor(
     url,
     params
   ) {
+    /*
+     * GA4 gets special handling
+     * before generic patterns.
+     */
+
+    if (
+      isGA4Request(
+        url,
+        params
+      )
+    ) {
+      return 'ga4';
+    }
+
     var text =
       String(url || '');
 
@@ -466,10 +697,17 @@
       var vendor =
         VENDORS[i];
 
+      if (
+        vendor.name ===
+        'ga4'
+      ) {
+        continue;
+      }
+
       for (
         var j = 0;
         j <
-          vendor.patterns.length;
+        vendor.patterns.length;
         j++
       ) {
         if (
@@ -480,22 +718,6 @@
           return vendor.name;
         }
       }
-    }
-
-    /*
-     * GA4 fallback based on
-     * parameters.
-     */
-
-    if (
-      params &&
-      (
-        params.tid ||
-        params.measurement_id ||
-        params.en
-      )
-    ) {
-      return 'ga4';
     }
 
     /*
@@ -518,7 +740,118 @@
 
   /*
    * ---------------------------------------------------------
-   * GA4 parser
+   * Event name extraction
+   * ---------------------------------------------------------
+   */
+
+  function extractEventName(
+    vendor,
+    params
+  ) {
+    if (!params) {
+      return null;
+    }
+
+    if (
+      vendor ===
+      'ga4'
+    ) {
+      return (
+        params.en ||
+        params.event_name ||
+        params.event ||
+        null
+      );
+    }
+
+    if (
+      vendor ===
+      'meta'
+    ) {
+      return (
+        params.ev ||
+        params.event ||
+        params.event_name ||
+        null
+      );
+    }
+
+    if (
+      vendor ===
+      'tiktok'
+    ) {
+      return (
+        params.event ||
+        params.event_name ||
+        params.ev ||
+        null
+      );
+    }
+
+    if (
+      vendor ===
+      'snapchat'
+    ) {
+      return (
+        params.event ||
+        params.event_name ||
+        params.ev ||
+        params.event_type ||
+        null
+      );
+    }
+
+    if (
+      vendor ===
+      'pinterest'
+    ) {
+      return (
+        params.event ||
+        params.event_name ||
+        params.ev ||
+        null
+      );
+    }
+
+    if (
+      vendor ===
+      'reddit'
+    ) {
+      return (
+        params.event ||
+        params.event_name ||
+        params.ev ||
+        null
+      );
+    }
+
+    if (
+      vendor ===
+      'linkedin'
+    ) {
+      return (
+        params.event ||
+        params.event_name ||
+        params.conversion_name ||
+        params.conversionName ||
+        null
+      );
+    }
+
+    return (
+      params.event ||
+      params.event_name ||
+      params.eventName ||
+      params.ev ||
+      params.en ||
+      params.action ||
+      null
+    );
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * GA4 parsing
    * ---------------------------------------------------------
    */
 
@@ -526,7 +859,7 @@
     url,
     body
   ) {
-    var params =
+    var queryParams =
       extractQueryParams(
         url
       );
@@ -534,21 +867,18 @@
     var bodyParams =
       parseBody(body);
 
-    Object.keys(
-      bodyParams
-    ).forEach(
-      function (key) {
-        params[key] =
-          bodyParams[key];
-      }
-    );
+    var params =
+      mergeParams(
+        queryParams,
+        bodyParams
+      );
 
     return {
       eventName:
-        params.en ||
-        params.event_name ||
-        params.event ||
-        null,
+        extractEventName(
+          'ga4',
+          params
+        ),
 
       clientId:
         params.cid ||
@@ -560,6 +890,12 @@
         params.measurement_id ||
         null,
 
+      transactionId:
+        params.transaction_id ||
+        params.transactionId ||
+        params['ep.transaction_id'] ||
+        null,
+
       params:
         params
     };
@@ -567,15 +903,16 @@
 
   /*
    * ---------------------------------------------------------
-   * Generic parser
+   * Generic parsing
    * ---------------------------------------------------------
    */
 
   function parseGeneric(
+    vendor,
     url,
     body
   ) {
-    var params =
+    var queryParams =
       extractQueryParams(
         url
       );
@@ -583,28 +920,31 @@
     var bodyParams =
       parseBody(body);
 
-    Object.keys(
-      bodyParams
-    ).forEach(
-      function (key) {
-        params[key] =
-          bodyParams[key];
-      }
-    );
+    var params =
+      mergeParams(
+        queryParams,
+        bodyParams
+      );
 
     return {
       eventName:
-        params.en ||
-        params.ev ||
-        params.event ||
-        params.event_name ||
-        params.eventName ||
-        null,
+        extractEventName(
+          vendor,
+          params
+        ),
 
       clientId:
         params.cid ||
         params.client_id ||
         params.id ||
+        null,
+
+      measurementId:
+        null,
+
+      transactionId:
+        params.transaction_id ||
+        params.transactionId ||
         null,
 
       params:
@@ -614,193 +954,14 @@
 
   /*
    * ---------------------------------------------------------
-   * DataLayer
+   * DataLayer extraction
    * ---------------------------------------------------------
    */
-
-  var dataLayer =
-    window.dataLayer ||
-    [];
-
-  window.dataLayer =
-    dataLayer;
-
-  var dlPushIndex =
-    0;
-
-  var lastDataLayerEvent =
-    null;
-
-  function getDataLayerEventName() {
-    if (
-      !lastDataLayerEvent
-    ) {
-      return null;
-    }
-
-    /*
-     * Only use a dataLayer
-     * event for a short period.
-     */
-
-    if (
-      Date.now() -
-        lastDataLayerEvent.timestamp >
-        3000
-    ) {
-      return null;
-    }
-
-    return (
-      lastDataLayerEvent.event ||
-      null
-    );
-  }
-
-  function getRecentDataLayerEvent() {
-    if (
-      !lastDataLayerEvent
-    ) {
-      return null;
-    }
-
-    if (
-      Date.now() -
-        lastDataLayerEvent.timestamp >
-        3000
-    ) {
-      return null;
-    }
-
-    return lastDataLayerEvent;
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * Pending GA4 events
-   * ---------------------------------------------------------
-   */
-
-  var pendingGA4Events =
-    {};
-
-  var ga4BlockedReported =
-    {};
-
-  var GA4_WAIT_MS =
-    3000;
-
-  var STANDARD_GA4_EVENTS = {
-    page_view: true,
-    scroll: true,
-    click: true,
-    user_engagement: true,
-    view_search_results: true,
-    video_start: true,
-    video_progress: true,
-    video_complete: true,
-    file_download: true,
-
-    login: true,
-    sign_up: true,
-
-    purchase: true,
-    refund: true,
-
-    add_to_cart: true,
-    add_to_wishlist: true,
-    begin_checkout: true,
-    add_payment_info: true,
-
-    generate_lead: true,
-    search: true,
-
-    select_item: true,
-    select_promotion: true,
-
-    view_item: true,
-    view_item_list: true,
-
-    remove_from_cart: true
-  };
-
-  function isLikelyGA4Event(
-    item
-  ) {
-    if (
-      !item ||
-      typeof item !==
-        'object'
-    ) {
-      return false;
-    }
-
-    /*
-     * gtag() pushes an Arguments
-     * object into dataLayer.
-     */
-
-    var eventName =
-      item.event ||
-      item.event_name ||
-      item.eventName;
-
-    /*
-     * Handle:
-     *
-     * dataLayer.push(
-     *   arguments
-     * )
-     */
-
-    if (
-      typeof item.length ===
-        'number' &&
-      !eventName
-    ) {
-      try {
-        if (
-          item[0] ===
-            'event'
-        ) {
-          eventName =
-            item[1];
-        }
-      } catch (e) {}
-    }
-
-    if (!eventName) {
-      return false;
-    }
-
-    /*
-     * Strong GA4 signal.
-     */
-
-    if (
-      item.send_to ||
-      item.measurement_id ||
-      item.measurementId ||
-      item.ga4_measurement_id
-    ) {
-      return true;
-    }
-
-    /*
-     * Standard GA4 event.
-     */
-
-    return !!STANDARD_GA4_EVENTS[
-      normalize(eventName)
-    ];
-  }
 
   function extractDataLayerEvent(
     item
   ) {
-    if (
-      !item
-    ) {
+    if (!item) {
       return null;
     }
 
@@ -819,12 +980,12 @@
 
     if (
       typeof item.length ===
-        'number'
+      'number'
     ) {
       try {
         if (
           item[0] ===
-            'event'
+          'event'
         ) {
           eventName =
             item[1];
@@ -847,181 +1008,482 @@
       params:
         params &&
         typeof params ===
-          'object'
+        'object'
           ? params
           : {}
     };
   }
 
-  function trackExpectedGA4Event(
+  /*
+   * ---------------------------------------------------------
+   * Remember dataLayer events
+   * ---------------------------------------------------------
+   */
+
+  function rememberDataLayerEvent(
     item
   ) {
-    try {
-      if (
-        !isLikelyGA4Event(item)
-      ) {
-        return;
-      }
+    var parsed =
+      extractDataLayerEvent(
+        item
+      );
 
-      var parsed =
-        extractDataLayerEvent(
-          item
-        );
+    if (!parsed) {
+      return null;
+    }
 
-      if (!parsed) {
-        return;
-      }
+    dlPushIndex++;
 
-      var eventName =
+    var event = {
+      eventName:
         normalize(
           parsed.eventName
+        ),
+
+      originalEventName:
+        String(
+          parsed.eventName
+        ),
+
+      params:
+        parsed.params || {},
+
+      pushIndex:
+        dlPushIndex,
+
+      timestamp:
+        now()
+    };
+
+    recentDataLayerEvents.push(
+      event
+    );
+
+    if (
+      recentDataLayerEvents.length >
+      MAX_RECENT_EVENTS
+    ) {
+      recentDataLayerEvents.shift();
+    }
+
+    /*
+     * Every named dataLayer event
+     * becomes a candidate.
+     *
+     * We DO NOT say it was GA4.
+     *
+     * We wait for network correlation.
+     */
+
+    pendingEvents.push({
+      eventName:
+        event.eventName,
+
+      pushIndex:
+        event.pushIndex,
+
+      timestamp:
+        event.timestamp,
+
+      item:
+        item,
+
+      params:
+        event.params
+    });
+
+    /*
+     * Keep queue small.
+     */
+
+    if (
+      pendingEvents.length >
+      MAX_RECENT_EVENTS
+    ) {
+      pendingEvents.shift();
+    }
+
+    return event;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Find matching dataLayer event
+   * ---------------------------------------------------------
+   */
+
+  function findMatchingDataLayerEvent(
+    eventName,
+    timestamp
+  ) {
+    if (!eventName) {
+      return null;
+    }
+
+    var target =
+      normalize(
+        eventName
+      );
+
+    var best =
+      null;
+
+    var bestDistance =
+      Infinity;
+
+    for (
+      var i =
+        pendingEvents.length - 1;
+      i >= 0;
+      i--
+    ) {
+      var candidate =
+        pendingEvents[i];
+
+      if (
+        !candidate ||
+        candidate.eventName !==
+        target
+      ) {
+        continue;
+      }
+
+      var distance =
+        Math.abs(
+          timestamp -
+          candidate.timestamp
         );
 
-      if (!eventName) {
-        return;
+      if (
+        distance >
+        NETWORK_MATCH_WINDOW
+      ) {
+        continue;
       }
 
-      /*
-       * Ignore very frequent
-       * automatic events for
-       * blocking detection.
-       *
-       * This reduces false positives.
-       */
+      if (
+        distance <
+        bestDistance
+      ) {
+        best =
+          candidate;
 
-      var detectionEligible =
-        eventName ===
-          'purchase' ||
-        eventName ===
-          'generate_lead' ||
-        eventName ===
-          'sign_up' ||
-        eventName ===
-          'login' ||
-        eventName ===
-          'add_to_cart' ||
-        eventName ===
-          'begin_checkout' ||
-        eventName ===
-          'page_view';
-
-      if (!detectionEligible) {
-        return;
+        bestDistance =
+          distance;
       }
+    }
 
-      var id =
-        eventName +
-        ':' +
-        Date.now() +
-        ':' +
-        Math.random()
-          .toString(36)
-          .slice(2);
-
-      pendingGA4Events[id] = {
-        eventName:
-          eventName,
-
-        timestamp:
-          Date.now(),
-
-        item:
-          item
-      };
-
-      setTimeout(
-        function () {
-          try {
-            var pending =
-              pendingGA4Events[id];
-
-            if (!pending) {
-              return;
-            }
-
-            delete pendingGA4Events[id];
-
-            /*
-             * Only report once per event
-             * name during this page session.
-             */
-
-            if (
-              ga4BlockedReported[
-                eventName
-              ]
-            ) {
-              return;
-            }
-
-            ga4BlockedReported[
-              eventName
-            ] = true;
-
-            reportPlatformBlocked(
-              'ga4_event_blocked',
-              {
-                eventName:
-                  eventName
-              }
-            );
-          } catch (e) {}
-        },
-        GA4_WAIT_MS
-      );
-    } catch (e) {}
+    return best;
   }
+
+  /*
+   * ---------------------------------------------------------
+   * Remove matched event
+   * ---------------------------------------------------------
+   */
+
+  function removePendingEvent(
+    candidate
+  ) {
+    if (!candidate) {
+      return;
+    }
+
+    var index =
+      pendingEvents.indexOf(
+        candidate
+      );
+
+    if (
+      index !== -1
+    ) {
+      pendingEvents.splice(
+        index,
+        1
+      );
+    }
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * GA4 network received
+   * ---------------------------------------------------------
+   */
 
   function markGA4EventReceived(
     eventName
   ) {
-    try {
-      eventName =
-        normalize(eventName);
+    var normalized =
+      normalize(
+        eventName
+      );
 
-      if (!eventName) {
+    if (!normalized) {
+      return;
+    }
+
+    observedGA4 =
+      true;
+
+    observedGA4Events[
+      normalized
+    ] = true;
+
+    /*
+     * Remove all matching
+     * pending GA4 candidates
+     * within the correlation window.
+     */
+
+    for (
+      var i =
+        pendingEvents.length - 1;
+      i >= 0;
+      i--
+    ) {
+      var candidate =
+        pendingEvents[i];
+
+      if (
+        candidate &&
+        candidate.eventName ===
+        normalized
+      ) {
+        var age =
+          Math.abs(
+            now() -
+            candidate.timestamp
+          );
+
+        if (
+          age <=
+          NETWORK_MATCH_WINDOW
+        ) {
+          pendingEvents.splice(
+            i,
+            1
+          );
+        }
+      }
+    }
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * GA4 blocked detection
+   * ---------------------------------------------------------
+   *
+   * We don't immediately call every
+   * dataLayer event a GA4 event.
+   *
+   * Instead:
+   *
+   * 1. Observe GA4 on the page.
+   * 2. See a dataLayer event.
+   * 3. Wait for a GA4 request with
+   *    the same event name.
+   * 4. If no request appears:
+   *    report possible GA4 blocking.
+   *
+   * This allows custom events such as
+   * run_audit to be detected.
+   */
+
+  function scheduleBlockedCheck(
+    candidate
+  ) {
+    if (!candidate) {
+      return;
+    }
+
+    setTimeout(
+      function () {
+        try {
+          var age =
+            now() -
+            candidate.timestamp;
+
+          if (
+            age <
+            BLOCKED_WAIT_MS
+          ) {
+            return;
+          }
+
+          /*
+           * If another matching GA4
+           * request was seen, don't
+           * report.
+           */
+
+          if (
+            observedGA4Events[
+              candidate.eventName
+            ]
+          ) {
+            return;
+          }
+
+          /*
+           * If there has never been a
+           * GA4 request on this page,
+           * don't claim GA4 blocking
+           * from a completely generic
+           * dataLayer event.
+           *
+           * We need evidence that GA4
+           * exists on the page.
+           *
+           * Standard events remain
+           * eligible because they are
+           * strongly associated with GA4.
+           */
+
+          var standard =
+            isStandardGA4Event(
+              candidate.eventName
+            );
+
+          if (
+            !observedGA4 &&
+            !standard
+          ) {
+            return;
+          }
+
+          var key =
+            candidate.eventName +
+            ':' +
+            candidate.pushIndex;
+
+          if (
+            blockedReported[key]
+          ) {
+            return;
+          }
+
+          blockedReported[key] =
+            true;
+
+          reportPlatformBlocked(
+            'ga4_event_blocked',
+            {
+              eventName:
+                candidate.originalEventName,
+
+              dlPushIndex:
+                candidate.pushIndex,
+
+              reason:
+                observedGA4
+                  ? 'dataLayer_event_without_matching_ga4_request'
+                  : 'standard_ga4_event_without_network_request'
+            }
+          );
+        } catch (e) {}
+      },
+      BLOCKED_WAIT_MS
+    );
+  }
+
+  /*
+   * Standard events are useful as a
+   * bootstrap signal before the first
+   * network request.
+   */
+
+  var STANDARD_GA4_EVENTS = {
+    page_view: true,
+    session_start: true,
+    first_visit: true,
+    user_engagement: true,
+    scroll: true,
+    click: true,
+    file_download: true,
+    view_search_results: true,
+
+    login: true,
+    sign_up: true,
+
+    purchase: true,
+    refund: true,
+
+    add_to_cart: true,
+    add_to_wishlist: true,
+    begin_checkout: true,
+    add_payment_info: true,
+
+    generate_lead: true,
+    search: true,
+
+    select_item: true,
+    select_promotion: true,
+
+    view_item: true,
+    view_item_list: true,
+
+    remove_from_cart: true,
+
+    video_start: true,
+    video_progress: true,
+    video_complete: true
+  };
+
+  function isStandardGA4Event(
+    eventName
+  ) {
+    return !!STANDARD_GA4_EVENTS[
+      normalize(eventName)
+    ];
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Process dataLayer event
+   * ---------------------------------------------------------
+   */
+
+  function processDataLayerItem(
+    item
+  ) {
+    try {
+      var candidate =
+        rememberDataLayerEvent(
+          item
+        );
+
+      if (!candidate) {
         return;
       }
 
-      var keys =
-        Object.keys(
-          pendingGA4Events
-        );
-
-      for (
-        var i = 0;
-        i < keys.length;
-        i++
-      ) {
-        var key =
-          keys[i];
-
-        var pending =
-          pendingGA4Events[
-            key
-          ];
-
-        if (
-          pending &&
-          pending.eventName ===
-            eventName
-        ) {
-          delete pendingGA4Events[
-            key
-          ];
-
-          delete ga4BlockedReported[
-            eventName
-          ];
-
-          return;
-        }
-      }
+      scheduleBlockedCheck(
+        candidate
+      );
     } catch (e) {}
   }
 
   /*
-   * Patch dataLayer.push.
+   * ---------------------------------------------------------
+   * Existing dataLayer
+   * ---------------------------------------------------------
+   */
+
+  try {
+    for (
+      var i = 0;
+      i < dataLayer.length;
+      i++
+    ) {
+      processDataLayerItem(
+        dataLayer[i]
+      );
+    }
+  } catch (e) {}
+
+  /*
+   * ---------------------------------------------------------
+   * Patch dataLayer.push
+   * ---------------------------------------------------------
    */
 
   var originalDataLayerPush =
@@ -1034,37 +1496,9 @@
         i < arguments.length;
         i++
       ) {
-        try {
-          var item =
-            arguments[i];
-
-          dlPushIndex++;
-
-          var parsed =
-            extractDataLayerEvent(
-              item
-            );
-
-          if (parsed) {
-            lastDataLayerEvent = {
-              event:
-                parsed.eventName,
-
-              pushIndex:
-                dlPushIndex,
-
-              timestamp:
-                Date.now(),
-
-              item:
-                item
-            };
-
-            trackExpectedGA4Event(
-              item
-            );
-          }
-        } catch (e) {}
+        processDataLayerItem(
+          arguments[i]
+        );
       }
 
       return originalDataLayerPush.apply(
@@ -1072,44 +1506,6 @@
         arguments
       );
     };
-
-  /*
-   * Process events that existed
-   * before our monitor loaded.
-   */
-
-  try {
-    for (
-      var i = 0;
-      i < dataLayer.length;
-      i++
-    ) {
-      var item =
-        dataLayer[i];
-
-      var parsed =
-        extractDataLayerEvent(
-          item
-        );
-
-      if (parsed) {
-          lastDataLayerEvent = {
-            event:
-              parsed.eventName,
-
-            pushIndex:
-              ++dlPushIndex,
-
-            timestamp:
-              Date.now(),
-
-            item:
-              item
-          };
-          trackExpectedGA4Event(item);
-      }
-    }
-  } catch (e) {}
 
   /*
    * ---------------------------------------------------------
@@ -1122,16 +1518,16 @@
 
   if (
     typeof originalGtag ===
-      'function'
+    'function'
   ) {
     window.gtag =
       function () {
         try {
           if (
             arguments[0] ===
-              'event'
+            'event'
           ) {
-            trackExpectedGA4Event(
+            processDataLayerItem(
               arguments
             );
           }
@@ -1156,8 +1552,12 @@
   var flushTimer =
     null;
 
-  function send(payload) {
-    queue.push(payload);
+  function send(
+    payload
+  ) {
+    queue.push(
+      payload
+    );
 
     if (
       flushTimer
@@ -1207,11 +1607,7 @@
       });
 
     /*
-     * Don't use sendBeacon first here.
-     *
-     * It can make debugging harder and
-     * can be intercepted by other
-     * monitoring scripts.
+     * Primary transport.
      */
 
     try {
@@ -1274,41 +1670,39 @@
    */
 
   function detectSource(
-    method
+    method,
+    matchedDataLayer
   ) {
-    var recent =
-      getRecentDataLayerEvent();
-
     if (
-      recent
+      matchedDataLayer
     ) {
       return 'gtm';
     }
 
     if (
       method ===
-        'beacon'
+      'beacon'
     ) {
       return 'beacon';
     }
 
     if (
       method ===
-        'image'
+      'image'
     ) {
       return 'pixel';
     }
 
     if (
       method ===
-        'fetch'
+      'fetch'
     ) {
       return 'fetch';
     }
 
     if (
       method ===
-        'xhr'
+      'xhr'
     ) {
       return 'xhr';
     }
@@ -1318,7 +1712,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Record network event
+   * Network event recorder
    * ---------------------------------------------------------
    */
 
@@ -1343,8 +1737,8 @@
         absolute.href;
 
       /*
-       * Don't intercept our own
-       * monitoring requests.
+       * Don't record our own
+       * monitoring traffic.
        */
 
       if (
@@ -1358,7 +1752,7 @@
         return;
       }
 
-      var params =
+      var queryParams =
         extractQueryParams(
           absoluteUrl
         );
@@ -1366,14 +1760,11 @@
       var bodyParams =
         parseBody(body);
 
-      Object.keys(
-        bodyParams
-      ).forEach(
-        function (key) {
-          params[key] =
-            bodyParams[key];
-        }
-      );
+      var params =
+        mergeParams(
+          queryParams,
+          bodyParams
+        );
 
       var vendor =
         detectVendor(
@@ -1389,25 +1780,17 @@
 
       if (
         vendor ===
-          'ga4'
+        'ga4'
       ) {
         parsed =
           parseGA4(
             absoluteUrl,
             body
           );
-
-        if (
-          parsed &&
-          parsed.eventName
-        ) {
-          markGA4EventReceived(
-            parsed.eventName
-          );
-        }
       } else {
         parsed =
           parseGeneric(
+            vendor,
             absoluteUrl,
             body
           );
@@ -1415,11 +1798,57 @@
 
       var eventName =
         parsed.eventName ||
-        getDataLayerEventName() ||
         null;
 
-      var recent =
-        getRecentDataLayerEvent();
+      var matchedDataLayer =
+        findMatchingDataLayerEvent(
+          eventName,
+          now()
+        );
+
+      /*
+       * GA4 request observed.
+       */
+
+      if (
+        vendor ===
+        'ga4' &&
+        eventName
+      ) {
+        markGA4EventReceived(
+          eventName
+        );
+      }
+
+      /*
+       * If network event doesn't
+       * contain an event name, use
+       * matching dataLayer event only
+       * as supplemental information.
+       */
+
+      if (
+        !eventName &&
+        matchedDataLayer
+      ) {
+        eventName =
+          matchedDataLayer.originalEventName;
+      }
+
+      /*
+       * Do NOT remove dataLayer
+       * candidate until after the
+       * network event has been
+       * successfully identified.
+       */
+
+      if (
+        matchedDataLayer
+      ) {
+        removePendingEvent(
+          matchedDataLayer
+        );
+      }
 
       send({
         vendor:
@@ -1437,6 +1866,12 @@
           params.tid ||
           null,
 
+        transactionId:
+          parsed.transactionId ||
+          params.transaction_id ||
+          params.transactionId ||
+          null,
+
         params:
           parsed.params ||
           params ||
@@ -1452,17 +1887,21 @@
           method,
 
         dlPushIndex:
-          recent
-            ? recent.pushIndex
+          matchedDataLayer
+            ? matchedDataLayer.pushIndex
             : null,
 
         source:
           detectSource(
-            method
+            method,
+            matchedDataLayer
           ),
 
+        dataLayerMatched:
+          !!matchedDataLayer,
+
         ts:
-          Date.now()
+          now()
       });
     } catch (e) {
       /*
@@ -1473,7 +1912,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Fetch
+   * FETCH
    * ---------------------------------------------------------
    */
 
@@ -1481,7 +1920,8 @@
     window.fetch;
 
   if (
-    originalFetch
+    typeof originalFetch ===
+    'function'
   ) {
     window.fetch =
       function (
@@ -1491,7 +1931,7 @@
         try {
           var url =
             typeof input ===
-              'string'
+            'string'
               ? input
               : input &&
                 input.url;
@@ -1591,19 +2031,18 @@
         data
       ) {
         try {
-          /*
-           * IMPORTANT:
-           * Don't process our own
-           * blocked/ingest requests.
-           */
-
           var absolute =
             safeUrl(url);
+
+          /*
+           * Never intercept our
+           * own telemetry.
+           */
 
           if (
             absolute &&
             absolute.origin ===
-              ORIGIN
+            ORIGIN
           ) {
             return originalBeacon(
               url,
@@ -1613,7 +2052,7 @@
 
           var body =
             typeof data ===
-              'string'
+            'string'
               ? data
               : null;
 
@@ -1680,36 +2119,47 @@
 
   /*
    * ---------------------------------------------------------
-   * Platform script blocking
+   * Platform blocked reporting
    * ---------------------------------------------------------
    */
-
-  var blockedReported =
-    {};
 
   function reportPlatformBlocked(
     method,
     details
   ) {
     try {
+      var eventName =
+        details &&
+        details.eventName
+          ? String(
+              details.eventName
+            )
+          : '';
+
       var key =
         method +
         ':' +
-        (
-          details &&
-          details.eventName
-            ? details.eventName
-            : ''
-        );
+        eventName;
+
+      /*
+       * Only dedupe the same
+       * platform/event combination.
+       *
+       * Different events must still
+       * be reported.
+       */
 
       if (
-        blockedReported[key]
+        blockedReported[
+          key
+        ]
       ) {
         return;
       }
 
-      blockedReported[key] =
-        true;
+      blockedReported[
+        key
+      ] = true;
 
       var url =
         BLOCKED +
@@ -1723,15 +2173,43 @@
         );
 
       if (
-        details &&
-        details.eventName
+        eventName
       ) {
         url +=
           '&e=' +
           encodeURIComponent(
-            details.eventName
+            eventName
           );
       }
+
+      if (
+        details &&
+        details.reason
+      ) {
+        url +=
+          '&r=' +
+          encodeURIComponent(
+            details.reason
+          );
+      }
+
+      if (
+        details &&
+        details.dlPushIndex !==
+        undefined
+      ) {
+        url +=
+          '&d=' +
+          encodeURIComponent(
+            String(
+              details.dlPushIndex
+            )
+          );
+      }
+
+      /*
+       * Use beacon when possible.
+       */
 
       if (
         navigator.sendBeacon
@@ -1740,29 +2218,31 @@
           url,
           ''
         );
-      } else {
-        fetch(
-          url,
-          {
-            method:
-              'GET',
 
-            credentials:
-              'omit',
-
-            keepalive:
-              true
-          }
-        ).catch(
-          function () {}
-        );
+        return;
       }
+
+      fetch(
+        url,
+        {
+          method:
+            'GET',
+
+          credentials:
+            'omit',
+
+          keepalive:
+            true
+        }
+      ).catch(
+        function () {}
+      );
     } catch (e) {}
   }
 
   /*
    * ---------------------------------------------------------
-   * Resource error detection
+   * Resource errors
    * ---------------------------------------------------------
    */
 
@@ -1795,6 +2275,9 @@
             src
           ) ||
           /google-analytics\.com\/analytics\.js/i.test(
+            src
+          ) ||
+          /googletagmanager\.com\/gtm\.js/i.test(
             src
           )
         ) {
@@ -1855,6 +2338,22 @@
 
           return;
         }
+
+        /*
+         * LinkedIn
+         */
+
+        if (
+          /snap\.licdn\.com/i.test(
+            src
+          )
+        ) {
+          reportPlatformBlocked(
+            'linkedin_script_blocked'
+          );
+
+          return;
+        }
       } catch (e) {}
     },
     true
@@ -1868,6 +2367,12 @@
 
   function checkAdBlocker() {
     try {
+      if (
+        !document.body
+      ) {
+        return;
+      }
+
       var bait =
         document.createElement(
           'div'
@@ -1900,9 +2405,9 @@
           try {
             var blocked =
               bait.offsetHeight ===
-                0 ||
+              0 ||
               bait.offsetWidth ===
-                0;
+              0;
 
             if (
               blocked
@@ -1928,7 +2433,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Initialize
+   * Initialize ad blocker check
    * ---------------------------------------------------------
    */
 
@@ -1955,7 +2460,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Flush on page exit
+   * Flush on exit
    * ---------------------------------------------------------
    */
 
@@ -1970,7 +2475,9 @@
   );
 
   /*
-   * Debug information.
+   * ---------------------------------------------------------
+   * Public state
+   * ---------------------------------------------------------
    */
 
   g.apiKey =
@@ -1980,8 +2487,12 @@
     GTM_ID;
 
   g.version =
-    '5.0';
-  g.ready = true;
-  g.r = true;
+    '6.0';
+
+  g.ready =
+    true;
+
+  g.r =
+    true;
 
 })();
