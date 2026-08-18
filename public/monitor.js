@@ -3,7 +3,7 @@
 
   /*
    * =========================================================
-   * GA4FIX MONITOR v7
+   * GA4FIX MONITOR v8
    * =========================================================
    *
    * Captures:
@@ -34,23 +34,48 @@
    *
    * IMPORTANT:
    *
-   * GA4 event names are NOT hardcoded.
+   * GA4 EVENT NAMES ARE NOT HARDCODED.
    *
-   * Therefore all of these are valid:
+   * Examples:
    *
    *   purchase
    *   run_audit
    *   generate_report
    *   foo_bar
    *
-   * GA4 is identified using:
+   * are all valid GA4 event candidates.
    *
-   *   - official GA4 endpoints
-   *   - first-party GA4 proxy endpoints
-   *   - measurement ID
-   *   - GA4 collect path
+   * GA4 blocked-event detection works by:
+   *
+   *   1. Observing dataLayer / gtag
+   *   2. Capturing the event name
+   *   3. Waiting for the corresponding GA4 network request
+   *   4. If no request is observed, reporting:
+   *
+   *        ga4_event_blocked
+   *
+   *   together with:
+   *
+   *        eventName
+   *
+   *   and:
+   *
+   *        dlPushIndex
+   *
+   * This means:
+   *
+   *   run_audit
+   *   run_audit
+   *
+   * are treated as TWO separate events.
    *
    * =========================================================
+   */
+
+  /*
+   * ---------------------------------------------------------
+   * Script configuration
+   * ---------------------------------------------------------
    */
 
   var currentScript =
@@ -70,16 +95,22 @@
 
   try {
     scriptParams =
-      new URL(scriptUrl).searchParams;
+      new URL(
+        scriptUrl
+      ).searchParams;
   } catch (e) {
     return;
   }
 
   var API_KEY =
-    scriptParams.get('apiKey') || '';
+    scriptParams.get(
+      'apiKey'
+    ) || '';
 
   var GTM_ID =
-    scriptParams.get('gtmContainerId') || '';
+    scriptParams.get(
+      'gtmContainerId'
+    ) || '';
 
   if (!API_KEY) {
     return;
@@ -89,20 +120,24 @@
 
   try {
     ORIGIN =
-      new URL(scriptUrl).origin;
+      new URL(
+        scriptUrl
+      ).origin;
   } catch (e) {
     return;
   }
 
   var INGEST =
-    ORIGIN + '/api/ingest';
+    ORIGIN +
+    '/api/ingest';
 
   var BLOCKED =
-    ORIGIN + '/api/blocked';
+    ORIGIN +
+    '/api/blocked';
 
   /*
    * ---------------------------------------------------------
-   * Global state
+   * Global monitor state
    * ---------------------------------------------------------
    */
 
@@ -110,22 +145,42 @@
     window.__g4f ||
     {};
 
-  g.k = API_KEY;
-  g.c = GTM_ID;
-  g.q = g.q || [];
-  g.installed = true;
+  g.k =
+    API_KEY;
 
-  window.__g4f = g;
+  g.c =
+    GTM_ID;
 
-  if (g.__monitor_v7_installed) {
+  g.q =
+    g.q || [];
+
+  g.installed =
+    true;
+
+  window.__g4f =
+    g;
+
+  /*
+   * Prevent duplicate installation.
+   */
+
+  if (
+    g.__monitor_v8_installed
+  ) {
     return;
   }
 
-  g.__monitor_v7_installed = true;
+  g.__monitor_v8_installed =
+    true;
 
-  g.r = false;
-  g.ready = false;
-  g.version = '7.0';
+  g.r =
+    false;
+
+  g.ready =
+    false;
+
+  g.version =
+    '8.0';
 
   /*
    * ---------------------------------------------------------
@@ -140,40 +195,86 @@
   window.dataLayer =
     dataLayer;
 
-  var dlPushIndex = 0;
+  var dlPushIndex =
+    0;
 
-  var recentDataLayerEvents = [];
+  var recentDataLayerEvents =
+    [];
 
-  var pendingEvents = [];
+  var pendingEvents =
+    [];
 
   /*
-   * IMPORTANT:
+   * Network-observed GA4 events.
    *
-   * Keep every observed network event.
+   * Example:
    *
-   * Do NOT use a boolean only.
-   *
-   * If run_audit fires twice:
-   *
-   *   run_audit
-   *   run_audit
-   *
-   * both network events must be recorded.
+   * {
+   *   purchase: true,
+   *   run_audit: true
+   * }
    */
 
-  var observedGA4Events = {};
+  var observedGA4Events =
+    {};
 
-  var observedGA4EventCounts = {};
+  /*
+   * Number of network events observed.
+   */
 
-  var observedGA4 = false;
+  var observedGA4EventCounts =
+    {};
 
-  var blockedReported = {};
+  /*
+   * Whether any GA4 network request
+   * has been observed.
+   */
 
-  var MAX_RECENT_EVENTS = 200;
+  var observedGA4 =
+    false;
 
-  var NETWORK_MATCH_WINDOW = 5000;
+  /*
+   * Whether GA4 configuration was
+   * discovered on the page.
+   */
 
-  var BLOCKED_WAIT_MS = 3500;
+  var ga4Configured =
+    false;
+
+  /*
+   * Known GA4 measurement IDs.
+   */
+
+  var ga4MeasurementIds =
+    {};
+
+  /*
+   * Prevent duplicate blocked reports.
+   *
+   * IMPORTANT:
+   *
+   * This is keyed by event instance,
+   * NOT just event name.
+   *
+   * Therefore:
+   *
+   * run_audit #1
+   * run_audit #2
+   *
+   * can both be reported.
+   */
+
+  var blockedReported =
+    {};
+
+  var MAX_RECENT_EVENTS =
+    200;
+
+  var NETWORK_MATCH_WINDOW =
+    5000;
+
+  var BLOCKED_WAIT_MS =
+    3500;
 
   /*
    * ---------------------------------------------------------
@@ -185,7 +286,9 @@
     return Date.now();
   }
 
-  function normalize(value) {
+  function normalize(
+    value
+  ) {
     if (
       value === undefined ||
       value === null
@@ -194,7 +297,9 @@
     }
 
     try {
-      return String(value)
+      return String(
+        value
+      )
         .trim()
         .toLowerCase();
     } catch (e) {
@@ -210,7 +315,9 @@
     }
   }
 
-  function safeUrl(url) {
+  function safeUrl(
+    url
+  ) {
     try {
       return new URL(
         url,
@@ -226,7 +333,9 @@
   ) {
     try {
       var absolute =
-        safeUrl(url);
+        safeUrl(
+          url
+        );
 
       if (!absolute) {
         return false;
@@ -234,15 +343,6 @@
 
       var href =
         absolute.href;
-
-      /*
-       * ONLY ignore our own telemetry.
-       *
-       * Do NOT ignore all same-origin
-       * requests.
-       *
-       * This is the critical fix.
-       */
 
       return (
         href.indexOf(
@@ -257,12 +357,22 @@
     }
   }
 
-  function extractQueryParams(url) {
+  /*
+   * ---------------------------------------------------------
+   * Query-string parsing
+   * ---------------------------------------------------------
+   */
+
+  function extractQueryParams(
+    url
+  ) {
     var result = {};
 
     try {
       var parsed =
-        safeUrl(url);
+        safeUrl(
+          url
+        );
 
       if (!parsed) {
         return result;
@@ -309,7 +419,15 @@
     return result;
   }
 
-  function parseBody(body) {
+  /*
+   * ---------------------------------------------------------
+   * Request body parsing
+   * ---------------------------------------------------------
+   */
+
+  function parseBody(
+    body
+  ) {
     var result = {};
 
     if (!body) {
@@ -419,7 +537,9 @@
             key
           ) {
             result[key] =
-              String(value);
+              String(
+                value
+              );
           }
         );
 
@@ -427,17 +547,10 @@
       }
 
       /*
-       * Blob
-       *
-       * We cannot synchronously
-       * read a Blob.
-       *
-       * sendBeacon normally sends
-       * a Blob only for telemetry
-       * generated by this monitor,
-       * so we intentionally avoid
-       * asynchronous parsing here.
+       * Blob cannot be synchronously
+       * parsed.
        */
+
     } catch (e) {}
 
     return result;
@@ -450,26 +563,26 @@
    */
 
   var VENDORS = [
+
     {
       name: 'ga4',
 
       patterns: [
-        /*
-         * Official GA4
-         */
 
         /google-analytics\.com\/g\/collect/i,
+
         /google-analytics\.com\/mp\/collect/i,
+
         /analytics\.google\.com\/g\/collect/i,
+
         /analytics\.google\.com\/mp\/collect/i,
 
-        /*
-         * First-party GA4 proxy
-         */
-
         /\/(?:metrics\/)?g\/collect(?:\?|$)/i,
+
         /\/(?:metrics\/)?mp\/collect(?:\?|$)/i,
+
         /\/analytics\/g\/collect(?:\?|$)/i,
+
         /\/analytics\/mp\/collect(?:\?|$)/i
       ]
     },
@@ -478,9 +591,13 @@
       name: 'gads',
 
       patterns: [
+
         /googleadservices\.com\/pagead\/conversion/i,
+
         /googleadservices\.com\/pagead\/1p-conversion/i,
+
         /googlesyndication\.com\/pagead/i,
+
         /googleadservices\.com\/pagead\/viewthroughconversion/i
       ]
     },
@@ -489,7 +606,9 @@
       name: 'meta',
 
       patterns: [
+
         /facebook\.com\/tr/i,
+
         /facebook\.net\/tr/i
       ]
     },
@@ -498,8 +617,11 @@
       name: 'tiktok',
 
       patterns: [
+
         /analytics\.tiktok\.com/i,
+
         /business-api\.tiktok\.com/i,
+
         /tiktok\.com\/api/i
       ]
     },
@@ -508,7 +630,9 @@
       name: 'linkedin',
 
       patterns: [
+
         /px\.ads\.linkedin\.com/i,
+
         /snap\.licdn\.com/i
       ]
     },
@@ -517,7 +641,9 @@
       name: 'snapchat',
 
       patterns: [
+
         /tr\.snapchat\.com/i,
+
         /sc-static\.net/i
       ]
     },
@@ -526,7 +652,9 @@
       name: 'pinterest',
 
       patterns: [
+
         /ct\.pinterest\.com/i,
+
         /pintrk/i
       ]
     },
@@ -535,7 +663,9 @@
       name: 'reddit',
 
       patterns: [
+
         /events\.redditmedia\.com/i,
+
         /www\.redditstatic\.com/i
       ]
     },
@@ -544,7 +674,9 @@
       name: 'twitter',
 
       patterns: [
+
         /analytics\.twitter\.com/i,
+
         /t\.co\/i\/adsct/i
       ]
     },
@@ -553,6 +685,7 @@
       name: 'clarity',
 
       patterns: [
+
         /clarity\.ms/i
       ]
     },
@@ -561,6 +694,7 @@
       name: 'mixpanel',
 
       patterns: [
+
         /api\.mixpanel\.com/i
       ]
     },
@@ -569,7 +703,9 @@
       name: 'amplitude',
 
       patterns: [
+
         /api2\.amplitude\.com/i,
+
         /api\.amplitude\.com/i
       ]
     },
@@ -578,7 +714,9 @@
       name: 'segment',
 
       patterns: [
+
         /api\.segment\.io/i,
+
         /cdn\.segment\.com/i
       ]
     },
@@ -587,7 +725,9 @@
       name: 'hubspot',
 
       patterns: [
+
         /hubspot\.com/i,
+
         /hubspot\.net/i
       ]
     },
@@ -596,7 +736,9 @@
       name: 'klaviyo',
 
       patterns: [
+
         /klaviyo\.com/i,
+
         /klaviyo\.js/i
       ]
     },
@@ -605,7 +747,9 @@
       name: 'intercom',
 
       patterns: [
+
         /intercom\.io/i,
+
         /intercom\.com/i
       ]
     }
@@ -626,17 +770,21 @@
     }
 
     var parsed =
-      safeUrl(url);
+      safeUrl(
+        url
+      );
 
     if (!parsed) {
       return false;
     }
 
     var hostname =
-      parsed.hostname || '';
+      parsed.hostname ||
+      '';
 
     var pathname =
-      parsed.pathname || '';
+      parsed.pathname ||
+      '';
 
     var officialEndpoint =
       /(^|\.)google-analytics\.com$/i.test(
@@ -692,14 +840,16 @@
 
     if (
       collectEndpoint &&
-      hasMeasurementId
+      (
+        hasMeasurementId ||
+        !!eventName
+      )
     ) {
       return true;
     }
 
     /*
-     * Custom first-party GA4
-     * endpoint with measurement ID.
+     * Custom first-party endpoint.
      */
 
     if (
@@ -732,7 +882,9 @@
     }
 
     var text =
-      String(url || '');
+      String(
+        url || ''
+      );
 
     for (
       var i = 0;
@@ -910,7 +1062,9 @@
       );
 
     var bodyParams =
-      parseBody(body);
+      parseBody(
+        body
+      );
 
     var params =
       mergeParams(
@@ -963,7 +1117,9 @@
       );
 
     var bodyParams =
-      parseBody(body);
+      parseBody(
+        body
+      );
 
     var params =
       mergeParams(
@@ -999,6 +1155,113 @@
 
   /*
    * ---------------------------------------------------------
+   * GA4 configuration detection
+   * ---------------------------------------------------------
+   *
+   * Detect:
+   *
+   *   gtag('config', 'G-XXXX')
+   *
+   * and configuration-like objects.
+   *
+   * This is critical because a custom
+   * event can be blocked before we ever
+   * see the GA4 network request.
+   * ---------------------------------------------------------
+   */
+
+  function inspectGA4Configuration(
+    item
+  ) {
+    try {
+
+      /*
+       * gtag('config', 'G-XXXX')
+       */
+
+      if (
+        item &&
+        typeof item.length ===
+          'number' &&
+        item[0] ===
+          'config'
+      ) {
+        var configId =
+          String(
+            item[1] ||
+            ''
+          );
+
+        var configMatch =
+          configId.match(
+            /G-[A-Z0-9]+/i
+          );
+
+        if (
+          configMatch
+        ) {
+          ga4Configured =
+            true;
+
+          ga4MeasurementIds[
+            configMatch[0]
+              .toUpperCase()
+          ] =
+            true;
+        }
+
+        return;
+      }
+
+      /*
+       * Object-style configuration.
+       */
+
+      if (
+        item &&
+        typeof item ===
+          'object'
+      ) {
+        var possibleId =
+          item.measurement_id ||
+          item.measurementId ||
+          item.tid ||
+          item.send_to ||
+          null;
+
+        if (
+          possibleId
+        ) {
+          var idString =
+            String(
+              possibleId
+            );
+
+          var match =
+            idString.match(
+              /G-[A-Z0-9]+/i
+            );
+
+          if (
+            match
+          ) {
+            ga4Configured =
+              true;
+
+            ga4MeasurementIds[
+              match[0]
+                .toUpperCase()
+            ] =
+              true;
+          }
+        }
+      }
+
+    } catch (e) {}
+  }
+
+  /*
+   * ---------------------------------------------------------
    * DataLayer extraction
    * ---------------------------------------------------------
    */
@@ -1010,24 +1273,63 @@
       return null;
     }
 
+    /*
+     * Always inspect configuration
+     * first.
+     */
+
+    inspectGA4Configuration(
+      item
+    );
+
     var eventName =
-      item.event ||
-      item.event_name ||
-      item.eventName ||
       null;
 
     var params =
       item;
 
+    var source =
+      'dataLayer';
+
+    var isGA4Candidate =
+      false;
+
     /*
+     * -------------------------------------------------------
+     * Standard dataLayer event
+     *
+     * {
+     *   event: 'purchase'
+     * }
+     * -------------------------------------------------------
+     */
+
+    if (
+      typeof item ===
+        'object' &&
+      !Array.isArray(
+        item
+      )
+    ) {
+      eventName =
+        item.event ||
+        item.event_name ||
+        item.eventName ||
+        null;
+    }
+
+    /*
+     * -------------------------------------------------------
      * gtag('event', 'purchase', {...})
+     * -------------------------------------------------------
      */
 
     if (
       typeof item.length ===
-      'number'
+        'number'
     ) {
       try {
+
         if (
           item[0] ===
           'event'
@@ -1038,24 +1340,88 @@
           params =
             item[2] ||
             {};
+
+          source =
+            'gtag';
+
+          isGA4Candidate =
+            true;
         }
+
       } catch (e) {}
+    }
+
+    /*
+     * -------------------------------------------------------
+     * gtag('config', ...)
+     *
+     * Configuration is not an event.
+     * -------------------------------------------------------
+     */
+
+    if (
+      typeof item.length ===
+        'number' &&
+      item[0] ===
+        'config'
+    ) {
+      return null;
+    }
+
+    /*
+     * -------------------------------------------------------
+     * Ignore other gtag commands.
+     * -------------------------------------------------------
+     */
+
+    if (
+      typeof item.length ===
+        'number' &&
+      (
+        item[0] ===
+          'set' ||
+        item[0] ===
+          'consent'
+      )
+    ) {
+      return null;
     }
 
     if (!eventName) {
       return null;
     }
 
+    /*
+     * If GA4 has already been
+     * configured, every named
+     * dataLayer event is a candidate.
+     */
+
+    if (
+      ga4Configured
+    ) {
+      isGA4Candidate =
+        true;
+    }
+
     return {
       eventName:
-        String(eventName),
+        String(
+          eventName
+        ),
 
       params:
         params &&
         typeof params ===
-        'object'
+          'object'
           ? params
-          : {}
+          : {},
+
+      source:
+        source,
+
+      isGA4Candidate:
+        isGA4Candidate
     };
   }
 
@@ -1091,13 +1457,21 @@
         ),
 
       params:
-        parsed.params || {},
+        parsed.params ||
+        {},
 
       pushIndex:
         dlPushIndex,
 
       timestamp:
-        now()
+        now(),
+
+      isGA4Candidate:
+        !!parsed.isGA4Candidate,
+
+      source:
+        parsed.source ||
+        'dataLayer'
     };
 
     recentDataLayerEvents.push(
@@ -1112,11 +1486,12 @@
     }
 
     /*
-     * Every named dataLayer event
-     * is a candidate.
+     * Every named event becomes
+     * a candidate.
      */
 
     pendingEvents.push({
+
       eventName:
         event.eventName,
 
@@ -1133,7 +1508,14 @@
         item,
 
       params:
-        event.params
+        event.params,
+
+      isGA4Candidate:
+        event.isGA4Candidate,
+
+      source:
+        event.source
+
     });
 
     if (
@@ -1173,7 +1555,8 @@
 
     for (
       var i =
-        pendingEvents.length - 1;
+        pendingEvents.length -
+        1;
       i >= 0;
       i--
     ) {
@@ -1183,7 +1566,7 @@
       if (
         !candidate ||
         candidate.eventName !==
-        target
+          target
       ) {
         continue;
       }
@@ -1235,7 +1618,8 @@
       );
 
     if (
-      index !== -1
+      index !==
+      -1
     ) {
       pendingEvents.splice(
         index,
@@ -1246,7 +1630,7 @@
 
   /*
    * ---------------------------------------------------------
-   * GA4 network received
+   * GA4 network event received
    * ---------------------------------------------------------
    */
 
@@ -1267,7 +1651,8 @@
 
     observedGA4Events[
       normalized
-    ] = true;
+    ] =
+      true;
 
     if (
       !observedGA4EventCounts[
@@ -1276,7 +1661,8 @@
     ) {
       observedGA4EventCounts[
         normalized
-      ] = 0;
+      ] =
+        0;
     }
 
     observedGA4EventCounts[
@@ -1284,19 +1670,7 @@
     ]++;
 
     /*
-     * IMPORTANT:
-     *
-     * Only remove ONE matching
-     * dataLayer candidate.
-     *
-     * If:
-     *
-     * run_audit
-     * run_audit
-     *
-     * and two network requests are
-     * received, each network request
-     * gets matched independently.
+     * Match ONE dataLayer event.
      */
 
     var candidate =
@@ -1319,53 +1693,158 @@
    */
 
   var STANDARD_GA4_EVENTS = {
-    page_view: true,
-    session_start: true,
-    first_visit: true,
-    user_engagement: true,
-    scroll: true,
-    click: true,
-    file_download: true,
-    view_search_results: true,
 
-    login: true,
-    sign_up: true,
+    page_view:
+      true,
 
-    purchase: true,
-    refund: true,
+    session_start:
+      true,
 
-    add_to_cart: true,
-    add_to_wishlist: true,
-    begin_checkout: true,
-    add_payment_info: true,
+    first_visit:
+      true,
 
-    generate_lead: true,
-    search: true,
+    user_engagement:
+      true,
 
-    select_item: true,
-    select_promotion: true,
+    scroll:
+      true,
 
-    view_item: true,
-    view_item_list: true,
+    click:
+      true,
 
-    remove_from_cart: true,
+    file_download:
+      true,
 
-    video_start: true,
-    video_progress: true,
-    video_complete: true
+    view_search_results:
+      true,
+
+    login:
+      true,
+
+    sign_up:
+      true,
+
+    purchase:
+      true,
+
+    refund:
+      true,
+
+    add_to_cart:
+      true,
+
+    add_to_wishlist:
+      true,
+
+    begin_checkout:
+      true,
+
+    add_payment_info:
+      true,
+
+    generate_lead:
+      true,
+
+    search:
+      true,
+
+    select_item:
+      true,
+
+    select_promotion:
+      true,
+
+    view_item:
+      true,
+
+    view_item_list:
+      true,
+
+    remove_from_cart:
+      true,
+
+    video_start:
+      true,
+
+    video_progress:
+      true,
+
+    video_complete:
+      true
   };
 
   function isStandardGA4Event(
     eventName
   ) {
     return !!STANDARD_GA4_EVENTS[
-      normalize(eventName)
+      normalize(
+        eventName
+      )
     ];
   }
 
   /*
    * ---------------------------------------------------------
-   * GA4 blocked detection
+   * Determine whether an event is a
+   * GA4 candidate.
+   * ---------------------------------------------------------
+   */
+
+  function isGA4EventCandidate(
+    candidate
+  ) {
+    if (!candidate) {
+      return false;
+    }
+
+    /*
+     * Explicit gtag('event')
+     */
+
+    if (
+      candidate.isGA4Candidate
+    ) {
+      return true;
+    }
+
+    /*
+     * GA4 configuration discovered.
+     */
+
+    if (
+      ga4Configured
+    ) {
+      return true;
+    }
+
+    /*
+     * GA4 network already observed.
+     */
+
+    if (
+      observedGA4
+    ) {
+      return true;
+    }
+
+    /*
+     * Standard GA4 event.
+     */
+
+    if (
+      isStandardGA4Event(
+        candidate.eventName
+      )
+    ) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Blocked GA4 event detection
    * ---------------------------------------------------------
    */
 
@@ -1376,20 +1855,45 @@
       return;
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * We do NOT require observedGA4
+     * to already be true.
+     *
+     * This is what allows:
+     *
+     *   run_audit
+     *
+     * to be detected when GA4 is
+     * completely blocked.
+     */
+
+    if (
+      !isGA4EventCandidate(
+        candidate
+      )
+    ) {
+      return;
+    }
+
     setTimeout(
       function () {
+
         try {
+
           /*
            * If the candidate has
-           * already been removed from
-           * pendingEvents, it matched
-           * a network request.
+           * already been removed,
+           * a matching network event
+           * was found.
            */
 
           if (
             pendingEvents.indexOf(
               candidate
-            ) === -1
+            ) ===
+            -1
           ) {
             return;
           }
@@ -1406,9 +1910,16 @@
           }
 
           /*
-           * If this event name has
-           * appeared on the network,
-           * do not report it blocked.
+           * If this event name was
+           * observed on the GA4 network,
+           * don't classify it as blocked.
+           *
+           * IMPORTANT:
+           *
+           * This is event-name based,
+           * which handles the common case
+           * where multiple identical events
+           * are fired.
            */
 
           if (
@@ -1416,29 +1927,32 @@
               candidate.eventName
             ]
           ) {
+
+            /*
+             * Remove the candidate so
+             * it does not stay pending.
+             */
+
+            removePendingEvent(
+              candidate
+            );
+
             return;
           }
 
           /*
-           * Before GA4 has ever been
-           * observed, custom dataLayer
-           * events are ambiguous.
+           * Unique event instance key.
            *
-           * Standard GA4 events can
-           * bootstrap detection.
+           * This means:
+           *
+           * run_audit #41
+           *
+           * and:
+           *
+           * run_audit #42
+           *
+           * are separate.
            */
-
-          var standard =
-            isStandardGA4Event(
-              candidate.eventName
-            );
-
-          if (
-            !observedGA4 &&
-            !standard
-          ) {
-            return;
-          }
 
           var key =
             candidate.eventName +
@@ -1446,30 +1960,53 @@
             candidate.pushIndex;
 
           if (
-            blockedReported[key]
+            blockedReported[
+              key
+            ]
           ) {
             return;
           }
 
-          blockedReported[key] =
+          blockedReported[
+            key
+          ] =
             true;
+
+          /*
+           * Remove it after classification.
+           */
+
+          removePendingEvent(
+            candidate
+          );
+
+          /*
+           * Report blocked GA4 event.
+           */
 
           reportPlatformBlocked(
             'ga4_event_blocked',
             {
+
               eventName:
                 candidate.originalEventName,
 
               dlPushIndex:
                 candidate.pushIndex,
 
+              source:
+                candidate.source,
+
               reason:
                 observedGA4
                   ? 'dataLayer_event_without_matching_ga4_request'
-                  : 'standard_ga4_event_without_network_request'
+                  : 'ga4_event_without_network_request'
+
             }
           );
+
         } catch (e) {}
+
       },
       BLOCKED_WAIT_MS
     );
@@ -1477,7 +2014,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Process dataLayer event
+   * Process dataLayer item
    * ---------------------------------------------------------
    */
 
@@ -1485,6 +2022,7 @@
     item
   ) {
     try {
+
       var candidate =
         rememberDataLayerEvent(
           item
@@ -1497,6 +2035,7 @@
       scheduleBlockedCheck(
         candidate
       );
+
     } catch (e) {}
   }
 
@@ -1507,15 +2046,20 @@
    */
 
   try {
+
     for (
       var i = 0;
-      i < dataLayer.length;
+      i <
+      dataLayer.length;
       i++
     ) {
+
       processDataLayerItem(
         dataLayer[i]
       );
+
     }
+
   } catch (e) {}
 
   /*
@@ -1529,14 +2073,18 @@
 
   dataLayer.push =
     function () {
+
       for (
         var i = 0;
-        i < arguments.length;
+        i <
+        arguments.length;
         i++
       ) {
+
         processDataLayerItem(
           arguments[i]
         );
+
       }
 
       return originalDataLayerPush.apply(
@@ -1558,17 +2106,53 @@
     typeof originalGtag ===
     'function'
   ) {
+
     window.gtag =
       function () {
+
         try {
+
+          /*
+           * Capture:
+           *
+           * gtag(
+           *   'config',
+           *   'G-XXXX'
+           * )
+           */
+
+          if (
+            arguments[0] ===
+            'config'
+          ) {
+
+            inspectGA4Configuration(
+              arguments
+            );
+
+          }
+
+          /*
+           * Capture:
+           *
+           * gtag(
+           *   'event',
+           *   'run_audit',
+           *   {...}
+           * )
+           */
+
           if (
             arguments[0] ===
             'event'
           ) {
+
             processDataLayerItem(
               arguments
             );
+
           }
+
         } catch (e) {}
 
         return originalGtag.apply(
@@ -1593,6 +2177,7 @@
   function send(
     payload
   ) {
+
     queue.push(
       payload
     );
@@ -1617,6 +2202,7 @@
    */
 
   function flush() {
+
     flushTimer =
       null;
 
@@ -1634,6 +2220,7 @@
 
     var body =
       JSON.stringify({
+
         apiKey:
           API_KEY,
 
@@ -1642,6 +2229,7 @@
 
         events:
           batch
+
       });
 
     /*
@@ -1649,9 +2237,11 @@
      */
 
     try {
+
       fetch(
         INGEST,
         {
+
           method:
             'POST',
 
@@ -1668,22 +2258,26 @@
 
           credentials:
             'omit'
+
         }
       ).catch(
         function () {}
       );
 
       return;
+
     } catch (e) {}
 
     /*
-     * Fallback.
+     * sendBeacon fallback.
      */
 
     try {
+
       if (
         navigator.sendBeacon
       ) {
+
         var blob =
           new Blob(
             [body],
@@ -1697,98 +2291,238 @@
           INGEST,
           blob
         );
+
       }
+
     } catch (e) {}
   }
 
   /*
    * ---------------------------------------------------------
-   * Source detection
+   * Report blocked platform
    * ---------------------------------------------------------
    */
 
-  function detectSource(
+  function reportPlatformBlocked(
     method,
-    matchedDataLayer
+    details
   ) {
-    if (
-      matchedDataLayer
-    ) {
-      return 'gtm';
-    }
 
-    if (
-      method ===
-      'beacon'
-    ) {
-      return 'beacon';
-    }
+    try {
 
-    if (
-      method ===
-      'image'
-    ) {
-      return 'pixel';
-    }
+      details =
+        details ||
+        {};
 
-    if (
-      method ===
-      'fetch'
-    ) {
-      return 'fetch';
-    }
+      var eventName =
+        details.eventName ||
+        null;
 
-    if (
-      method ===
-      'xhr'
-    ) {
-      return 'xhr';
-    }
+      /*
+       * IMPORTANT:
+       *
+       * Deduplicate using event identity,
+       * not only method + event name.
+       */
 
-    return 'direct';
+      var eventIdentity =
+        details.dlPushIndex !==
+          undefined &&
+        details.dlPushIndex !==
+          null
+          ? String(
+              details.dlPushIndex
+            )
+          : (
+              eventName ||
+              'unknown'
+            );
+
+      var key =
+        method +
+        ':' +
+        eventIdentity;
+
+      if (
+        blockedReported[
+          key
+        ]
+      ) {
+        return;
+      }
+
+      blockedReported[
+        key
+      ] =
+        true;
+
+      /*
+       * Build blocked endpoint.
+       */
+
+      var url =
+        BLOCKED +
+        '?k=' +
+        encodeURIComponent(
+          API_KEY
+        ) +
+        '&m=' +
+        encodeURIComponent(
+          method
+        );
+
+      /*
+       * EVENT NAME
+       *
+       * This is the important addition.
+       */
+
+      if (
+        eventName
+      ) {
+
+        url +=
+          '&e=' +
+          encodeURIComponent(
+            eventName
+          );
+
+      }
+
+      /*
+       * Reason.
+       */
+
+      if (
+        details.reason
+      ) {
+
+        url +=
+          '&r=' +
+          encodeURIComponent(
+            details.reason
+          );
+
+      }
+
+      /*
+       * DataLayer push index.
+       */
+
+      if (
+        details.dlPushIndex !==
+        undefined
+      ) {
+
+        url +=
+          '&d=' +
+          encodeURIComponent(
+            String(
+              details.dlPushIndex
+            )
+          );
+
+      }
+
+      /*
+       * Source.
+       */
+
+      if (
+        details.source
+      ) {
+
+        url +=
+          '&s=' +
+          encodeURIComponent(
+            details.source
+          );
+
+      }
+
+      /*
+       * Page URL.
+       */
+
+      url +=
+        '&p=' +
+        encodeURIComponent(
+          safePageUrl()
+        );
+
+      /*
+       * Send with fetch.
+       */
+
+      try {
+
+        fetch(
+          url,
+          {
+            method:
+              'GET',
+
+            keepalive:
+              true,
+
+            credentials:
+              'omit'
+          }
+        ).catch(
+          function () {}
+        );
+
+        return;
+
+      } catch (e) {}
+
+      /*
+       * sendBeacon fallback.
+       */
+
+      try {
+
+        if (
+          navigator.sendBeacon
+        ) {
+
+          navigator.sendBeacon(
+            url
+          );
+
+        }
+
+      } catch (e) {}
+
+    } catch (e) {}
   }
 
   /*
    * ---------------------------------------------------------
-   * Network event recorder
+   * Network event processor
    * ---------------------------------------------------------
    */
 
-  function record(
+  function processNetworkRequest(
     url,
-    method,
-    body
+    body,
+    transport
   ) {
+
     try {
+
       if (!url) {
         return;
       }
 
-      var absolute =
-        safeUrl(url);
-
-      if (!absolute) {
-        return;
-      }
-
-      var absoluteUrl =
-        absolute.href;
-
       /*
-       * ONLY ignore our own
-       * monitoring endpoints.
-       *
-       * DO NOT use:
-       *
-       * absolute.origin === ORIGIN
-       *
-       * because first-party GA4
-       * proxies are same-origin.
+       * Never monitor our own
+       * telemetry endpoints.
        */
 
       if (
         isOwnMonitoringRequest(
-          absoluteUrl
+          url
         )
       ) {
         return;
@@ -1796,11 +2530,13 @@
 
       var queryParams =
         extractQueryParams(
-          absoluteUrl
+          url
         );
 
       var bodyParams =
-        parseBody(body);
+        parseBody(
+          body
+        );
 
       var params =
         mergeParams(
@@ -1810,7 +2546,7 @@
 
       var vendor =
         detectVendor(
-          absoluteUrl,
+          url,
           params
         );
 
@@ -1824,185 +2560,168 @@
         vendor ===
         'ga4'
       ) {
+
         parsed =
           parseGA4(
-            absoluteUrl,
+            url,
             body
           );
+
       } else {
+
         parsed =
           parseGeneric(
             vendor,
-            absoluteUrl,
+            url,
             body
           );
+
       }
 
-      var eventName =
-        parsed.eventName ||
-        null;
-
-      var timestamp =
-        now();
-
-      var matchedDataLayer =
-        findMatchingDataLayerEvent(
-          eventName,
-          timestamp
-        );
-
       /*
-       * GA4 request observed.
-       *
-       * This happens BEFORE
-       * queueing the event.
+       * Mark GA4 network activity.
        */
 
       if (
         vendor ===
-        'ga4' &&
-        eventName
+        'ga4'
       ) {
+
+        if (
+          parsed.measurementId
+        ) {
+
+          ga4Configured =
+            true;
+
+          ga4MeasurementIds[
+            String(
+              parsed.measurementId
+            ).toUpperCase()
+          ] =
+            true;
+
+        }
+
         markGA4EventReceived(
-          eventName
+          parsed.eventName
         );
 
-        /*
-         * Do not depend on a
-         * hardcoded event name.
-         */
       }
 
       /*
-       * If network event doesn't
-       * contain an event name, use
-       * matching dataLayer event only
-       * as supplemental information.
+       * Record all network events.
        */
-
-      if (
-        !eventName &&
-        matchedDataLayer
-      ) {
-        eventName =
-          matchedDataLayer
-            .originalEventName;
-      }
-
-      /*
-       * Only remove a candidate
-       * after successful network
-       * identification.
-       */
-
-      if (
-        matchedDataLayer
-      ) {
-        removePendingEvent(
-          matchedDataLayer
-        );
-      }
 
       send({
+
+        type:
+          'network',
+
         vendor:
           vendor,
 
         eventName:
-          eventName,
+          parsed.eventName ||
+          null,
+
+        measurementId:
+          parsed.measurementId ||
+          null,
+
+        transactionId:
+          parsed.transactionId ||
+          null,
 
         clientId:
           parsed.clientId ||
           null,
 
-        measurementId:
-          parsed.measurementId ||
-          params.tid ||
+        transport:
+          transport ||
           null,
 
-        transactionId:
-          parsed.transactionId ||
-          params.transaction_id ||
-          params.transactionId ||
-          null,
-
-        params:
-          parsed.params ||
-          params ||
-          {},
+        url:
+          String(
+            url
+          ).slice(
+            0,
+            2000
+          ),
 
         pageUrl:
           safePageUrl(),
 
-        rawUrl:
-          absoluteUrl,
+        timestamp:
+          now()
 
-        method:
-          method,
-
-        dlPushIndex:
-          matchedDataLayer
-            ? matchedDataLayer.pushIndex
-            : null,
-
-        source:
-          detectSource(
-            method,
-            matchedDataLayer
-          ),
-
-        dataLayerMatched:
-          !!matchedDataLayer,
-
-        ts:
-          timestamp
       });
-    } catch (e) {
-      /*
-       * Never break the
-       * customer website.
-       */
-    }
+
+    } catch (e) {}
   }
 
   /*
    * ---------------------------------------------------------
-   * FETCH
+   * Patch fetch
    * ---------------------------------------------------------
    */
 
-  var originalFetch =
-    window.fetch;
-
   if (
-    typeof originalFetch ===
+    typeof window.fetch ===
     'function'
   ) {
+
+    var originalFetch =
+      window.fetch;
+
     window.fetch =
-      function (
-        input,
-        init
-      ) {
+      function () {
+
         try {
-          var url =
+
+          var input =
+            arguments[0];
+
+          var init =
+            arguments[1] ||
+            {};
+
+          var url;
+
+          if (
             typeof input ===
             'string'
-              ? input
-              : input &&
-                input.url;
+          ) {
+
+            url =
+              input;
+
+          } else if (
+            input &&
+            input.url
+          ) {
+
+            url =
+              input.url;
+
+          }
 
           var body =
-            init &&
-            init.body
-              ? init.body
-              : null;
+            init.body ||
+            null;
 
-          if (url) {
-            record(
+          if (
+            url
+          ) {
+
+            processNetworkRequest(
               url,
-              'fetch',
-              body
+              body,
+              'fetch'
             );
+
           }
+
         } catch (e) {}
 
         return originalFetch.apply(
@@ -2014,590 +2733,365 @@
 
   /*
    * ---------------------------------------------------------
-   * XHR
+   * Patch XMLHttpRequest
    * ---------------------------------------------------------
    */
 
-  var originalOpen =
-    XMLHttpRequest.prototype.open;
+  try {
 
-  XMLHttpRequest.prototype.open =
-    function (
-      method,
-      url
-    ) {
-      try {
-        this.__g4f_method =
-          method;
+    var originalXHRopen =
+      XMLHttpRequest.prototype.open;
 
-        this.__g4f_url =
-          url;
-      } catch (e) {}
+    var originalXHRsend =
+      XMLHttpRequest.prototype.send;
 
-      return originalOpen.apply(
-        this,
-        arguments
-      );
-    };
-
-  var originalSend =
-    XMLHttpRequest.prototype.send;
-
-  XMLHttpRequest.prototype.send =
-    function (
-      body
-    ) {
-      try {
-        if (
-          this.__g4f_url
-        ) {
-          record(
-            this.__g4f_url,
-            'xhr',
-            body
-          );
-        }
-      } catch (e) {}
-
-      return originalSend.apply(
-        this,
-        arguments
-      );
-    };
-
-  /*
-   * ---------------------------------------------------------
-   * sendBeacon
-   * ---------------------------------------------------------
-   *
-   * CRITICAL:
-   *
-   * The old implementation did:
-   *
-   *   if (absolute.origin === ORIGIN)
-   *
-   * which skipped first-party GA4.
-   *
-   * We now skip ONLY:
-   *
-   *   /api/ingest
-   *   /api/blocked
-   *
-   * Everything else is inspected.
-   */
-
-  if (
-    navigator.sendBeacon
-  ) {
-    var originalBeacon =
-      navigator.sendBeacon.bind(
-        navigator
-      );
-
-    navigator.sendBeacon =
+    XMLHttpRequest.prototype.open =
       function (
-        url,
-        data
+        method,
+        url
       ) {
+
         try {
-          /*
-           * Never inspect our own
-           * monitoring telemetry.
-           */
 
-          if (
-            isOwnMonitoringRequest(
-              url
-            )
-          ) {
-            return originalBeacon(
-              url,
-              data
-            );
-          }
+          this.__g4f_url =
+            url;
 
-          /*
-           * sendBeacon can use:
-           *
-           *   string
-           *   URLSearchParams
-           *   FormData
-           *   Blob
-           *
-           * For GA4 first-party
-           * requests, the event data
-           * is already in the URL:
-           *
-           * /metrics/g/collect
-           * ?tid=G-XXX
-           * &en=purchase
-           *
-           * Therefore URL parsing is
-           * enough even when body is
-           * unavailable.
-           */
+          this.__g4f_method =
+            method;
 
-          var body =
-            typeof data ===
-            'string'
-              ? data
-              : null;
-
-          record(
-            url,
-            'beacon',
-            body
-          );
         } catch (e) {}
 
-        return originalBeacon(
-          url,
-          data
+        return originalXHRopen.apply(
+          this,
+          arguments
         );
       };
-  }
 
-  /*
-   * ---------------------------------------------------------
-   * Image pixels
-   * ---------------------------------------------------------
-   */
+    XMLHttpRequest.prototype.send =
+      function (
+        body
+      ) {
 
-  try {
-    var imageDescriptor =
-      Object.getOwnPropertyDescriptor(
-        HTMLImageElement.prototype,
-        'src'
-      );
+        try {
 
-    if (
-      imageDescriptor &&
-      imageDescriptor.set
-    ) {
-      Object.defineProperty(
-        HTMLImageElement.prototype,
-        'src',
-        {
-          configurable:
-            true,
+          processNetworkRequest(
+            this.__g4f_url,
+            body,
+            'xhr'
+          );
 
-          get:
-            imageDescriptor.get,
+        } catch (e) {}
 
-          set:
-            function (url) {
-              try {
-                record(
-                  url,
-                  'image',
-                  null
-                );
-              } catch (e) {}
+        return originalXHRsend.apply(
+          this,
+          arguments
+        );
+      };
 
-              return imageDescriptor.set.call(
-                this,
-                url
-              );
-            }
-        }
-      );
-    }
   } catch (e) {}
 
   /*
    * ---------------------------------------------------------
-   * Platform blocked reporting
+   * Patch navigator.sendBeacon
    * ---------------------------------------------------------
    */
 
-  function reportPlatformBlocked(
-    method,
-    details
-  ) {
-    try {
-      var eventName =
-        details &&
-        details.eventName
-          ? String(
-              details.eventName
-            )
-          : '';
+  try {
 
-      var key =
-        method +
-        ':' +
-        eventName;
+    if (
+      navigator.sendBeacon
+    ) {
 
-      /*
-       * Dedupe only the exact
-       * platform/event combination.
-       *
-       * Example:
-       *
-       * ga4_event_blocked:purchase
-       *
-       * and:
-       *
-       * ga4_event_blocked:run_audit
-       *
-       * are different reports.
-       */
-
-      if (
-        blockedReported[
-          key
-        ]
-      ) {
-        return;
-      }
-
-      blockedReported[
-        key
-      ] = true;
-
-      var url =
-        BLOCKED +
-        '?k=' +
-        encodeURIComponent(
-          API_KEY
-        ) +
-        '&m=' +
-        encodeURIComponent(
-          method
+      var originalSendBeacon =
+        navigator.sendBeacon.bind(
+          navigator
         );
 
-      if (
-        eventName
-      ) {
-        url +=
-          '&e=' +
-          encodeURIComponent(
-            eventName
-          );
-      }
-
-      if (
-        details &&
-        details.reason
-      ) {
-        url +=
-          '&r=' +
-          encodeURIComponent(
-            details.reason
-          );
-      }
-
-      if (
-        details &&
-        details.dlPushIndex !==
-        undefined
-      ) {
-        url +=
-          '&d=' +
-          encodeURIComponent(
-            String(
-              details.dlPushIndex
-            )
-          );
-      }
-
-      /*
-       * Page URL is useful for
-       * diagnosing blocked events.
-       */
-
-      url +=
-        '&p=' +
-        encodeURIComponent(
-          safePageUrl()
-        );
-
-      /*
-       * Use beacon when possible.
-       */
-
-      if (
-        navigator.sendBeacon
-      ) {
-        navigator.sendBeacon(
+      navigator.sendBeacon =
+        function (
           url,
-          ''
-        );
-
-        return;
-      }
-
-      fetch(
-        url,
-        {
-          method:
-            'GET',
-
-          credentials:
-            'omit',
-
-          keepalive:
-            true
-        }
-      ).catch(
-        function () {}
-      );
-    } catch (e) {}
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * Resource errors
-   * ---------------------------------------------------------
-   */
-
-  window.addEventListener(
-    'error',
-    function (event) {
-      try {
-        var target =
-          event.target;
-
-        if (!target) {
-          return;
-        }
-
-        var src =
-          target.src ||
-          target.href ||
-          '';
-
-        if (!src) {
-          return;
-        }
-
-        /*
-         * Google Analytics
-         */
-
-        if (
-          /googletagmanager\.com\/gtag\/js/i.test(
-            src
-          ) ||
-          /google-analytics\.com\/analytics\.js/i.test(
-            src
-          ) ||
-          /googletagmanager\.com\/gtm\.js/i.test(
-            src
-          )
+          data
         ) {
-          reportPlatformBlocked(
-            'google_analytics_script_blocked'
-          );
 
-          return;
-        }
-
-        /*
-         * Google Ads
-         */
-
-        if (
-          /googlesyndication\.com/i.test(
-            src
-          ) ||
-          /googleadservices\.com/i.test(
-            src
-          )
-        ) {
-          reportPlatformBlocked(
-            'google_ads_script_blocked'
-          );
-
-          return;
-        }
-
-        /*
-         * Meta
-         */
-
-        if (
-          /connect\.facebook\.net/i.test(
-            src
-          )
-        ) {
-          reportPlatformBlocked(
-            'meta_script_blocked'
-          );
-
-          return;
-        }
-
-        /*
-         * TikTok
-         */
-
-        if (
-          /analytics\.tiktok\.com/i.test(
-            src
-          )
-        ) {
-          reportPlatformBlocked(
-            'tiktok_script_blocked'
-          );
-
-          return;
-        }
-
-        /*
-         * LinkedIn
-         */
-
-        if (
-          /snap\.licdn\.com/i.test(
-            src
-          )
-        ) {
-          reportPlatformBlocked(
-            'linkedin_script_blocked'
-          );
-
-          return;
-        }
-      } catch (e) {}
-    },
-    true
-  );
-
-  /*
-   * ---------------------------------------------------------
-   * Generic ad blocker bait
-   * ---------------------------------------------------------
-   */
-
-  function checkAdBlocker() {
-    try {
-      if (
-        !document.body
-      ) {
-        return;
-      }
-
-      var bait =
-        document.createElement(
-          'div'
-        );
-
-      bait.className =
-        'adsbox ad-banner adsbygoogle';
-
-      bait.style.position =
-        'absolute';
-
-      bait.style.left =
-        '-9999px';
-
-      bait.style.width =
-        '1px';
-
-      bait.style.height =
-        '1px';
-
-      bait.style.display =
-        'block';
-
-      document.body.appendChild(
-        bait
-      );
-
-      setTimeout(
-        function () {
           try {
-            var blocked =
-              bait.offsetHeight ===
-              0 ||
-              bait.offsetWidth ===
-              0;
 
-            if (
-              blocked
-            ) {
-              reportPlatformBlocked(
-                'bait_blocked'
-              );
-            }
+            processNetworkRequest(
+              url,
+              data,
+              'sendBeacon'
+            );
 
-            if (
-              bait.parentNode
-            ) {
-              bait.parentNode.removeChild(
-                bait
-              );
-            }
           } catch (e) {}
-        },
-        300
-      );
-    } catch (e) {}
-  }
 
-  /*
-   * ---------------------------------------------------------
-   * Initialize ad blocker check
-   * ---------------------------------------------------------
-   */
-
-  try {
-    if (
-      document.body
-    ) {
-      setTimeout(
-        checkAdBlocker,
-        1500
-      );
-    } else {
-      window.addEventListener(
-        'DOMContentLoaded',
-        function () {
-          setTimeout(
-            checkAdBlocker,
-            1500
+          return originalSendBeacon(
+            url,
+            data
           );
-        }
-      );
+        };
     }
+
   } catch (e) {}
 
   /*
    * ---------------------------------------------------------
-   * Flush on exit
+   * Image pixel monitoring
    * ---------------------------------------------------------
    */
 
-  window.addEventListener(
-    'pagehide',
-    flush
-  );
+  try {
 
-  window.addEventListener(
-    'beforeunload',
-    flush
-  );
+    var OriginalImage =
+      window.Image;
+
+    if (
+      OriginalImage
+    ) {
+
+      /*
+       * We do not replace Image
+       * completely because doing so
+       * can break third-party scripts.
+       *
+       * Instead, monitor src assignment
+       * through a lightweight wrapper.
+       */
+
+      var imageSrcDescriptor =
+        Object.getOwnPropertyDescriptor(
+          HTMLImageElement.prototype,
+          'src'
+        );
+
+      if (
+        imageSrcDescriptor &&
+        imageSrcDescriptor.set &&
+        imageSrcDescriptor.get
+      ) {
+
+        Object.defineProperty(
+          HTMLImageElement.prototype,
+          'src',
+          {
+
+            configurable:
+              true,
+
+            enumerable:
+              imageSrcDescriptor.enumerable,
+
+            get:
+              function () {
+
+                return imageSrcDescriptor.get.call(
+                  this
+                );
+
+              },
+
+            set:
+              function (
+                value
+              ) {
+
+                try {
+
+                  processNetworkRequest(
+                    value,
+                    null,
+                    'image'
+                  );
+
+                } catch (e) {}
+
+                return imageSrcDescriptor.set.call(
+                  this,
+                  value
+                );
+
+              }
+
+          }
+        );
+
+      }
+    }
+
+  } catch (e) {}
 
   /*
    * ---------------------------------------------------------
-   * Public state
+   * Observe script src assignments
    * ---------------------------------------------------------
    */
 
-  g.apiKey =
-    API_KEY;
+  try {
 
-  g.gtmContainerId =
-    GTM_ID;
+    var originalSetAttribute =
+      Element.prototype.setAttribute;
 
-  g.version =
-    '7.0';
+    Element.prototype.setAttribute =
+      function (
+        name,
+        value
+      ) {
+
+        try {
+
+          if (
+            this.tagName ===
+              'SCRIPT' &&
+            String(
+              name
+            ).toLowerCase() ===
+              'src'
+          ) {
+
+            processNetworkRequest(
+              value,
+              null,
+              'script'
+            );
+
+          }
+
+        } catch (e) {}
+
+        return originalSetAttribute.apply(
+          this,
+          arguments
+        );
+      };
+
+  } catch (e) {}
+
+  /*
+   * ---------------------------------------------------------
+   * Initial readiness
+   * ---------------------------------------------------------
+   */
 
   g.ready =
     true;
 
-  g.r =
-    true;
+  /*
+   * ---------------------------------------------------------
+   * Public debugging API
+   * ---------------------------------------------------------
+   */
+
+  try {
+
+    window.__g4fDebug =
+      function () {
+
+        return {
+
+          version:
+            g.version,
+
+          ga4Configured:
+            ga4Configured,
+
+          ga4MeasurementIds:
+            Object.keys(
+              ga4MeasurementIds
+            ),
+
+          observedGA4:
+            observedGA4,
+
+          observedGA4Events:
+            Object.assign(
+              {},
+              observedGA4Events
+            ),
+
+          observedGA4EventCounts:
+            Object.assign(
+              {},
+              observedGA4EventCounts
+            ),
+
+          pendingEvents:
+            pendingEvents.map(
+              function (
+                event
+              ) {
+
+                return {
+
+                  eventName:
+                    event.originalEventName,
+
+                  pushIndex:
+                    event.pushIndex,
+
+                  source:
+                    event.source,
+
+                  timestamp:
+                    event.timestamp
+
+                };
+
+              }
+            ),
+
+          recentDataLayerEvents:
+            recentDataLayerEvents.map(
+              function (
+                event
+              ) {
+
+                return {
+
+                  eventName:
+                    event.originalEventName,
+
+                  pushIndex:
+                    event.pushIndex,
+
+                  source:
+                    event.source,
+
+                  isGA4Candidate:
+                    event.isGA4Candidate
+
+                };
+
+              }
+            )
+
+        };
+
+      };
+
+  } catch (e) {}
+
+  /*
+   * ---------------------------------------------------------
+   * Final marker
+   * ---------------------------------------------------------
+   */
+
+  try {
+
+    send({
+
+      type:
+        'monitor_ready',
+
+      version:
+        g.version,
+
+      pageUrl:
+        safePageUrl(),
+
+      timestamp:
+        now()
+
+    });
+
+  } catch (e) {}
 
 })();
