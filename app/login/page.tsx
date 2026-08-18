@@ -28,7 +28,8 @@ function LoginForm() {
         setLoading(false);
         return;
       }
-      const next = search.get('next') || '/dashboard';
+      const requestedNext = search.get('next') || '';
+      const next = requestedNext.startsWith('/') && !requestedNext.startsWith('//') && !requestedNext.includes('\\') ? requestedNext : '/dashboard';
       router.push(next);
     } catch (err: any) {
       setError(err.message || 'Login failed');

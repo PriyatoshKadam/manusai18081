@@ -2,6 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
+function postgresSsl(url) {
+  const wantsTls = url.includes('render.com') || url.includes('sslmode=require') || process.env.PG_SSL === 'true';
+  if (!wantsTls) return false;
+  const ca = process.env.PG_CA_CERT || (process.env.PG_CA_CERT_PATH ? fs.readFileSync(process.env.PG_CA_CERT_PATH, 'utf8') : undefined);
+  return Object.assign({ rejectUnauthorized: true }, ca ? { ca } : {});
+}
+
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) {
@@ -11,9 +18,8 @@ async function main() {
 
   const pool = new Pool({
     connectionString: url,
-    ssl: url.includes('render.com') || url.includes('sslmode=require')
-      ? { rejectUnauthorized: false }
-      : false,
+    ssl: postgresSsl(url),
+    connectionTimeoutMillis: 10000,
   });
 
   const sql = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');

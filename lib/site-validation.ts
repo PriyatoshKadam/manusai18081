@@ -106,7 +106,7 @@ export function normalizeHostname(
    * http//example.com
    */
   hostnameInput = hostnameInput
-    .replace(/^https?:\/{0,2}/i, '')
+    .replace(/^https?:?\/{0,2}/i, '')
     .replace(/^\/+/, '');
 
   if (!hostnameInput) {

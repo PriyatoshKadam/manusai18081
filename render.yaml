@@ -13,12 +13,22 @@ services:
           property: connectionString
       - key: SESSION_SECRET
         generateValue: true
+      - key: IP_HASH_SECRET
+        generateValue: true
+      - key: PG_SSL
+        value: "true"
+      - key: ALLOW_INSECURE_DEV_AUTH
+        value: "false"
+      - key: NEXT_PUBLIC_MONITOR_ORIGIN
+        sync: false
       - key: NEXT_PUBLIC_APP_URL
         sync: false
       - key: SLACK_WEBHOOK_URL
         sync: false
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: "20.9.0"
 
 databases:
   - name: ga4fix-db

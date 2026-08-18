@@ -56,7 +56,7 @@ export default function AlertModal({ alert, onClose }: { alert: AlertDetail | nu
                 {steps.map((s, i) => (
                   <li key={i} className="flex gap-3">
                     <span className="w-5 h-5 rounded-full bg-ink-100 text-ink-800 flex-shrink-0 flex items-center justify-center text-xs font-semibold">{i + 1}</span>
-                    <span className="leading-relaxed" dangerouslySetInnerHTML={{ __html: s }}></span>
+                    <span className="leading-relaxed">{s}</span>
                   </li>
                 ))}
               </ol>

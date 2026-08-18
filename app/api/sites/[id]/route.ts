@@ -15,10 +15,11 @@ function parseId(value: string) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return errorResponse('Unauthorized', 401);
-  const siteId = parseId(params.id);
+  const { id } = await params;
+  const siteId = parseId(id);
   if (!siteId) return errorResponse('Invalid site ID');
 
   let body: Record<string, unknown>;
@@ -57,10 +58,11 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return errorResponse('Unauthorized', 401);
-  const siteId = parseId(params.id);
+  const { id } = await params;
+  const siteId = parseId(id);
   if (!siteId) return errorResponse('Invalid site ID');
 
   const result = await query('DELETE FROM sites WHERE id = $1 AND user_id = $2 RETURNING id', [siteId, session.uid]);

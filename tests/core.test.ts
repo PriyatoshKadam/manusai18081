@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { classifyDuplicateRootCause, classifyEvent, getEventIdentity, normalizePageUrl } from '../lib/detection';
 import { normalizeHostname, normalizeSiteInput } from '../lib/site-validation';
-import { parseIngestBody } from '../lib/ingest-validation';
+import { normalizeTelemetryEvent, parseIngestBody } from '../lib/ingest-validation';
 
 describe('site validation', () => {
   it('normalizes hostnames and rejects paths', () => {
@@ -61,5 +61,13 @@ describe('ingest validation', () => {
 
   it('rejects oversized batches', () => {
     expect(() => parseIngestBody(JSON.stringify({ apiKey: 'a'.repeat(48), events: new Array(101).fill({ vendor: 'ga4' }) }))).toThrow('maximum');
+  });
+
+  it('preserves custom event observations and occurrence metadata', () => {
+    expect(normalizeTelemetryEvent({ vendor: 'GA4', eventName: 'run_audit', observationKind: 'datalayer', sessionId: 'session-1', occurrenceId: 'event-1', navigationId: 'nav-1', gtmContainerId: 'GTM-ABC123', params: { audit_type: 'full' } })).toMatchObject({ vendor: 'ga4', eventName: 'run_audit', observationKind: 'datalayer', sessionId: 'session-1', occurrenceId: 'event-1', navigationId: 'nav-1' });
+  });
+
+  it('rejects unsafe observation kinds and tokens', () => {
+    expect(() => normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'run_audit', observationKind: 'javascript:alert(1)' })).toThrow('Invalid observation kind');
   });
 });

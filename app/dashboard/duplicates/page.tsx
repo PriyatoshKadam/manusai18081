@@ -1,7 +1,5 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
@@ -9,94 +7,22 @@ export default function DuplicatesPage() {
   const search = useSearchParams();
   const siteId = search.get('siteId');
   const [data, setData] = useState<any>(null);
-
   useEffect(() => {
     if (!siteId) return;
-    load();
-    const timer = setInterval(load, 8000);
-    return () => clearInterval(timer);
-    async function load() {
-      try {
-        const res = await fetch(`/api/duplicates?siteId=${siteId}`);
-        if (res.ok) setData(await res.json());
-      } catch {}
-    }
+    let cancelled = false;
+    async function load() { try { const response = await fetch(`/api/duplicates?siteId=${encodeURIComponent(siteId)}`, { cache: 'no-store' }); if (response.ok && !cancelled) setData(await response.json()); } catch {} }
+    load(); const timer = setInterval(load, 8000); return () => { cancelled = true; clearInterval(timer); };
   }, [siteId]);
-
   if (!siteId) return <div className="text-ink-400 text-sm">Select a site.</div>;
-  if (!data) return <div className="text-ink-400 text-sm">Loading…</div>;
-
-  const dupes = data.duplicates || [];
-
+  if (!data) return <div className="text-ink-400 text-sm">Loading duplicate diagnostics…</div>;
+  const duplicates = data.duplicates || [];
   return (
-    <div className="fade-in">
-      <div className="mb-6">
-        <h2 className="text-lg font-semibold text-ink-950">Duplicate event detection</h2>
-        <p className="text-sm text-ink-500 mt-0.5">
-          Events firing more than once per pageload, with root-cause hints. Deduplication key:
-          {' '}<span className="mono bg-ink-100 px-1.5 py-0.5 rounded text-xs">event_name + client_id + page_url</span> in a 3-second window.
-        </p>
-      </div>
-
-      {dupes.length === 0 ? (
-        <div className="bg-white rounded-xl border border-ink-200 p-12 text-center">
-          <div className="w-12 h-12 mx-auto rounded-lg bg-green-50 flex items-center justify-center text-green-600 mb-3">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
-          </div>
-          <p className="font-medium text-ink-950">No duplicates detected in the last 24 hours</p>
-          <p className="text-sm text-ink-500 mt-1">Your tags are firing cleanly.</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {dupes.map((d: any, i: number) => {
-            const steps: string[] = typeof d.fix_steps === 'string' ? safeParseArr(d.fix_steps) : (d.fix_steps || []);
-            const raw = typeof d.raw === 'string' ? safeParseObj(d.raw) : (d.raw || {});
-            return (
-              <div key={i} className="bg-white rounded-xl border border-ink-200 p-5">
-                <div className="flex items-start gap-3 mb-3">
-                  <span className="pill bg-amber-100 text-amber-800">Warning</span>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="mono text-base font-semibold text-ink-950">{d.event_name}</span>
-                      <span className="text-xs text-ink-400 uppercase">{d.vendor}</span>
-                    </div>
-                    <p className="text-sm text-ink-700 mt-1">
-                      Fired <b>{raw.totalFires || d.cnt}× per pageload</b>
-                      {raw.distinctPushes > 1 && <> from <b>{raw.distinctPushes} separate dataLayer pushes</b></>}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="rounded-lg bg-amber-50 border border-amber-100 p-4 mb-3">
-                  <div className="text-xs font-semibold uppercase text-amber-900 mb-1">Root cause</div>
-                  <p className="text-sm text-amber-900 leading-relaxed">{d.root_cause}</p>
-                </div>
-
-                {steps.length > 0 && (
-                  <div>
-                    <div className="text-xs font-semibold uppercase text-ink-400 mb-2">How to fix</div>
-                    <ol className="space-y-2 text-sm text-ink-800">
-                      {steps.map((s, j) => (
-                        <li key={j} className="flex gap-3">
-                          <span className="w-5 h-5 rounded-full bg-ink-100 text-ink-800 flex-shrink-0 flex items-center justify-center text-xs font-semibold">{j + 1}</span>
-                          <span className="leading-relaxed">{s}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+    <div className="fade-in max-w-5xl">
+      <div className="mb-6"><h2 className="text-lg font-semibold text-ink-950">Duplicate event diagnostics</h2><p className="text-sm text-ink-500 mt-1">A repeat is only actionable when it is tied to the same browser session, action identity, dataLayer payload, or network request signature. Page views, scroll, clicks, and SPA route changes may legitimately repeat.</p></div>
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6"><h3 className="font-semibold text-blue-950">How to investigate</h3><ol className="mt-3 grid md:grid-cols-4 gap-3 text-sm text-blue-900"><li><b>1. Session:</b> confirm the repeat belongs to one browser session.</li><li><b>2. Navigation:</b> distinguish an SPA route change from the same route.</li><li><b>3. DataLayer:</b> compare push indexes and payloads.</li><li><b>4. Network:</b> compare request signatures and transports.</li></ol></div>
+      {duplicates.length === 0 ? <div className="bg-white rounded-xl border border-ink-200 p-12 text-center"><p className="font-medium text-ink-950">No actionable duplicates detected in the last 24 hours</p><p className="text-sm text-ink-500 mt-1">Expected repeatable events are not treated as defects by name alone.</p></div> : <div className="space-y-4">{duplicates.map((d: any, i: number) => { const steps = typeof d.fix_steps === 'string' ? safeParseArr(d.fix_steps) : d.fix_steps || []; const raw = typeof d.raw === 'string' ? safeParseObj(d.raw) : d.raw || {}; return <div key={d.id || i} className="bg-white rounded-xl border border-ink-200 p-5"><div className="flex items-start gap-3 mb-3"><span className="pill bg-amber-100 text-amber-800">{d.category === 'gtm' ? 'GTM' : 'Warning'}</span><div className="flex-1"><div className="flex items-center gap-2 flex-wrap"><span className="mono text-base font-semibold text-ink-950">{d.event_name || '(unnamed)'}</span><span className="text-xs text-ink-400 uppercase">{d.vendor}</span></div><p className="text-sm text-ink-700 mt-1">{d.message}</p><div className="text-xs text-ink-500 mt-2">Session: {raw.sessionId || 'not available'} · Pushes: {d.distinct_pushes || raw.distinctPushes || '—'} · Occurrences: {d.occurrence_count || raw.occurrenceCount || '—'}</div></div></div><div className="rounded-lg bg-amber-50 border border-amber-100 p-4 mb-3"><div className="text-xs font-semibold uppercase text-amber-900 mb-1">Evidence-based root cause</div><p className="text-sm text-amber-900 leading-relaxed">{d.root_cause}</p></div>{steps.length > 0 && <ol className="space-y-2 text-sm text-ink-800">{steps.map((step: string, j: number) => <li key={j} className="flex gap-3"><span className="w-5 h-5 rounded-full bg-ink-100 text-ink-800 flex-shrink-0 flex items-center justify-center text-xs font-semibold">{j + 1}</span><span>{step}</span></li>)}</ol>}</div>; })}</div>}
     </div>
   );
 }
-
-function safeParseArr(s: string): string[] {
-  try { const v = JSON.parse(s); return Array.isArray(v) ? v : []; } catch { return []; }
-}
-function safeParseObj(s: string): any {
-  try { return JSON.parse(s); } catch { return {}; }
-}
+function safeParseArr(value: string): string[] { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+function safeParseObj(value: string): any { try { return JSON.parse(value); } catch { return {}; } }

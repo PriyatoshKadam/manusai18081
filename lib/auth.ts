@@ -6,16 +6,19 @@ import { query } from './db';
 
 const COOKIE = 'g4f_session';
 const MAX_AGE = 60 * 60 * 24 * 30;
-const DEV_SECRET = 'dev_only_ga4fix_secret_replace_before_production_123456';
+let ephemeralSecret: Uint8Array | null = null;
 
 function getSecret() {
   const raw = process.env.SESSION_SECRET?.trim();
-  if (!raw) {
-    if (process.env.NODE_ENV === 'production') throw new Error('SESSION_SECRET must be configured in production');
-    return new TextEncoder().encode(DEV_SECRET);
+  if (raw) {
+    if (raw.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters');
+    return new TextEncoder().encode(raw);
   }
-  if (raw.length < 32) throw new Error('SESSION_SECRET must be at least 32 characters');
-  return new TextEncoder().encode(raw);
+  if (process.env.NODE_ENV !== 'development' || process.env.ALLOW_INSECURE_DEV_AUTH !== 'true') {
+    throw new Error('SESSION_SECRET must be configured');
+  }
+  if (!ephemeralSecret) ephemeralSecret = crypto.randomBytes(32);
+  return ephemeralSecret;
 }
 
 function cookieOptions() {
@@ -44,11 +47,13 @@ export async function createSession(userId: number, email: string) {
     .setExpirationTime('30d')
     .sign(getSecret());
 
-  cookies().set(COOKIE, token, { ...cookieOptions(), maxAge: MAX_AGE });
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE, token, { ...cookieOptions(), maxAge: MAX_AGE });
 }
 
 export async function getSession(): Promise<{ uid: number; email: string } | null> {
-  const token = cookies().get(COOKIE)?.value;
+  const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, getSecret(), {
@@ -70,8 +75,9 @@ export async function requireSession(): Promise<{ uid: number; email: string }> 
   return session;
 }
 
-export function destroySession() {
-  cookies().set(COOKIE, '', { ...cookieOptions(), maxAge: 0 });
+export async function destroySession() {
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE, '', { ...cookieOptions(), maxAge: 0 });
 }
 
 export function generateApiKey(): string {

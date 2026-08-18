@@ -82,7 +82,25 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS raw_url TEXT,
   ADD COLUMN IF NOT EXISTS dl_push_index INT,
   ADD COLUMN IF NOT EXISTS source TEXT,
+  ADD COLUMN IF NOT EXISTS observation_kind TEXT DEFAULT 'network',
+  ADD COLUMN IF NOT EXISTS session_id TEXT,
+  ADD COLUMN IF NOT EXISTS occurrence_id TEXT,
+  ADD COLUMN IF NOT EXISTS network_occurrence_id TEXT,
+  ADD COLUMN IF NOT EXISTS request_signature TEXT,
+  ADD COLUMN IF NOT EXISTS transport TEXT,
+  ADD COLUMN IF NOT EXISTS gtm_container_id TEXT,
+  ADD COLUMN IF NOT EXISTS navigation_id TEXT,
+  ADD COLUMN IF NOT EXISTS delivery_status TEXT DEFAULT 'observed',
   ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_events_site_occurrence
+  ON events(site_id, event_name, session_id, occurrence_id, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_signature
+  ON events(site_id, request_signature, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_observation
+  ON events(site_id, observation_kind, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_time
   ON events(site_id, received_at DESC);
@@ -136,7 +154,13 @@ ALTER TABLE alerts
   ADD COLUMN IF NOT EXISTS raw JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS resolved BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS muted BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'analytics',
+  ADD COLUMN IF NOT EXISTS occurrence_count INT,
+  ADD COLUMN IF NOT EXISTS distinct_pushes INT,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_alerts_site_category
+  ON alerts(site_id, category, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_alerts_site_time
   ON alerts(site_id, created_at DESC);
@@ -169,7 +193,17 @@ ALTER TABLE adblock_events
   ADD COLUMN IF NOT EXISTS user_agent TEXT,
   ADD COLUMN IF NOT EXISTS ip_hash TEXT,
   ADD COLUMN IF NOT EXISTS blocked_vendors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS session_id TEXT,
+  ADD COLUMN IF NOT EXISTS blocked_url TEXT,
+  ADD COLUMN IF NOT EXISTS event_name TEXT,
+  ADD COLUMN IF NOT EXISTS signal TEXT,
   ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_adblock_site_session
+  ON adblock_events(site_id, session_id, detected_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_adblock_site_signal
+  ON adblock_events(site_id, signal, detected_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_adblock_site_time
   ON adblock_events(site_id, detected_at DESC);

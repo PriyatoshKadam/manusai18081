@@ -6,14 +6,14 @@ Real-user monitoring for GA4, Google Ads, Meta, TikTok, and 15+ other pixels. De
 
 - **Landing page** — full marketing site with hero, features, how-it-works, use cases, pricing
 - **Auth** — cookie-based JWT sessions with bcrypt password hashing
-- **Dashboard** — sidebar with site switcher, tabs per vendor (GA4, Google Ads, Meta, TikTok), diagnostic pages (Duplicates, Ad-blocker, Consent Mode), install snippet, settings
-- **monitor.js client** — patches `dataLayer.push` to track push indices for duplicate root-cause analysis, patches `fetch`/`XHR`/`sendBeacon`/`img.src` to intercept every outbound analytics call, plus an ad-blocker bait check
+- **Dashboard** — sidebar with site switcher, tabs per vendor (GA4, Google Ads, Meta, TikTok), dedicated GTM diagnostics, duplicate evidence, ad-blocker impact, Consent Mode, compact install snippet, and settings
+- **monitor.js client** — records custom and standard GA4 events from dataLayer/gtag, correlates logical occurrences with fetch/XHR/sendBeacon/performance requests, tracks SPA navigation and browser sessions, and reports blocked vendor transports
 - **Detection logic** — fixed versions of the reported bugs:
   - Purchase currency now checks all 4 locations (params.currency, ep.currency, ecommerce.currency, items[0].currency)
   - Custom events are classified and alerted on first-seen with registration guidance
-  - Duplicate detection groups within a 3-second window and classifies root cause by dataLayer push index and source
+  - Duplicate detection is session-aware and SPA-aware; it distinguishes navigation repeats, dataLayer duplication, multiple GTM tags/triggers, direct-code conflicts, and repeated network requests
 - **First-party domain support** — monitor.js loads from its own origin, so if the customer CNAMEs `analytics.customer.com` to your Render URL, all ingest/blocked beacons also go first-party, defeating most ad blockers
-- **Middleware** — restricts first-party CNAME hosts to only serve monitor.js + ingest + blocked, and guards `/dashboard/*` with a session check
+- **Security proxy** — restricts first-party CNAME hosts to telemetry routes, applies security headers, verifies dashboard JWTs, and rejects unsupported WebSocket upgrades
 
 ## Deploy to Render (using existing repo)
 
@@ -44,7 +44,7 @@ Open your Render service (`monitoring-0jsu`) → Settings, and set these:
 - **Build Command:** `npm install && npm run build && npm run migrate`
 - **Start Command:** `npm start`
 - **Health Check Path:** `/api/health`
-- **Node Version:** 18 or higher (Render auto-detects from `engines` in `package.json`)
+- **Node Version:** 20.9 or higher (required by Next.js 16.3.1; Render auto-detects from `engines` in `package.json`)
 
 ### Step 3 — Set environment variables
 
@@ -54,7 +54,10 @@ In Render → Environment, add these (keep your existing `DATABASE_URL`):
 |---|---|
 | `DATABASE_URL` | (already set — leave it) |
 | `NEXT_PUBLIC_APP_URL` | `https://monitoring-0jsu.onrender.com` (your service URL) |
-| `SESSION_SECRET` | Run `openssl rand -base64 32` and paste it |
+| `SESSION_SECRET` | Generate a random secret with `openssl rand -base64 32` |
+| `IP_HASH_SECRET` | Generate a separate random secret for keyed IP pseudonymization |
+| `PG_SSL` | `true` |
+| `NEXT_PUBLIC_MONITOR_ORIGIN` | The host serving `/monitor.js`, `/api/ingest`, and `/api/blocked` |
 | `NODE_ENV` | `production` |
 | `SLACK_WEBHOOK_URL` | (optional — for Slack alerts) |
 
@@ -72,7 +75,7 @@ Click **Manual Deploy → Deploy latest commit**. The build will:
 Once deployed, go to `https://monitoring-0jsu.onrender.com/signup` and create an account. Then:
 
 1. Add a site (Settings tab) with your domain and GTM container ID
-2. Go to Install and copy the 5-line snippet
+2. Go to Install and copy the compact monitor loader
 3. Paste it into a Custom HTML tag in GTM, set trigger to All Pages, priority 1000
 4. Publish GTM — events start streaming immediately
 
@@ -100,7 +103,7 @@ Open http://localhost:3000
 
 ## Architecture notes
 
-- **Live event streaming** uses Server-Sent Events (`/api/stream`) that polls the DB every 2 seconds and pushes new event/alert IDs. Works on Render because Node processes stay alive.
-- **First-party routing** is handled in `middleware.ts` — if the `Host` header doesn't match `NEXT_PUBLIC_APP_URL`'s host, only the beacon endpoints are exposed.
-- **Duplicate root-cause** works because monitor.js monkey-patches `window.dataLayer.push` to tag each entry with `__g4f_push_idx`. On the server, we group same-key events in a 3-second window and use `pushIndices.size` and `sources` to classify: multiple dataLayer pushes vs. gtag+GTM conflict vs. multiple GTM tags on one trigger.
-- **Ad-blocker detection** has three signals: (1) our monitor.js `onerror` handler, (2) a `setTimeout` fallback that fires the beacon if `__g4f.r` is never set, (3) an in-script "bait" load of the Google adsbygoogle.js script — if it fails or times out, the blocker is confirmed.
+- **Live event streaming** uses capped Server-Sent Events (`/api/stream`) with five-second polling, heartbeats, cleanup, and a ten-minute reconnect lifetime.
+- **First-party routing** is handled in `proxy.ts` — if the `Host` header does not match `NEXT_PUBLIC_APP_URL`, only telemetry routes are exposed; security headers and JWT validation are applied to dashboard requests.
+- **Duplicate root-cause** uses browser session IDs, SPA navigation IDs, occurrence IDs, dataLayer push indexes, request signatures, transports, and GTM/direct source evidence. Repeated scroll, click, user_engagement, and route events are not defects by name alone.
+- **Ad-blocker detection** combines monitor/script failures, vendor resource errors, GA4 event timeouts, failed fetch/XHR/sendBeacon transports, blocked URLs, event names, and distinct-session reporting. The dashboard shows signal and vendor coverage rather than a raw beacon total.

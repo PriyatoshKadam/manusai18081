@@ -17,6 +17,11 @@ function boundedString(value: unknown, max = MAX_STRING): string | null {
   return String(value).slice(0, max);
 }
 
+function safeToken(value: unknown, max = 160): string | null {
+  const token = boundedString(value, max)?.trim() || '';
+  return token && /^[a-zA-Z0-9._:-]+$/.test(token) ? token : null;
+}
+
 function cleanValue(value: unknown, depth = 0): unknown {
   if (depth > MAX_PARAM_DEPTH || value === null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return typeof value === 'string' ? value.slice(0, MAX_STRING) : value;
@@ -39,6 +44,14 @@ export type NormalizedTelemetryEvent = {
   rawUrl: string | null;
   dlPushIndex: number | null;
   source: string | null;
+  observationKind: string;
+  sessionId: string | null;
+  occurrenceId: string | null;
+  networkOccurrenceId: string | null;
+  requestSignature: string | null;
+  transport: string | null;
+  gtmContainerId: string | null;
+  navigationId: string | null;
 };
 
 export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEvent {
@@ -53,6 +66,10 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
   if (eventName && !/^[\w.:-]+$/u.test(eventName)) throw new Error('Event name has an invalid format');
   const rawIndex = event.dlPushIndex;
   const dlPushIndex = Number.isSafeInteger(rawIndex) && Number(rawIndex) >= 0 ? Number(rawIndex) : null;
+  const rawObservationKind = boundedString(event.observationKind ?? event.kind, 32)?.trim() || 'network';
+  const observationKind = safeToken(rawObservationKind, 32) || '';
+  const allowedKinds = new Set(['network', 'datalayer', 'gtm', 'monitor_ready', 'diagnostic']);
+  if (!allowedKinds.has(observationKind)) throw new Error('Invalid observation kind');
   return {
     vendor: (boundedString(event.vendor, 40)?.trim().toLowerCase() || 'unknown').replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'unknown',
     eventName,
@@ -61,7 +78,15 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     params,
     rawUrl: boundedString(event.rawUrl),
     dlPushIndex,
-    source: boundedString(event.source, 40),
+    source: safeToken(event.source, 40),
+    observationKind,
+    sessionId: safeToken(event.sessionId, 128),
+    occurrenceId: safeToken(event.occurrenceId, 160),
+    networkOccurrenceId: safeToken(event.networkOccurrenceId, 160),
+    requestSignature: boundedString(event.requestSignature, 512),
+    transport: safeToken(event.transport, 40),
+    gtmContainerId: safeToken(event.gtmContainerId, 40),
+    navigationId: safeToken(event.navigationId, 160),
   };
 }
 

@@ -44,6 +44,7 @@ export default function DashboardShell({
     ]},
     { section: 'Diagnostics', items: [
       { href: '/dashboard/duplicates', label: 'Duplicate events', icon: iconLayers },
+      { href: '/dashboard/gtm', label: 'GTM diagnostics', icon: iconLayers },
       { href: '/dashboard/adblock', label: 'Ad-blocker impact', icon: iconShield },
       { href: '/dashboard/consent', label: 'Consent Mode', icon: iconLock },
     ]},
@@ -150,6 +151,7 @@ function pageTitle(path: string) {
     '/dashboard/meta': 'Meta Pixel',
     '/dashboard/tiktok': 'TikTok Pixel',
     '/dashboard/duplicates': 'Duplicate events',
+    '/dashboard/gtm': 'GTM diagnostics',
     '/dashboard/adblock': 'Ad-blocker impact',
     '/dashboard/consent': 'Consent Mode',
     '/dashboard/install': 'Install snippet',
