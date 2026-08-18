@@ -26,6 +26,8 @@ async function main() {
   console.log('Applying schema...');
   await pool.query(sql);
   console.log('Schema applied successfully.');
+  await pool.query(`UPDATE events SET vendor = 'gtm', event_type = 'internal' WHERE vendor = 'ga4' AND LOWER(COALESCE(event_name, '')) LIKE 'gtm.%'`);
+  console.log('Historical GTM lifecycle rows normalized.');
   await pool.end();
 }
 

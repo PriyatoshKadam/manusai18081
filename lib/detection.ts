@@ -34,7 +34,8 @@ const AUTOMATIC_EVENTS = new Set([
 const INTERNAL_EVENTS = new Set(['exception', 'debug', 'monitor_event', 'monitor_ready']);
 const EXPECTED_REPEAT_EVENTS = new Set(['scroll', 'user_engagement', 'click', 'video_progress']);
 
-export function classifyEvent(eventName: string | null): string {
+export function classifyEvent(eventName: string | null, vendor?: string | null): string {
+  if (vendor && vendor.toLowerCase() === 'gtm') return 'internal';
   if (!eventName) return 'unknown';
   const normalized = eventName.trim().toLowerCase();
   if (AUTOMATIC_EVENTS.has(normalized)) return 'standard';

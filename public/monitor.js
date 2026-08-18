@@ -73,6 +73,25 @@
     return {};
   }
   function paramsFromUrl(url) { var out = {}; var u = safeUrl(url); if (!u) return out; u.searchParams.forEach(function (v, k) { out[k] = v; }); return out; }
+  function safeValue(value, depth, seen) {
+    if (value === null || value === undefined) return value;
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return value;
+    if (typeof value === 'bigint') return String(value);
+    if (typeof value === 'function') return '[Function]';
+    if (depth > 5) return '[MaxDepth]';
+    if (value && value.nodeType === 1) return { tagName: text(value.tagName, 40), id: text(value.id, 120), name: text(value.name, 120), type: text(value.type, 80), className: text(typeof value.className === 'string' ? value.className : '', 160) };
+    if (value && value.nodeType === 3) return { text: text(value.textContent, 160) };
+    if (value && typeof value.type === 'string' && typeof value.preventDefault === 'function') return { type: text(value.type, 80), target: safeValue(value.target, depth + 1, seen) };
+    seen = seen || [];
+    if (seen.indexOf(value) !== -1) return '[Circular]';
+    seen.push(value);
+    var output;
+    if (Array.isArray(value)) output = value.slice(0, 80).map(function (item) { return safeValue(item, depth + 1, seen); });
+    else { output = {}; Object.keys(value).filter(function (key) { return !/^__react|^owner$|^_owner$|^fiber$/i.test(key); }).slice(0, 80).forEach(function (key) { try { output[key] = safeValue(value[key], depth + 1, seen); } catch (_) { output[key] = '[Unreadable]'; } }); }
+    seen.pop();
+    return output;
+  }
+  function safeParams(value) { return safeValue(value || {}, 0, []); }
   function stable(value) {
     if (value === null || value === undefined) return '';
     if (Array.isArray(value)) return '[' + value.map(stable).sort().join(',') + ']';
@@ -154,12 +173,13 @@
     try { var result = fetch(u.href, { method: 'GET', keepalive: true, credentials: 'omit' }); if (result && result.catch) result.catch(function () {}); return; } catch (_) {}
     try { if (navigator.sendBeacon) navigator.sendBeacon(u.href); } catch (_) {}
   }
-  function currentEvent(eventName, params, source, kind, index) {
+  function currentEvent(eventName, params, source, kind, index, vendor) {
     occurrence += 1;
-    var event = { eventName: text(eventName, 120), params: params || {}, source: source || 'dataLayer', observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() };
+    var safe = safeParams(params);
+    var event = { vendor: vendor || 'ga4', eventName: text(eventName, 120), params: safe, source: source || 'dataLayer', observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() };
     pending.push(event); if (pending.length > MAX_PENDING) pending.shift();
     var name = normalize(eventName); counts[name] = (counts[name] || 0) + 1;
-    send({ type: kind || 'datalayer', vendor: 'ga4', eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: navigationId, gtmContainerId: gtmContainerId, timestamp: event.timestamp });
+    send({ type: kind || 'datalayer', vendor: event.vendor, eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: event.navigationId, gtmContainerId: gtmContainerId, timestamp: event.timestamp });
     setTimeout(function () {
       if (pending.indexOf(event) === -1 || event.networkMatched) return;
       pending.splice(pending.indexOf(event), 1);
@@ -172,18 +192,20 @@
   function dataLayerEvent(item) {
     if (!item || wasProcessed(item)) return null;
     var name = null, params = item, source = 'dataLayer';
+    var vendor = 'ga4';
     if (Array.isArray(item) || typeof item.length === 'number') {
       if (item[0] === 'event') { name = item[1]; params = item[2] || {}; source = 'gtag'; }
       if (item[0] === 'config' || item[0] === 'set' || item[0] === 'consent') return null;
-    } else if (typeof item === 'object') name = item.event || item.event_name || item.eventName || null;
+    } else if (typeof item === 'object') { name = item.event || item.event_name || item.eventName || null; }
     if (!name) return null;
-    return currentEvent(name, params && typeof params === 'object' ? params : {}, source, source === 'gtag' ? 'gtm' : 'datalayer', pushIndex);
+    if (/^gtm(?:\.|$)/i.test(String(name))) vendor = 'gtm';
+    return currentEvent(name, params && typeof params === 'object' ? params : {}, source, source === 'gtag' ? 'gtm' : 'datalayer', pushIndex, vendor);
   }
   function matchPending(name, params, ts, requestSig) {
     var target = normalize(name);
     for (var i = 0; i < pending.length; i += 1) {
       var item = pending[i];
-      if (!item || item.networkMatched || normalize(item.eventName) !== target || ts - item.timestamp > MATCH_MS) continue;
+      if (!item || item.vendor !== 'ga4' || item.networkMatched || normalize(item.eventName) !== target || ts - item.timestamp > MATCH_MS) continue;
       if (requestSig && requestSig === item.requestSignature) continue;
       item.networkMatched = true; item.requestSignature = requestSig; item.networkOccurrenceId = 'network-' + (++networkOccurrence); pending.splice(i, 1); return item;
     }
@@ -196,14 +218,14 @@
     if (!vendor) return null;
     var name = eventNameFor(vendor, params);
     if (vendor === 'ga4' && !name) return null;
-    var normalizedParams = vendor === 'ga4' ? ga4Params(params) : params;
+    var normalizedParams = vendor === 'ga4' ? safeParams(ga4Params(params)) : safeParams(params);
     var requestSig = signature(normalizedParams, name);
     var historyKey = vendor + '|' + requestSig;
     var previousNetwork = networkHistory[historyKey];
     if (transport === 'performance' && previousNetwork && previousNetwork.transport !== 'performance' && Date.now() - previousNetwork.timestamp < 5000) return null;
     networkHistory[historyKey] = { transport: transport, timestamp: Date.now() };
     var match = vendor === 'ga4' ? matchPending(name, normalizedParams, Date.now(), requestSig) : null;
-    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: params.cid || params.client_id || params.id || null, transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, timestamp: Date.now() };
+    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, timestamp: Date.now() };
     send(event);
     if (failed) reportBlocked(vendor + '_transport_blocked', { eventName: name, blockedUrl: url, sessionId: sessionId, signal: vendor + '_transport' });
     return event;

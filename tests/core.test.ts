@@ -42,7 +42,8 @@ describe('event identity and classification', () => {
 
   it('classifies standard, custom, and missing events', () => {
     expect(classifyEvent('page_view')).toBe('standard');
-    expect(classifyEvent('newsletter_signup')).toBe('custom');
+    expect(classifyEvent('run_audit')).toBe('custom');
+    expect(classifyEvent('gtm.click', 'gtm')).toBe('internal');
     expect(classifyEvent(null)).toBe('unknown');
   });
 
