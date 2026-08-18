@@ -51,18 +51,30 @@ async function recordBlocked(req: NextRequest, values: { apiKey: string; method:
   const eventName = text(values.eventName, 120) || null;
   const pageUrl = text(values.pageUrl || req.headers.get('referer'), MAX_TEXT) || null;
   const blockedVendors = vendorsForMethod(method);
-  await query(
-    `INSERT INTO adblock_events (site_id, detection_method, page_url, user_agent, ip_hash, blocked_vendors)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb)`,
-    [
-      site.id,
-      method,
-      pageUrl,
-      text(req.headers.get('user-agent'), 500),
-      clientIp(req),
-      JSON.stringify(blockedVendors),
-    ]
-  );
+  const storedMethod =
+  eventName && method === 'ga4_event_blocked'
+    ? `${method}:${eventName}`
+    : method;
+
+await query(
+  `INSERT INTO adblock_events (
+     site_id,
+     detection_method,
+     page_url,
+     user_agent,
+     ip_hash,
+     blocked_vendors
+   )
+   VALUES ($1,$2,$3,$4,$5,$6::jsonb)`,
+  [
+    site.id,
+    storedMethod,
+    pageUrl,
+    text(req.headers.get('user-agent'), 500),
+    clientIp(req),
+    JSON.stringify(blockedVendors),
+  ]
+);
   return json({ ok: true });
 }
 
