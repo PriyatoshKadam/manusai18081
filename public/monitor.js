@@ -3,71 +3,49 @@
 
   /*
    * =========================================================
-   * GA4FIX MONITOR v8
+   * GA4FIX MONITOR v9
    * =========================================================
    *
-   * Captures:
-   *   - dataLayer
-   *   - gtag
-   *   - fetch
-   *   - XMLHttpRequest
-   *   - sendBeacon
-   *   - image pixels
+   * Main responsibilities:
    *
-   * Detects:
-   *   - GA4
-   *   - Google Ads
-   *   - Meta
-   *   - TikTok
-   *   - LinkedIn
-   *   - Snapchat
-   *   - Pinterest
-   *   - Reddit
-   *   - Twitter/X
-   *   - Microsoft Clarity
-   *   - Mixpanel
-   *   - Amplitude
-   *   - Segment
-   *   - HubSpot
-   *   - Klaviyo
-   *   - Intercom
+   * 1. Observe dataLayer
+   * 2. Observe gtag()
+   * 3. Observe fetch()
+   * 4. Observe XMLHttpRequest
+   * 5. Observe sendBeacon()
+   * 6. Observe image pixels
+   * 7. Detect GA4 and other analytics vendors
+   * 8. Match individual analytics requests to
+   *    individual dataLayer / gtag events
+   * 9. Detect blocked events
+   * 10. Preserve complete GA4 request parameters
    *
    * IMPORTANT:
    *
-   * GA4 EVENT NAMES ARE NOT HARDCODED.
+   * We DO NOT use:
    *
-   * Examples:
+   *     observedGA4Events[eventName] = true
    *
-   *   purchase
-   *   run_audit
-   *   generate_report
-   *   foo_bar
+   * to decide whether a particular event was sent.
    *
-   * are all valid GA4 event candidates.
+   * Every event instance has its own:
    *
-   * GA4 blocked-event detection works by:
+   *     dlPushIndex
    *
-   *   1. Observing dataLayer / gtag
-   *   2. Capturing the event name
-   *   3. Waiting for the corresponding GA4 network request
-   *   4. If no request is observed, reporting:
+   * and every network request is matched to exactly
+   * one pending event.
    *
-   *        ga4_event_blocked
+   * Example:
    *
-   *   together with:
+   *     run_audit #1 -> GA4 request #1
+   *     run_audit #2 -> GA4 request #2
+   *     run_audit #3 -> NO request
    *
-   *        eventName
+   * Result:
    *
-   *   and:
-   *
-   *        dlPushIndex
-   *
-   * This means:
-   *
-   *   run_audit
-   *   run_audit
-   *
-   * are treated as TWO separate events.
+   *     #1 detected
+   *     #2 detected
+   *     #3 GA4 event blocked: run_audit
    *
    * =========================================================
    */
@@ -137,7 +115,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Global monitor state
+   * Global monitor object
    * ---------------------------------------------------------
    */
 
@@ -157,6 +135,9 @@
   g.installed =
     true;
 
+  g.version =
+    '9.0';
+
   window.__g4f =
     g;
 
@@ -165,22 +146,16 @@
    */
 
   if (
-    g.__monitor_v8_installed
+    g.__monitor_v9_installed
   ) {
     return;
   }
 
-  g.__monitor_v8_installed =
+  g.__monitor_v9_installed =
     true;
-
-  g.r =
-    false;
 
   g.ready =
     false;
-
-  g.version =
-    '8.0';
 
   /*
    * ---------------------------------------------------------
@@ -195,83 +170,92 @@
   window.dataLayer =
     dataLayer;
 
+  /*
+   * Every dataLayer event gets a unique
+   * sequential index.
+   */
+
   var dlPushIndex =
     0;
 
+  /*
+   * Recent dataLayer events for debugging.
+   */
+
   var recentDataLayerEvents =
     [];
+
+  /*
+   * Events waiting for their
+   * corresponding analytics request.
+   */
 
   var pendingEvents =
     [];
 
   /*
-   * Network-observed GA4 events.
-   *
-   * Example:
-   *
-   * {
-   *   purchase: true,
-   *   run_audit: true
-   * }
+   * Network requests that arrived before
+   * their dataLayer/gtag event.
    */
 
-  var observedGA4Events =
+  var pendingNetworkGA4 =
+    [];
+
+  /*
+   * GA4 configuration.
+   */
+
+  var ga4Configured =
+    false;
+
+  var ga4MeasurementIds =
     {};
 
   /*
-   * Number of network events observed.
-   */
-
-  var observedGA4EventCounts =
-    {};
-
-  /*
-   * Whether any GA4 network request
-   * has been observed.
+   * Whether ANY GA4 request has been
+   * observed.
    */
 
   var observedGA4 =
     false;
 
   /*
-   * Whether GA4 configuration was
-   * discovered on the page.
+   * Counts are informational only.
+   *
+   * They are NOT used to determine
+   * whether an event instance fired.
    */
 
-  var ga4Configured =
-    false;
-
-  /*
-   * Known GA4 measurement IDs.
-   */
-
-  var ga4MeasurementIds =
+  var observedGA4EventCounts =
     {};
 
   /*
    * Prevent duplicate blocked reports.
-   *
-   * IMPORTANT:
-   *
-   * This is keyed by event instance,
-   * NOT just event name.
-   *
-   * Therefore:
-   *
-   * run_audit #1
-   * run_audit #2
-   *
-   * can both be reported.
    */
 
   var blockedReported =
     {};
 
   var MAX_RECENT_EVENTS =
-    200;
+    500;
+
+  var MAX_PENDING_EVENTS =
+    500;
+
+  var MAX_PENDING_NETWORK =
+    500;
+
+  /*
+   * Network/dataLayer matching window.
+   */
 
   var NETWORK_MATCH_WINDOW =
     5000;
+
+  /*
+   * How long we wait before saying
+   * an event was blocked.
+   */
 
   var BLOCKED_WAIT_MS =
     3500;
@@ -332,17 +316,17 @@
     url
   ) {
     try {
-      var absolute =
+      var parsed =
         safeUrl(
           url
         );
 
-      if (!absolute) {
+      if (!parsed) {
         return false;
       }
 
       var href =
-        absolute.href;
+        parsed.href;
 
       return (
         href.indexOf(
@@ -359,7 +343,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Query-string parsing
+   * Query parameter parsing
    * ---------------------------------------------------------
    */
 
@@ -392,6 +376,12 @@
     return result;
   }
 
+  /*
+   * ---------------------------------------------------------
+   * Parameter merging
+   * ---------------------------------------------------------
+   */
+
   function mergeParams(
     first,
     second
@@ -421,7 +411,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Request body parsing
+   * Request body parser
    * ---------------------------------------------------------
    */
 
@@ -435,6 +425,7 @@
     }
 
     try {
+
       /*
        * String
        */
@@ -443,6 +434,7 @@
         typeof body ===
         'string'
       ) {
+
         var text =
           body.trim();
 
@@ -451,14 +443,16 @@
         }
 
         /*
-         * JSON
+         * JSON body
          */
 
         if (
           text.charAt(0) ===
           '{'
         ) {
+
           try {
+
             var json =
               JSON.parse(
                 text
@@ -471,20 +465,22 @@
             ) {
               return json;
             }
+
           } catch (e) {}
         }
 
         /*
-         * Query string
+         * Query string body
          */
 
         try {
-          var params =
+
+          var searchParams =
             new URLSearchParams(
               text
             );
 
-          params.forEach(
+          searchParams.forEach(
             function (
               value,
               key
@@ -495,6 +491,7 @@
           );
 
           return result;
+
         } catch (e) {}
       }
 
@@ -508,6 +505,7 @@
         body instanceof
           URLSearchParams
       ) {
+
         body.forEach(
           function (
             value,
@@ -531,6 +529,7 @@
         body instanceof
           FormData
       ) {
+
         body.forEach(
           function (
             value,
@@ -546,11 +545,6 @@
         return result;
       }
 
-      /*
-       * Blob cannot be synchronously
-       * parsed.
-       */
-
     } catch (e) {}
 
     return result;
@@ -565,7 +559,8 @@
   var VENDORS = [
 
     {
-      name: 'ga4',
+      name:
+        'ga4',
 
       patterns: [
 
@@ -588,7 +583,8 @@
     },
 
     {
-      name: 'gads',
+      name:
+        'gads',
 
       patterns: [
 
@@ -596,14 +592,15 @@
 
         /googleadservices\.com\/pagead\/1p-conversion/i,
 
-        /googlesyndication\.com\/pagead/i,
+        /googleadservices\.com\/pagead\/viewthroughconversion/i,
 
-        /googleadservices\.com\/pagead\/viewthroughconversion/i
+        /googlesyndication\.com\/pagead/i
       ]
     },
 
     {
-      name: 'meta',
+      name:
+        'meta',
 
       patterns: [
 
@@ -614,7 +611,8 @@
     },
 
     {
-      name: 'tiktok',
+      name:
+        'tiktok',
 
       patterns: [
 
@@ -627,7 +625,8 @@
     },
 
     {
-      name: 'linkedin',
+      name:
+        'linkedin',
 
       patterns: [
 
@@ -638,7 +637,8 @@
     },
 
     {
-      name: 'snapchat',
+      name:
+        'snapchat',
 
       patterns: [
 
@@ -649,7 +649,8 @@
     },
 
     {
-      name: 'pinterest',
+      name:
+        'pinterest',
 
       patterns: [
 
@@ -660,7 +661,8 @@
     },
 
     {
-      name: 'reddit',
+      name:
+        'reddit',
 
       patterns: [
 
@@ -671,7 +673,8 @@
     },
 
     {
-      name: 'twitter',
+      name:
+        'twitter',
 
       patterns: [
 
@@ -682,7 +685,8 @@
     },
 
     {
-      name: 'clarity',
+      name:
+        'clarity',
 
       patterns: [
 
@@ -691,7 +695,8 @@
     },
 
     {
-      name: 'mixpanel',
+      name:
+        'mixpanel',
 
       patterns: [
 
@@ -700,7 +705,8 @@
     },
 
     {
-      name: 'amplitude',
+      name:
+        'amplitude',
 
       patterns: [
 
@@ -711,7 +717,8 @@
     },
 
     {
-      name: 'segment',
+      name:
+        'segment',
 
       patterns: [
 
@@ -722,7 +729,8 @@
     },
 
     {
-      name: 'hubspot',
+      name:
+        'hubspot',
 
       patterns: [
 
@@ -733,7 +741,8 @@
     },
 
     {
-      name: 'klaviyo',
+      name:
+        'klaviyo',
 
       patterns: [
 
@@ -744,7 +753,8 @@
     },
 
     {
-      name: 'intercom',
+      name:
+        'intercom',
 
       patterns: [
 
@@ -757,7 +767,7 @@
 
   /*
    * ---------------------------------------------------------
-   * GA4 identification
+   * GA4 request detection
    * ---------------------------------------------------------
    */
 
@@ -765,9 +775,9 @@
     url,
     params
   ) {
-    if (!params) {
-      params = {};
-    }
+
+    params =
+      params || {};
 
     var parsed =
       safeUrl(
@@ -786,7 +796,7 @@
       parsed.pathname ||
       '';
 
-    var officialEndpoint =
+    var officialGA4Host =
       /(^|\.)google-analytics\.com$/i.test(
         hostname
       ) ||
@@ -794,7 +804,7 @@
         hostname
       );
 
-    var collectEndpoint =
+    var collectionPath =
       /\/(?:metrics\/)?(?:g|mp)\/collect$/i.test(
         pathname
       ) ||
@@ -821,11 +831,11 @@
       null;
 
     /*
-     * Official endpoint.
+     * Official GA4 endpoint.
      */
 
     if (
-      officialEndpoint &&
+      officialGA4Host &&
       (
         hasMeasurementId ||
         !!eventName
@@ -839,7 +849,7 @@
      */
 
     if (
-      collectEndpoint &&
+      collectionPath &&
       (
         hasMeasurementId ||
         !!eventName
@@ -849,11 +859,12 @@
     }
 
     /*
-     * Custom first-party endpoint.
+     * Any collection request containing
+     * a GA4 event.
      */
 
     if (
-      hasMeasurementId &&
+      collectionPath &&
       !!eventName
     ) {
       return true;
@@ -872,6 +883,7 @@
     url,
     params
   ) {
+
     if (
       isGA4Request(
         url,
@@ -891,6 +903,7 @@
       i < VENDORS.length;
       i++
     ) {
+
       var vendor =
         VENDORS[i];
 
@@ -907,6 +920,7 @@
         vendor.patterns.length;
         j++
       ) {
+
         if (
           vendor.patterns[j].test(
             text
@@ -914,6 +928,7 @@
         ) {
           return vendor.name;
         }
+
       }
     }
 
@@ -945,6 +960,7 @@
     vendor,
     params
   ) {
+
     if (!params) {
       return null;
     }
@@ -953,6 +969,7 @@
       vendor ===
       'ga4'
     ) {
+
       return (
         params.en ||
         params.event_name ||
@@ -965,6 +982,7 @@
       vendor ===
       'meta'
     ) {
+
       return (
         params.ev ||
         params.event ||
@@ -977,6 +995,7 @@
       vendor ===
       'tiktok'
     ) {
+
       return (
         params.event ||
         params.event_name ||
@@ -989,6 +1008,7 @@
       vendor ===
       'snapchat'
     ) {
+
       return (
         params.event ||
         params.event_name ||
@@ -1002,6 +1022,7 @@
       vendor ===
       'pinterest'
     ) {
+
       return (
         params.event ||
         params.event_name ||
@@ -1014,6 +1035,7 @@
       vendor ===
       'reddit'
     ) {
+
       return (
         params.event ||
         params.event_name ||
@@ -1026,6 +1048,7 @@
       vendor ===
       'linkedin'
     ) {
+
       return (
         params.event ||
         params.event_name ||
@@ -1048,7 +1071,7 @@
 
   /*
    * ---------------------------------------------------------
-   * GA4 parsing
+   * GA4 parser
    * ---------------------------------------------------------
    */
 
@@ -1056,6 +1079,7 @@
     url,
     body
   ) {
+
     var queryParams =
       extractQueryParams(
         url
@@ -1072,7 +1096,22 @@
         bodyParams
       );
 
+    /*
+     * IMPORTANT:
+     *
+     * Do NOT delete:
+     *
+     *     cu
+     *     epn.value
+     *     ep.value
+     *     ep.currency
+     *     ep.purchase_type
+     *
+     * These are needed by detection.
+     */
+
     return {
+
       eventName:
         extractEventName(
           'ga4',
@@ -1093,6 +1132,7 @@
         params.transaction_id ||
         params.transactionId ||
         params['ep.transaction_id'] ||
+        params['epn.transaction_id'] ||
         null,
 
       params:
@@ -1102,7 +1142,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Generic parsing
+   * Generic parser
    * ---------------------------------------------------------
    */
 
@@ -1111,6 +1151,7 @@
     url,
     body
   ) {
+
     var queryParams =
       extractQueryParams(
         url
@@ -1128,6 +1169,7 @@
       );
 
     return {
+
       eventName:
         extractEventName(
           vendor,
@@ -1157,22 +1199,12 @@
    * ---------------------------------------------------------
    * GA4 configuration detection
    * ---------------------------------------------------------
-   *
-   * Detect:
-   *
-   *   gtag('config', 'G-XXXX')
-   *
-   * and configuration-like objects.
-   *
-   * This is critical because a custom
-   * event can be blocked before we ever
-   * see the GA4 network request.
-   * ---------------------------------------------------------
    */
 
   function inspectGA4Configuration(
     item
   ) {
+
     try {
 
       /*
@@ -1182,30 +1214,29 @@
       if (
         item &&
         typeof item.length ===
-          'number' &&
+        'number' &&
         item[0] ===
-          'config'
+        'config'
       ) {
+
         var configId =
           String(
             item[1] ||
             ''
           );
 
-        var configMatch =
+        var match =
           configId.match(
             /G-[A-Z0-9]+/i
           );
 
-        if (
-          configMatch
-        ) {
+        if (match) {
+
           ga4Configured =
             true;
 
           ga4MeasurementIds[
-            configMatch[0]
-              .toUpperCase()
+            match[0].toUpperCase()
           ] =
             true;
         }
@@ -1220,37 +1251,36 @@
       if (
         item &&
         typeof item ===
-          'object'
+        'object'
       ) {
+
         var possibleId =
           item.measurement_id ||
           item.measurementId ||
           item.tid ||
-          item.send_to ||
           null;
 
         if (
           possibleId
         ) {
+
           var idString =
             String(
               possibleId
             );
 
-          var match =
+          var idMatch =
             idString.match(
               /G-[A-Z0-9]+/i
             );
 
-          if (
-            match
-          ) {
+          if (idMatch) {
+
             ga4Configured =
               true;
 
             ga4MeasurementIds[
-              match[0]
-                .toUpperCase()
+              idMatch[0].toUpperCase()
             ] =
               true;
           }
@@ -1262,21 +1292,17 @@
 
   /*
    * ---------------------------------------------------------
-   * DataLayer extraction
+   * DataLayer event extraction
    * ---------------------------------------------------------
    */
 
   function extractDataLayerEvent(
     item
   ) {
+
     if (!item) {
       return null;
     }
-
-    /*
-     * Always inspect configuration
-     * first.
-     */
 
     inspectGA4Configuration(
       item
@@ -1291,26 +1317,25 @@
     var source =
       'dataLayer';
 
-    var isGA4Candidate =
+    var explicitGA4 =
       false;
 
     /*
-     * -------------------------------------------------------
-     * Standard dataLayer event
+     * Standard dataLayer:
      *
      * {
      *   event: 'purchase'
      * }
-     * -------------------------------------------------------
      */
 
     if (
       typeof item ===
-        'object' &&
+      'object' &&
       !Array.isArray(
         item
       )
     ) {
+
       eventName =
         item.event ||
         item.event_name ||
@@ -1319,21 +1344,21 @@
     }
 
     /*
-     * -------------------------------------------------------
      * gtag('event', 'purchase', {...})
-     * -------------------------------------------------------
      */
 
     if (
       typeof item.length ===
-        'number'
+      'number'
     ) {
+
       try {
 
         if (
           item[0] ===
           'event'
         ) {
+
           eventName =
             item[1];
 
@@ -1344,7 +1369,7 @@
           source =
             'gtag';
 
-          isGA4Candidate =
+          explicitGA4 =
             true;
         }
 
@@ -1352,36 +1377,31 @@
     }
 
     /*
-     * -------------------------------------------------------
-     * gtag('config', ...)
-     *
-     * Configuration is not an event.
-     * -------------------------------------------------------
+     * gtag('config') is not an event.
      */
 
     if (
       typeof item.length ===
-        'number' &&
+      'number' &&
       item[0] ===
-        'config'
+      'config'
     ) {
       return null;
     }
 
     /*
-     * -------------------------------------------------------
-     * Ignore other gtag commands.
-     * -------------------------------------------------------
+     * Other gtag commands are not
+     * analytics events.
      */
 
     if (
       typeof item.length ===
-        'number' &&
+      'number' &&
       (
         item[0] ===
-          'set' ||
+        'set' ||
         item[0] ===
-          'consent'
+        'consent'
       )
     ) {
       return null;
@@ -1392,19 +1412,19 @@
     }
 
     /*
-     * If GA4 has already been
-     * configured, every named
-     * dataLayer event is a candidate.
+     * If GA4 is configured, arbitrary
+     * custom events are valid candidates.
      */
 
     if (
       ga4Configured
     ) {
-      isGA4Candidate =
+      explicitGA4 =
         true;
     }
 
     return {
+
       eventName:
         String(
           eventName
@@ -1413,7 +1433,7 @@
       params:
         params &&
         typeof params ===
-          'object'
+        'object'
           ? params
           : {},
 
@@ -1421,19 +1441,20 @@
         source,
 
       isGA4Candidate:
-        isGA4Candidate
+        explicitGA4
     };
   }
 
   /*
    * ---------------------------------------------------------
-   * Remember dataLayer events
+   * Remember dataLayer event
    * ---------------------------------------------------------
    */
 
   function rememberDataLayerEvent(
     item
   ) {
+
     var parsed =
       extractDataLayerEvent(
         item
@@ -1446,6 +1467,7 @@
     dlPushIndex++;
 
     var event = {
+
       eventName:
         normalize(
           parsed.eventName
@@ -1471,7 +1493,22 @@
 
       source:
         parsed.source ||
-        'dataLayer'
+        'dataLayer',
+
+      /*
+       * Will become true only when
+       * THIS event is matched to
+       * THIS network request.
+       */
+
+      networkMatched:
+        false,
+
+      networkParams:
+        null,
+
+      networkEventTimestamp:
+        null
     };
 
     recentDataLayerEvents.push(
@@ -1482,55 +1519,64 @@
       recentDataLayerEvents.length >
       MAX_RECENT_EVENTS
     ) {
+
       recentDataLayerEvents.shift();
     }
 
-    /*
-     * Every named event becomes
-     * a candidate.
-     */
-
-    pendingEvents.push({
-
-      eventName:
-        event.eventName,
-
-      originalEventName:
-        event.originalEventName,
-
-      pushIndex:
-        event.pushIndex,
-
-      timestamp:
-        event.timestamp,
-
-      item:
-        item,
-
-      params:
-        event.params,
-
-      isGA4Candidate:
-        event.isGA4Candidate,
-
-      source:
-        event.source
-
-    });
+    pendingEvents.push(
+      event
+    );
 
     if (
       pendingEvents.length >
-      MAX_RECENT_EVENTS
+      MAX_PENDING_EVENTS
     ) {
+
       pendingEvents.shift();
     }
+
+    /*
+     * Check if a GA4 network request
+     * arrived before this dataLayer event.
+     */
+
+    try {
+
+      if (
+        event.isGA4Candidate
+      ) {
+
+        matchPendingNetworkToEvent(
+          event
+        );
+
+      }
+
+    } catch (e) {}
 
     return event;
   }
 
   /*
    * ---------------------------------------------------------
-   * Find matching dataLayer event
+   * Find pending event
+   *
+   * IMPORTANT:
+   *
+   * FIFO matching.
+   *
+   * We do NOT search from the newest
+   * event backwards because:
+   *
+   * run_audit #1
+   * run_audit #2
+   *
+   * must match:
+   *
+   * request #1
+   * request #2
+   *
+   * in that order.
    * ---------------------------------------------------------
    */
 
@@ -1538,6 +1584,7 @@
     eventName,
     timestamp
   ) {
+
     if (!eventName) {
       return null;
     }
@@ -1547,26 +1594,28 @@
         eventName
       );
 
-    var best =
-      null;
-
-    var bestDistance =
-      Infinity;
-
     for (
-      var i =
-        pendingEvents.length -
-        1;
-      i >= 0;
-      i--
+      var i = 0;
+      i < pendingEvents.length;
+      i++
     ) {
+
       var candidate =
         pendingEvents[i];
 
+      if (!candidate) {
+        continue;
+      }
+
       if (
-        !candidate ||
+        candidate.networkMatched
+      ) {
+        continue;
+      }
+
+      if (
         candidate.eventName !==
-          target
+        target
       ) {
         continue;
       }
@@ -1584,30 +1633,22 @@
         continue;
       }
 
-      if (
-        distance <
-        bestDistance
-      ) {
-        best =
-          candidate;
-
-        bestDistance =
-          distance;
-      }
+      return candidate;
     }
 
-    return best;
+    return null;
   }
 
   /*
    * ---------------------------------------------------------
-   * Remove one matched event
+   * Remove pending event
    * ---------------------------------------------------------
    */
 
   function removePendingEvent(
     candidate
   ) {
+
     if (!candidate) {
       return;
     }
@@ -1621,67 +1662,10 @@
       index !==
       -1
     ) {
+
       pendingEvents.splice(
         index,
         1
-      );
-    }
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * GA4 network event received
-   * ---------------------------------------------------------
-   */
-
-  function markGA4EventReceived(
-    eventName
-  ) {
-    var normalized =
-      normalize(
-        eventName
-      );
-
-    if (!normalized) {
-      return;
-    }
-
-    observedGA4 =
-      true;
-
-    observedGA4Events[
-      normalized
-    ] =
-      true;
-
-    if (
-      !observedGA4EventCounts[
-        normalized
-      ]
-    ) {
-      observedGA4EventCounts[
-        normalized
-      ] =
-        0;
-    }
-
-    observedGA4EventCounts[
-      normalized
-    ]++;
-
-    /*
-     * Match ONE dataLayer event.
-     */
-
-    var candidate =
-      findMatchingDataLayerEvent(
-        eventName,
-        now()
-      );
-
-    if (candidate) {
-      removePendingEvent(
-        candidate
       );
     }
   }
@@ -1776,6 +1760,7 @@
   function isStandardGA4Event(
     eventName
   ) {
+
     return !!STANDARD_GA4_EVENTS[
       normalize(
         eventName
@@ -1785,20 +1770,20 @@
 
   /*
    * ---------------------------------------------------------
-   * Determine whether an event is a
-   * GA4 candidate.
+   * Is GA4 candidate?
    * ---------------------------------------------------------
    */
 
   function isGA4EventCandidate(
     candidate
   ) {
+
     if (!candidate) {
       return false;
     }
 
     /*
-     * Explicit gtag('event')
+     * Explicit gtag event.
      */
 
     if (
@@ -1818,16 +1803,6 @@
     }
 
     /*
-     * GA4 network already observed.
-     */
-
-    if (
-      observedGA4
-    ) {
-      return true;
-    }
-
-    /*
      * Standard GA4 event.
      */
 
@@ -1839,35 +1814,200 @@
       return true;
     }
 
+    /*
+     * GA4 network was observed.
+     */
+
+    if (
+      observedGA4
+    ) {
+      return true;
+    }
+
     return false;
   }
 
   /*
    * ---------------------------------------------------------
-   * Blocked GA4 event detection
+   * Match a network GA4 request to
+   * exactly ONE dataLayer event.
+   * ---------------------------------------------------------
+   */
+
+  function matchGA4NetworkEvent(
+    eventName,
+    networkParams,
+    networkTimestamp
+  ) {
+
+    if (!eventName) {
+      return null;
+    }
+
+    var candidate =
+      findMatchingDataLayerEvent(
+        eventName,
+        networkTimestamp
+      );
+
+    if (!candidate) {
+      return null;
+    }
+
+    /*
+     * Mark ONLY this event instance.
+     */
+
+    candidate.networkMatched =
+      true;
+
+    candidate.networkParams =
+      networkParams ||
+      {};
+
+    candidate.networkEventTimestamp =
+      networkTimestamp;
+
+    /*
+     * Remove it from the pending
+     * blocked-event queue immediately.
+     *
+     * This is important.
+     *
+     * Otherwise a second identical
+     * network request could match
+     * the same candidate.
+     */
+
+    removePendingEvent(
+      candidate
+    );
+
+    return candidate;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Pending network queue
+   * ---------------------------------------------------------
+   */
+
+  function queueNetworkGA4(
+    networkEvent
+  ) {
+
+    pendingNetworkGA4.push(
+      networkEvent
+    );
+
+    if (
+      pendingNetworkGA4.length >
+      MAX_PENDING_NETWORK
+    ) {
+
+      pendingNetworkGA4.shift();
+    }
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Match previously queued network
+   * request to a newly observed event.
+   * ---------------------------------------------------------
+   */
+
+  function matchPendingNetworkToEvent(
+    candidate
+  ) {
+
+    if (!candidate) {
+      return null;
+    }
+
+    if (
+      !candidate.eventName
+    ) {
+      return null;
+    }
+
+    var target =
+      normalize(
+        candidate.eventName
+      );
+
+    for (
+      var i = 0;
+      i < pendingNetworkGA4.length;
+      i++
+    ) {
+
+      var network =
+        pendingNetworkGA4[i];
+
+      if (!network) {
+        continue;
+      }
+
+      if (
+        normalize(
+          network.eventName
+        ) !==
+        target
+      ) {
+        continue;
+      }
+
+      var distance =
+        Math.abs(
+          network.timestamp -
+          candidate.timestamp
+        );
+
+      if (
+        distance >
+        NETWORK_MATCH_WINDOW
+      ) {
+        continue;
+      }
+
+      candidate.networkMatched =
+        true;
+
+      candidate.networkParams =
+        network.params ||
+        {};
+
+      candidate.networkEventTimestamp =
+        network.timestamp;
+
+      pendingNetworkGA4.splice(
+        i,
+        1
+      );
+
+      removePendingEvent(
+        candidate
+      );
+
+      return candidate;
+    }
+
+    return null;
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Blocked event detection
    * ---------------------------------------------------------
    */
 
   function scheduleBlockedCheck(
     candidate
   ) {
+
     if (!candidate) {
       return;
     }
-
-    /*
-     * IMPORTANT:
-     *
-     * We do NOT require observedGA4
-     * to already be true.
-     *
-     * This is what allows:
-     *
-     *   run_audit
-     *
-     * to be detected when GA4 is
-     * completely blocked.
-     */
 
     if (
       !isGA4EventCandidate(
@@ -1883,10 +2023,20 @@
         try {
 
           /*
-           * If the candidate has
-           * already been removed,
-           * a matching network event
-           * was found.
+           * If it was matched to a
+           * network request, it is good.
+           */
+
+          if (
+            candidate.networkMatched
+          ) {
+            return;
+          }
+
+          /*
+           * If it has already been removed
+           * because of a matching network
+           * request, do nothing.
            */
 
           if (
@@ -1896,6 +2046,33 @@
             -1
           ) {
             return;
+          }
+
+          /*
+           * Give late network requests
+           * one final chance.
+           */
+
+          var lateMatch =
+            findMatchingDataLayerEvent(
+              candidate.eventName,
+              now()
+            );
+
+          if (
+            lateMatch &&
+            lateMatch ===
+            candidate
+          ) {
+
+            /*
+             * It is still pending.
+             *
+             * We intentionally do not
+             * classify it as blocked
+             * until the timeout has passed.
+             */
+
           }
 
           var age =
@@ -1910,51 +2087,24 @@
           }
 
           /*
-           * If this event name was
-           * observed on the GA4 network,
-           * don't classify it as blocked.
-           *
-           * IMPORTANT:
-           *
-           * This is event-name based,
-           * which handles the common case
-           * where multiple identical events
-           * are fired.
+           * If a request appeared
+           * during the waiting period,
+           * this candidate may now be
+           * matched.
            */
 
           if (
-            observedGA4Events[
-              candidate.eventName
-            ]
+            candidate.networkMatched
           ) {
-
-            /*
-             * Remove the candidate so
-             * it does not stay pending.
-             */
-
-            removePendingEvent(
-              candidate
-            );
-
             return;
           }
 
           /*
-           * Unique event instance key.
-           *
-           * This means:
-           *
-           * run_audit #41
-           *
-           * and:
-           *
-           * run_audit #42
-           *
-           * are separate.
+           * Unique event instance.
            */
 
           var key =
+            'ga4_event_blocked:' +
             candidate.eventName +
             ':' +
             candidate.pushIndex;
@@ -1972,16 +2122,12 @@
           ] =
             true;
 
-          /*
-           * Remove it after classification.
-           */
-
           removePendingEvent(
             candidate
           );
 
           /*
-           * Report blocked GA4 event.
+           * Report the EXACT event name.
            */
 
           reportPlatformBlocked(
@@ -2021,6 +2167,7 @@
   function processDataLayerItem(
     item
   ) {
+
     try {
 
       var candidate =
@@ -2029,6 +2176,18 @@
         );
 
       if (!candidate) {
+        return;
+      }
+
+      /*
+       * If a network request was already
+       * waiting for this event, it has
+       * already been matched.
+       */
+
+      if (
+        candidate.networkMatched
+      ) {
         return;
       }
 
@@ -2049,8 +2208,7 @@
 
     for (
       var i = 0;
-      i <
-      dataLayer.length;
+      i < dataLayer.length;
       i++
     ) {
 
@@ -2076,8 +2234,7 @@
 
       for (
         var i = 0;
-        i <
-        arguments.length;
+        i < arguments.length;
         i++
       ) {
 
@@ -2095,7 +2252,7 @@
 
   /*
    * ---------------------------------------------------------
-   * gtag interception
+   * Patch gtag
    * ---------------------------------------------------------
    */
 
@@ -2113,12 +2270,7 @@
         try {
 
           /*
-           * Capture:
-           *
-           * gtag(
-           *   'config',
-           *   'G-XXXX'
-           * )
+           * gtag('config', 'G-XXXX')
            */
 
           if (
@@ -2129,12 +2281,9 @@
             inspectGA4Configuration(
               arguments
             );
-
           }
 
           /*
-           * Capture:
-           *
            * gtag(
            *   'event',
            *   'run_audit',
@@ -2150,7 +2299,6 @@
             processDataLayerItem(
               arguments
             );
-
           }
 
         } catch (e) {}
@@ -2164,342 +2312,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Queue
-   * ---------------------------------------------------------
-   */
-
-  var queue =
-    g.q;
-
-  var flushTimer =
-    null;
-
-  function send(
-    payload
-  ) {
-
-    queue.push(
-      payload
-    );
-
-    if (
-      flushTimer
-    ) {
-      return;
-    }
-
-    flushTimer =
-      setTimeout(
-        flush,
-        300
-      );
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * Flush
-   * ---------------------------------------------------------
-   */
-
-  function flush() {
-
-    flushTimer =
-      null;
-
-    if (
-      !queue.length
-    ) {
-      return;
-    }
-
-    var batch =
-      queue.splice(
-        0,
-        queue.length
-      );
-
-    var body =
-      JSON.stringify({
-
-        apiKey:
-          API_KEY,
-
-        gtmContainerId:
-          GTM_ID,
-
-        events:
-          batch
-
-      });
-
-    /*
-     * Primary transport.
-     */
-
-    try {
-
-      fetch(
-        INGEST,
-        {
-
-          method:
-            'POST',
-
-          body:
-            body,
-
-          keepalive:
-            true,
-
-          headers: {
-            'Content-Type':
-              'application/json'
-          },
-
-          credentials:
-            'omit'
-
-        }
-      ).catch(
-        function () {}
-      );
-
-      return;
-
-    } catch (e) {}
-
-    /*
-     * sendBeacon fallback.
-     */
-
-    try {
-
-      if (
-        navigator.sendBeacon
-      ) {
-
-        var blob =
-          new Blob(
-            [body],
-            {
-              type:
-                'application/json'
-            }
-          );
-
-        navigator.sendBeacon(
-          INGEST,
-          blob
-        );
-
-      }
-
-    } catch (e) {}
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * Report blocked platform
-   * ---------------------------------------------------------
-   */
-
-  function reportPlatformBlocked(
-    method,
-    details
-  ) {
-
-    try {
-
-      details =
-        details ||
-        {};
-
-      var eventName =
-        details.eventName ||
-        null;
-
-      /*
-       * IMPORTANT:
-       *
-       * Deduplicate using event identity,
-       * not only method + event name.
-       */
-
-      var eventIdentity =
-        details.dlPushIndex !==
-          undefined &&
-        details.dlPushIndex !==
-          null
-          ? String(
-              details.dlPushIndex
-            )
-          : (
-              eventName ||
-              'unknown'
-            );
-
-      var key =
-        method +
-        ':' +
-        eventIdentity;
-
-      if (
-        blockedReported[
-          key
-        ]
-      ) {
-        return;
-      }
-
-      blockedReported[
-        key
-      ] =
-        true;
-
-      /*
-       * Build blocked endpoint.
-       */
-
-      var url =
-        BLOCKED +
-        '?k=' +
-        encodeURIComponent(
-          API_KEY
-        ) +
-        '&m=' +
-        encodeURIComponent(
-          method
-        );
-
-      /*
-       * EVENT NAME
-       *
-       * This is the important addition.
-       */
-
-      if (
-        eventName
-      ) {
-
-        url +=
-          '&e=' +
-          encodeURIComponent(
-            eventName
-          );
-
-      }
-
-      /*
-       * Reason.
-       */
-
-      if (
-        details.reason
-      ) {
-
-        url +=
-          '&r=' +
-          encodeURIComponent(
-            details.reason
-          );
-
-      }
-
-      /*
-       * DataLayer push index.
-       */
-
-      if (
-        details.dlPushIndex !==
-        undefined
-      ) {
-
-        url +=
-          '&d=' +
-          encodeURIComponent(
-            String(
-              details.dlPushIndex
-            )
-          );
-
-      }
-
-      /*
-       * Source.
-       */
-
-      if (
-        details.source
-      ) {
-
-        url +=
-          '&s=' +
-          encodeURIComponent(
-            details.source
-          );
-
-      }
-
-      /*
-       * Page URL.
-       */
-
-      url +=
-        '&p=' +
-        encodeURIComponent(
-          safePageUrl()
-        );
-
-      /*
-       * Send with fetch.
-       */
-
-      try {
-
-        fetch(
-          url,
-          {
-            method:
-              'GET',
-
-            keepalive:
-              true,
-
-            credentials:
-              'omit'
-          }
-        ).catch(
-          function () {}
-        );
-
-        return;
-
-      } catch (e) {}
-
-      /*
-       * sendBeacon fallback.
-       */
-
-      try {
-
-        if (
-          navigator.sendBeacon
-        ) {
-
-          navigator.sendBeacon(
-            url
-          );
-
-        }
-
-      } catch (e) {}
-
-    } catch (e) {}
-  }
-
-  /*
-   * ---------------------------------------------------------
-   * Network event processor
+   * Network processing
    * ---------------------------------------------------------
    */
 
@@ -2514,11 +2327,6 @@
       if (!url) {
         return;
       }
-
-      /*
-       * Never monitor our own
-       * telemetry endpoints.
-       */
 
       if (
         isOwnMonitoringRequest(
@@ -2575,17 +2383,24 @@
             url,
             body
           );
-
       }
 
+      var matchedCandidate =
+        null;
+
       /*
-       * Mark GA4 network activity.
+       * -----------------------------------------------------
+       * GA4
+       * -----------------------------------------------------
        */
 
       if (
         vendor ===
         'ga4'
       ) {
+
+        observedGA4 =
+          true;
 
         if (
           parsed.measurementId
@@ -2600,17 +2415,75 @@
             ).toUpperCase()
           ] =
             true;
-
         }
 
-        markGA4EventReceived(
+        if (
           parsed.eventName
-        );
+        ) {
 
+          var normalizedEvent =
+            normalize(
+              parsed.eventName
+            );
+
+          if (
+            !observedGA4EventCounts[
+              normalizedEvent
+            ]
+          ) {
+
+            observedGA4EventCounts[
+              normalizedEvent
+            ] =
+              0;
+          }
+
+          observedGA4EventCounts[
+            normalizedEvent
+          ]++;
+
+          /*
+           * Match THIS request to
+           * ONE specific dataLayer event.
+           */
+
+          matchedCandidate =
+            matchGA4NetworkEvent(
+              parsed.eventName,
+              parsed.params,
+              now()
+            );
+
+          /*
+           * If no dataLayer event exists
+           * yet, temporarily queue the
+           * network request.
+           */
+
+          if (
+            !matchedCandidate
+          ) {
+
+            queueNetworkGA4({
+
+              eventName:
+                parsed.eventName,
+
+              params:
+                parsed.params,
+
+              timestamp:
+                now()
+
+            });
+          }
+        }
       }
 
       /*
-       * Record all network events.
+       * -----------------------------------------------------
+       * Send complete event to backend.
+       * -----------------------------------------------------
        */
 
       send({
@@ -2637,20 +2510,77 @@
           parsed.clientId ||
           null,
 
-        transport:
-          transport ||
-          null,
+        /*
+         * IMPORTANT:
+         *
+         * Full GA4 parameters.
+         *
+         * This includes:
+         *
+         *     cu=USD
+         *     epn.value=49.5
+         *     ep.purchase_type=Single Audit
+         *     en=purchase
+         *     tid=G-XXXX
+         *
+         */
+
+        params:
+          parsed.params ||
+          {},
+
+        /*
+         * Keep full raw URL.
+         */
+
+        rawUrl:
+          String(
+            url
+          ).slice(
+            0,
+            10000
+          ),
+
+        /*
+         * Keep legacy url field too.
+         */
 
         url:
           String(
             url
           ).slice(
             0,
-            2000
+            10000
           ),
+
+        transport:
+          transport ||
+          null,
 
         pageUrl:
           safePageUrl(),
+
+        /*
+         * The dataLayer push which
+         * produced this request.
+         */
+
+        dlPushIndex:
+          matchedCandidate
+            ? matchedCandidate.pushIndex
+            : null,
+
+        source:
+          matchedCandidate
+            ? (
+                matchedCandidate.source ||
+                transport ||
+                'network'
+              )
+            : (
+                transport ||
+                'network'
+              ),
 
         timestamp:
           now()
@@ -2662,7 +2592,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Patch fetch
+   * Fetch
    * ---------------------------------------------------------
    */
 
@@ -2703,7 +2633,6 @@
 
             url =
               input.url;
-
           }
 
           var body =
@@ -2719,7 +2648,6 @@
               body,
               'fetch'
             );
-
           }
 
         } catch (e) {}
@@ -2733,7 +2661,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Patch XMLHttpRequest
+   * XMLHttpRequest
    * ---------------------------------------------------------
    */
 
@@ -2792,7 +2720,7 @@
 
   /*
    * ---------------------------------------------------------
-   * Patch navigator.sendBeacon
+   * sendBeacon
    * ---------------------------------------------------------
    */
 
@@ -2834,93 +2762,72 @@
 
   /*
    * ---------------------------------------------------------
-   * Image pixel monitoring
+   * Image tracking
    * ---------------------------------------------------------
    */
 
   try {
 
-    var OriginalImage =
-      window.Image;
+    var imageDescriptor =
+      Object.getOwnPropertyDescriptor(
+        HTMLImageElement.prototype,
+        'src'
+      );
 
     if (
-      OriginalImage
+      imageDescriptor &&
+      imageDescriptor.set &&
+      imageDescriptor.get
     ) {
 
-      /*
-       * We do not replace Image
-       * completely because doing so
-       * can break third-party scripts.
-       *
-       * Instead, monitor src assignment
-       * through a lightweight wrapper.
-       */
+      Object.defineProperty(
+        HTMLImageElement.prototype,
+        'src',
+        {
 
-      var imageSrcDescriptor =
-        Object.getOwnPropertyDescriptor(
-          HTMLImageElement.prototype,
-          'src'
-        );
+          configurable:
+            true,
 
-      if (
-        imageSrcDescriptor &&
-        imageSrcDescriptor.set &&
-        imageSrcDescriptor.get
-      ) {
+          enumerable:
+            imageDescriptor.enumerable,
 
-        Object.defineProperty(
-          HTMLImageElement.prototype,
-          'src',
-          {
+          get:
+            function () {
 
-            configurable:
-              true,
+              return imageDescriptor.get.call(
+                this
+              );
+            },
 
-            enumerable:
-              imageSrcDescriptor.enumerable,
+          set:
+            function (
+              value
+            ) {
 
-            get:
-              function () {
+              try {
 
-                return imageSrcDescriptor.get.call(
-                  this
+                processNetworkRequest(
+                  value,
+                  null,
+                  'image'
                 );
 
-              },
+              } catch (e) {}
 
-            set:
-              function (
+              return imageDescriptor.set.call(
+                this,
                 value
-              ) {
-
-                try {
-
-                  processNetworkRequest(
-                    value,
-                    null,
-                    'image'
-                  );
-
-                } catch (e) {}
-
-                return imageSrcDescriptor.set.call(
-                  this,
-                  value
-                );
-
-              }
-
-          }
-        );
-
-      }
+              );
+            }
+        }
+      );
     }
 
   } catch (e) {}
 
   /*
    * ---------------------------------------------------------
-   * Observe script src assignments
+   * Script src tracking
    * ---------------------------------------------------------
    */
 
@@ -2939,11 +2846,11 @@
 
           if (
             this.tagName ===
-              'SCRIPT' &&
+            'SCRIPT' &&
             String(
               name
             ).toLowerCase() ===
-              'src'
+            'src'
           ) {
 
             processNetworkRequest(
@@ -2951,7 +2858,6 @@
               null,
               'script'
             );
-
           }
 
         } catch (e) {}
@@ -2966,16 +2872,327 @@
 
   /*
    * ---------------------------------------------------------
-   * Initial readiness
+   * Telemetry queue
    * ---------------------------------------------------------
    */
 
-  g.ready =
-    true;
+  var queue =
+    g.q;
+
+  var flushTimer =
+    null;
+
+  function send(
+    payload
+  ) {
+
+    queue.push(
+      payload
+    );
+
+    if (
+      flushTimer
+    ) {
+      return;
+    }
+
+    flushTimer =
+      setTimeout(
+        flush,
+        300
+      );
+  }
 
   /*
    * ---------------------------------------------------------
-   * Public debugging API
+   * Flush telemetry
+   * ---------------------------------------------------------
+   */
+
+  function flush() {
+
+    flushTimer =
+      null;
+
+    if (
+      !queue.length
+    ) {
+      return;
+    }
+
+    var batch =
+      queue.splice(
+        0,
+        queue.length
+      );
+
+    var body =
+      JSON.stringify({
+
+        apiKey:
+          API_KEY,
+
+        gtmContainerId:
+          GTM_ID,
+
+        events:
+          batch
+      });
+
+    /*
+     * Fetch.
+     */
+
+    try {
+
+      fetch(
+        INGEST,
+        {
+
+          method:
+            'POST',
+
+          body:
+            body,
+
+          keepalive:
+            true,
+
+          headers: {
+
+            'Content-Type':
+              'application/json'
+          },
+
+          credentials:
+            'omit'
+
+        }
+      ).catch(
+        function () {}
+      );
+
+      return;
+
+    } catch (e) {}
+
+    /*
+     * sendBeacon fallback.
+     */
+
+    try {
+
+      if (
+        navigator.sendBeacon
+      ) {
+
+        var blob =
+          new Blob(
+            [body],
+            {
+              type:
+                'application/json'
+            }
+          );
+
+        navigator.sendBeacon(
+          INGEST,
+          blob
+        );
+      }
+
+    } catch (e) {}
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Blocked platform reporting
+   * ---------------------------------------------------------
+   */
+
+  function reportPlatformBlocked(
+    method,
+    details
+  ) {
+
+    try {
+
+      details =
+        details ||
+        {};
+
+      var eventName =
+        details.eventName ||
+        null;
+
+      var eventIdentity =
+        details.dlPushIndex !==
+          undefined &&
+        details.dlPushIndex !==
+          null
+
+          ? String(
+              details.dlPushIndex
+            )
+
+          : (
+              eventName ||
+              'unknown'
+            );
+
+      var key =
+        method +
+        ':' +
+        eventIdentity;
+
+      if (
+        blockedReported[
+          key
+        ]
+      ) {
+        return;
+      }
+
+      blockedReported[
+        key
+      ] =
+        true;
+
+      var url =
+        BLOCKED +
+        '?k=' +
+        encodeURIComponent(
+          API_KEY
+        ) +
+        '&m=' +
+        encodeURIComponent(
+          method
+        );
+
+      /*
+       * EXACT EVENT NAME
+       */
+
+      if (
+        eventName
+      ) {
+
+        url +=
+          '&e=' +
+          encodeURIComponent(
+            eventName
+          );
+      }
+
+      /*
+       * Reason
+       */
+
+      if (
+        details.reason
+      ) {
+
+        url +=
+          '&r=' +
+          encodeURIComponent(
+            details.reason
+          );
+      }
+
+      /*
+       * DataLayer push index
+       */
+
+      if (
+        details.dlPushIndex !==
+        undefined
+      ) {
+
+        url +=
+          '&d=' +
+          encodeURIComponent(
+            String(
+              details.dlPushIndex
+            )
+          );
+      }
+
+      /*
+       * Source
+       */
+
+      if (
+        details.source
+      ) {
+
+        url +=
+          '&s=' +
+          encodeURIComponent(
+            details.source
+          );
+      }
+
+      /*
+       * Page
+       */
+
+      url +=
+        '&p=' +
+        encodeURIComponent(
+          safePageUrl()
+        );
+
+      /*
+       * Fetch.
+       */
+
+      try {
+
+        fetch(
+          url,
+          {
+
+            method:
+              'GET',
+
+            keepalive:
+              true,
+
+            credentials:
+              'omit'
+
+          }
+        ).catch(
+          function () {}
+        );
+
+        return;
+
+      } catch (e) {}
+
+      /*
+       * Beacon fallback.
+       */
+
+      try {
+
+        if (
+          navigator.sendBeacon
+        ) {
+
+          navigator.sendBeacon(
+            url
+          );
+        }
+
+      } catch (e) {}
+
+    } catch (e) {}
+  }
+
+  /*
+   * ---------------------------------------------------------
+   * Debugging API
    * ---------------------------------------------------------
    */
 
@@ -3000,12 +3217,6 @@
           observedGA4:
             observedGA4,
 
-          observedGA4Events:
-            Object.assign(
-              {},
-              observedGA4Events
-            ),
-
           observedGA4EventCounts:
             Object.assign(
               {},
@@ -3029,11 +3240,12 @@
                   source:
                     event.source,
 
+                  networkMatched:
+                    event.networkMatched,
+
                   timestamp:
                     event.timestamp
-
                 };
-
               }
             ),
 
@@ -3055,24 +3267,43 @@
                     event.source,
 
                   isGA4Candidate:
-                    event.isGA4Candidate
+                    event.isGA4Candidate,
 
+                  networkMatched:
+                    event.networkMatched
                 };
+              }
+            ),
 
+          pendingNetworkGA4:
+            pendingNetworkGA4.map(
+              function (
+                event
+              ) {
+
+                return {
+
+                  eventName:
+                    event.eventName,
+
+                  timestamp:
+                    event.timestamp
+                };
               }
             )
-
         };
-
       };
 
   } catch (e) {}
 
   /*
    * ---------------------------------------------------------
-   * Final marker
+   * Ready
    * ---------------------------------------------------------
    */
+
+  g.ready =
+    true;
 
   try {
 
