@@ -103,7 +103,7 @@ function normalizeRawUrl(rawUrl: string | null): string {
   if (!rawUrl) return '';
   try {
     const parsed = new URL(rawUrl);
-    for (const key of ['_p', '_s', 'tfd', '_et', '_tu', '_eu', 'rcb', 'gcs', 'gcd', 'gcu', 'gcut', 'tag_exp', 'richsstsse', 'attribution-reporting-eligible', 'sst.rnd', 'sst.tft', 'sst.lpc', 'sst.navt', 'sst.ude', 'sst.syn', 'sst.sw_exp']) parsed.searchParams.delete(key);
+    for (const key of ['_p', '_s', 'tfd', '_et', '_tu', '_eu', 'rcb', 'gcs', 'gcd', 'gcu', 'gcut', 'tag_exp', 'richsstsse', 'attribution-reporting-eligible', 'sst.rnd', 'sst.tft', 'sst.lpc', 'sst.navt', 'sst.ude', 'sst.syn', 'sst.sw_exp', 'ecid', 'cid', 'sid', 'sct', 'seg', '_fplc', 'uaa', 'uab', 'uafvl', 'ul', 'sr']) parsed.searchParams.delete(key);
     const entries = Array.from(parsed.searchParams.entries()).sort(([ak, av], [bk, bv]) => ak.localeCompare(bk) || av.localeCompare(bv));
     parsed.search = '';
     for (const [key, value] of entries) parsed.searchParams.append(key, value);

@@ -99,7 +99,7 @@
     return String(value);
   }
   function signature(params, eventName) {
-    var ignored = { _p: 1, _s: 1, sid: 1, sct: 1, _et: 1, _tu: 1, _eu: 1, dt: 1, dr: 1, dl: 1 };
+    var ignored = { _p: 1, _s: 1, sid: 1, sct: 1, _et: 1, _tu: 1, _eu: 1, dt: 1, dr: 1, dl: 1, ecid: 1, cid: 1, seg: 1, _fplc: 1, uaa: 1, uab: 1, uafvl: 1, ul: 1, sr: 1, 'sst.rnd': 1, 'sst.tft': 1, 'sst.lpc': 1, 'sst.navt': 1, 'sst.ude': 1, 'sst.sw_exp': 1, tag_exp: 1, richsstsse: 1 };
     return (eventName || '') + '|' + Object.keys(params || {}).filter(function (k) { return !ignored[k]; }).sort().map(function (k) { return k + '=' + stable(params[k]); }).join('&').slice(0, 1000);
   }
   function vendorFor(url, params) {

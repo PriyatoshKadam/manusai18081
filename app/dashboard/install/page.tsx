@@ -114,7 +114,18 @@ function getMonitorOrigin(
     );
 
   /*
-   * 2. Customer first-party domain
+   * 2. Explicit application URL
+   *
+   * Render deployments commonly set this to the telemetry service.
+   * It is safer than falling back to a dashboard/customer host.
+   */
+  const configuredAppOrigin =
+    normalizeOrigin(
+      process.env.NEXT_PUBLIC_APP_URL
+    );
+
+  /*
+   * 3. Customer first-party domain
    *
    * Example:
    *
@@ -126,7 +137,7 @@ function getMonitorOrigin(
     );
 
   /*
-   * 3. Current GA4Fix application origin
+   * 4. Current GA4Fix application origin
    *
    * Used as the final fallback.
    */
@@ -140,6 +151,7 @@ function getMonitorOrigin(
 
   return (
     deploymentOrigin ||
+    configuredAppOrigin ||
     firstPartyOrigin ||
     applicationOrigin
   );
@@ -462,9 +474,19 @@ export default function InstallPage() {
         </h2>
 
         <p className="text-sm text-ink-500 mt-0.5">
-          One tag. Five lines. Paste into GTM,
-          publish, done. Events start streaming
-          within seconds.
+          One compact tag. Paste it directly into
+          your site&apos;s &lt;head&gt;, not through GTM.
+          This keeps GA4Fix alive when GTM is broken
+          or duplicated.
+        </p>
+      </div>
+
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
+        <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">
+          Install outside GTM
+        </div>
+        <p className="text-sm text-amber-900 leading-relaxed">
+          Add this one script directly in the site&apos;s <code>&lt;head&gt;</code>. Do not create two GTM copies of the GA4 event tag and do not install GA4Fix through GTM. GA4Fix must observe GTM independently so it can compare dataLayer pushes, tag paths, and network requests.
         </p>
       </div>
 
