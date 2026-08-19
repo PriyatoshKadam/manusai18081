@@ -28,8 +28,12 @@ export default function GtmConnectPage() {
   const selectedContainer = selectedAccount?.containers.find((item) => item.containerId === containerId);
   const preview = useMemo(() => {
     const origin = (process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
-    return site && origin ? `<script src="${origin}/monitor.js?apiKey=${encodeURIComponent(site.api_key)}" async></script>` : 'Configure NEXT_PUBLIC_MONITOR_ORIGIN to preview the monitor tag.';
-  }, [site]);
+    if (!site || !origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN to preview the monitor tag.';
+    const url = new URL('/monitor.js', origin);
+    url.searchParams.set('apiKey', site.api_key);
+    if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', selectedContainer.publicId);
+    return `<script src="${url.toString()}" async></script>`;
+  }, [site, selectedContainer]);
 
   async function loadContainers() {
     setLoadingContainers(true);
@@ -70,7 +74,7 @@ export default function GtmConnectPage() {
     if (!site || !accountId || !containerId) return;
     setLoading(true); setError(null); setNotice(null);
     try {
-      const response = await fetch('/api/gtm/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ siteId: site.id, accountId, containerId }) });
+      const response = await fetch('/api/gtm/install', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ siteId: site.id, accountId, containerId, gtmPublicId: selectedContainer?.publicId || '' }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Unable to add the monitor tag');
       setInstallation(data); setNotice('The monitor tag is ready in a new GTM workspace. Review the workspace, then publish when you are ready.');

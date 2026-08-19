@@ -73,6 +73,14 @@ The migration uses the same PostgreSQL TLS configuration as the application pool
 
 After the customer clicks **Connect Google account**, GA4Fix lists the accounts and containers available to that Google identity. **Add monitor tag to GTM** creates a new reviewable workspace with a Custom HTML tag and All Pages trigger; it does not change the live container. The separate **Publish container** action creates a version and publishes it only after an in-product confirmation. Customers can open the workspace in GTM and review the version history before publishing.
 
+### Installation rule
+
+GA4Fix has one monitor script and one supported GTM installation. The recommended path is **Dashboard → Setup → Connect GTM**, which creates the Custom HTML tag in a reviewable workspace. The manual page is only a fallback: copy the exact same `<script src=".../monitor.js?..." async></script>` tag into one GTM Custom HTML tag with an All Pages trigger. Do not add the monitor to the website `<head>` and do not use both Connect GTM and the manual tag, because loading the monitor twice creates duplicate telemetry.
+
+Duplicate diagnostics include both server alerts and derived session-scoped evidence from repeated normalized network requests or repeated repeat-sensitive events such as `login`. This makes a duplicate visible even when alert creation and ingestion arrive in a different order.
+
+Ad-blocker reporting distinguishes **confirmed** transport/resource/script failures from **correlation gaps** where a dataLayer event did not yet match a network request, and from **telemetry gaps** where GA4Fix could not deliver its own evidence. Correlation gaps are investigation signals, not proof that a browser has an ad blocker.
+
 ### Step 4 — Trigger a deploy
 
 Click **Manual Deploy → Deploy latest commit**. The build will:
@@ -119,4 +127,4 @@ Open http://localhost:3000
 - **Live event streaming** uses capped Server-Sent Events (`/api/stream`) with five-second polling, heartbeats, cleanup, and a ten-minute reconnect lifetime.
 - **First-party routing** is handled in `proxy.ts` — if the `Host` header does not match `NEXT_PUBLIC_APP_URL`, only telemetry routes are exposed; security headers and JWT validation are applied to dashboard requests.
 - **Duplicate root-cause** uses browser session IDs, SPA navigation IDs, occurrence IDs, dataLayer push indexes, request signatures, transports, and GTM/direct source evidence. Repeated scroll, click, user_engagement, and route events are not defects by name alone.
-- **Ad-blocker detection** combines monitor/script failures, vendor resource errors, GA4 event timeouts, failed fetch/XHR/sendBeacon transports, blocked URLs, event names, and distinct-session reporting. The dashboard shows signal and vendor coverage rather than a raw beacon total.
+- **Ad-blocker detection** combines monitor/script failures, vendor resource errors, failed fetch/XHR/sendBeacon transports, blocked URLs, event names, and distinct-session reporting. Confirmed failures are separated from correlation and telemetry gaps, so an unmatched event is not presented as proof of an ad blocker.

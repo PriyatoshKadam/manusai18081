@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyDuplicateRootCause, classifyEvent, getEventIdentity, normalizePageUrl } from '../lib/detection';
 import { normalizeHostname, normalizeSiteInput } from '../lib/site-validation';
 import { normalizeTelemetryEvent, parseIngestBody } from '../lib/ingest-validation';
-import { buildGtmAuthorizationUrl, decryptSecret, encryptSecret, monitorTagPayload } from '../lib/gtm';
+import { buildGtmAuthorizationUrl, decryptSecret, encryptSecret, monitorTagHtml, monitorTagPayload } from '../lib/gtm';
 
 describe('site validation', () => {
   it('normalizes hostnames and rejects paths', () => {
@@ -59,6 +59,7 @@ describe('GTM Connect helpers', () => {
     const originalSecret = process.env.SESSION_SECRET;
     const originalClient = process.env.GTM_CLIENT_ID;
     const originalRedirect = process.env.GTM_REDIRECT_URI;
+    const originalMonitorOrigin = process.env.NEXT_PUBLIC_MONITOR_ORIGIN;
     process.env.SESSION_SECRET = 'test-session-secret-that-is-at-least-32-chars';
     process.env.GTM_CLIENT_ID = 'client-id.apps.googleusercontent.com';
     process.env.GTM_REDIRECT_URI = 'https://monitor.example.com/api/gtm/callback';
@@ -67,6 +68,8 @@ describe('GTM Connect helpers', () => {
       expect(authorization.searchParams.get('client_id')).toBe(process.env.GTM_CLIENT_ID);
       expect(authorization.searchParams.get('access_type')).toBe('offline');
       expect(authorization.searchParams.get('scope')).toContain('tagmanager.publish');
+      process.env.NEXT_PUBLIC_MONITOR_ORIGIN = 'https://monitoring-0jsu.onrender.com';
+      expect(monitorTagHtml({ id: 1, api_key: 'a'.repeat(64) }, 'GTM-TEST123')).toContain('gtmContainerId=GTM-TEST123');
       expect(decryptSecret(encryptSecret('refresh-token-value'))).toBe('refresh-token-value');
 
       delete process.env.GTM_REDIRECT_URI;
@@ -76,6 +79,7 @@ describe('GTM Connect helpers', () => {
       process.env.SESSION_SECRET = originalSecret;
       process.env.GTM_CLIENT_ID = originalClient;
       process.env.GTM_REDIRECT_URI = originalRedirect;
+      process.env.NEXT_PUBLIC_MONITOR_ORIGIN = originalMonitorOrigin;
     }
   });
 

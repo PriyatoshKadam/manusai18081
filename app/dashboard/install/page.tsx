@@ -366,10 +366,6 @@ export default function InstallPage() {
     );
   }
 
-  const gtmId =
-    site.gtm_container_id ||
-    'GTM-XXXXXXX';
-
   const apiKey =
     site.api_key;
 
@@ -392,13 +388,14 @@ export default function InstallPage() {
     'apiKey',
     apiKey
   );
+  if (site.gtm_container_id) {
+    monitorUrl.searchParams.set(
+      'gtmContainerId',
+      site.gtm_container_id
+    );
+  }
 
-  monitorUrl.searchParams.set(
-    'gtmContainerId',
-    gtmId
-  );
-
-  const snippet = `<script>(function(w,d,k,c,o){if(w.__g4f&&w.__g4f.__bootstrapInstalled)return;w.__g4f=w.__g4f||{};w.__g4f.__bootstrapInstalled=true;var s=d.createElement('script');s.async=true;s.dataset.ga4fixMonitor='true';s.src=o+'/monitor.js?apiKey='+encodeURIComponent(k)+'&gtmContainerId='+encodeURIComponent(c);s.onerror=function(){try{navigator.sendBeacon(o+'/api/blocked?k='+encodeURIComponent(k)+'&m=script_error')}catch(e){}};(d.head||d.documentElement).appendChild(s)})(window,document,${JSON.stringify(apiKey)},${JSON.stringify(gtmId)},${JSON.stringify(monitorOrigin)});</script>`;
+  const snippet = `<script src="${monitorUrl.toString()}" async></script>`;
 
   async function copy() {
     try {
@@ -470,24 +467,22 @@ export default function InstallPage() {
 
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-ink-950">
-          Install snippet for {site.domain}
+          Install through Google Tag Manager for {site.domain}
         </h2>
 
         <p className="text-sm text-ink-500 mt-0.5">
-          One compact tag. Paste it directly into
-          your site&apos;s &lt;head&gt;, not through GTM.
-          This keeps GA4Fix alive when GTM is broken
-          or duplicated.
+          Choose one installation path: Connect GTM automatically, or add the same Custom HTML tag manually. Do not install both.
         </p>
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
         <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">
-          Install outside GTM
+          Recommended: Connect GTM
         </div>
         <p className="text-sm text-amber-900 leading-relaxed">
-          Add this one script directly in the site&apos;s <code>&lt;head&gt;</code>. Do not create two GTM copies of the GA4 event tag and do not install GA4Fix through GTM. GA4Fix must observe GTM independently so it can compare dataLayer pushes, tag paths, and network requests.
+          Use <b>Connect GTM</b> to authorize GA4Fix, create the monitor tag in a reviewable workspace, and publish it safely. If you cannot authorize GTM, use the manual Custom HTML option below. Both options install the same single monitor script; never use both.
         </p>
+        <a href={`/dashboard/gtm-connect?siteId=${encodeURIComponent(String(site.id))}`} className="mt-3 inline-block rounded-lg bg-ink-950 px-4 py-2 text-sm font-semibold text-white hover:bg-ink-800">Connect GTM (recommended)</a>
       </div>
 
       {/* Monitor origin */}
@@ -520,23 +515,7 @@ export default function InstallPage() {
             </h3>
 
             <p className="text-xs text-ink-500 mt-0.5">
-              Pre-filled with your API key
-              {site.gtm_container_id ? (
-                <>
-                  {' '}
-                  and GTM container{' '}
-                  <span className="mono">
-                    {site.gtm_container_id}
-                  </span>
-                </>
-              ) : (
-                <span className="text-amber-600">
-                  {' '}
-                  (add your GTM container ID
-                  in Settings for full features)
-                </span>
-              )}
-              .
+              This is the same tag created by Connect GTM. Add it manually only if you cannot use the automatic connection.
             </p>
           </div>
 
@@ -568,7 +547,7 @@ export default function InstallPage() {
       <div className="bg-white rounded-xl border border-ink-200 p-6 mb-6">
 
         <h3 className="font-semibold text-ink-950 mb-4">
-          How to install in Google Tag Manager
+          Manual fallback: add the same tag in Google Tag Manager
         </h3>
 
         <ol className="space-y-4 text-sm text-ink-800">
@@ -594,8 +573,7 @@ export default function InstallPage() {
 
             <>
               Choose tag type{' '}
-              <b>Custom HTML</b>, then paste
-              the snippet above into the HTML box.
+              <b>Custom HTML</b>, then paste the one snippet above into the HTML box. Do not paste it into the website head as well.
             </>,
 
             <>
@@ -614,13 +592,12 @@ export default function InstallPage() {
               <span className="mono">
                 GA4Fix Monitor
               </span>
-              , click <b>Save</b>, then{' '}
+              , click <b>Save</b>, then use GTM Preview to verify it once before{' '}
               <b>Submit</b> → <b>Publish</b>.
             </>,
 
             <>
-              Return here — events will appear
-              on the Overview tab within seconds.
+              Return here — events should appear on the Overview tab within seconds. If you use Connect GTM, do not repeat this manual installation.
             </>,
           ].map(
             (step, index) => (

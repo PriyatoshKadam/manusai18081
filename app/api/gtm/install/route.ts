@@ -24,10 +24,11 @@ export async function POST(req: NextRequest) {
     const siteId = Number(body?.siteId);
     const accountId = String(body?.accountId || '').trim();
     const containerId = String(body?.containerId || '').trim();
+    const gtmPublicId = String(body?.gtmPublicId || '').trim();
     if (!Number.isSafeInteger(siteId) || siteId <= 0) return NextResponse.json({ error: 'Valid siteId required' }, { status: 400 });
     if (!validGtmId(accountId) || !validGtmId(containerId)) return NextResponse.json({ error: 'Valid GTM accountId and containerId required' }, { status: 400 });
 
-    const siteResult = await query('SELECT id, domain, api_key FROM sites WHERE id = $1 AND user_id = $2 LIMIT 1', [siteId, session.uid]);
+    const siteResult = await query('SELECT id, domain, api_key, gtm_container_id FROM sites WHERE id = $1 AND user_id = $2 LIMIT 1', [siteId, session.uid]);
     const site = siteResult.rows[0];
     if (!site) return NextResponse.json({ error: 'Site not found' }, { status: 404 });
     const connection = await getConnection(session.uid);
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     const trigger = await gtmRequest<{ triggerId?: string; name?: string; path?: string }>(`${parent}/triggers`, token, { method: 'POST', body: JSON.stringify(monitorTriggerPayload()) });
     const triggerId = String(trigger.triggerId || '').trim();
     if (!triggerId) throw new Error('GTM did not return a trigger ID');
-    const tag = await gtmRequest<{ tagId?: string; name?: string; path?: string; tagManagerUrl?: string }>(`${parent}/tags`, token, { method: 'POST', body: JSON.stringify(monitorTagPayload(site, triggerId)) });
+    const tag = await gtmRequest<{ tagId?: string; name?: string; path?: string; tagManagerUrl?: string }>(`${parent}/tags`, token, { method: 'POST', body: JSON.stringify(monitorTagPayload(site, triggerId, gtmPublicId || site.gtm_container_id || undefined)) });
     const tagId = String(tag.tagId || '').trim();
     if (!tagId) throw new Error('GTM did not return a tag ID');
 

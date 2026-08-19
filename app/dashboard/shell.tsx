@@ -50,7 +50,7 @@ export default function DashboardShell({
       { href: '/dashboard/consent', label: 'Consent Mode', icon: iconLock },
     ]},
     { section: 'Setup', items: [
-      { href: '/dashboard/install', label: 'Install snippet', icon: iconCode },
+      { href: '/dashboard/install', label: 'Manual GTM install', icon: iconCode },
       { href: '/dashboard/gtm-connect', label: 'Connect GTM', icon: iconLink, highlight: true },
       { href: '/dashboard/settings', label: 'Settings', icon: iconGear },
     ]},
@@ -157,7 +157,7 @@ function pageTitle(path: string) {
     '/dashboard/gtm': 'GTM diagnostics',
     '/dashboard/adblock': 'Ad-blocker impact',
     '/dashboard/consent': 'Consent Mode',
-    '/dashboard/install': 'Install snippet',
+    '/dashboard/install': 'Manual GTM install',
     '/dashboard/gtm-connect': 'Connect GTM',
     '/dashboard/settings': 'Settings',
   };

@@ -105,19 +105,21 @@ export async function getAccessToken(connection: { refresh_token_encrypted: stri
 export const GTM_MONITOR_TAG_NAME = 'GA4Fix – Real User Monitor';
 export const GTM_MONITOR_TRIGGER_NAME = 'GA4Fix – All Pages';
 
-export function monitorTagHtml(site: { id: number | string; api_key: string }) {
+export function monitorTagHtml(site: { id: number | string; api_key: string }, gtmContainerId?: string) {
   const origin = (process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
   if (!origin) throw new Error('NEXT_PUBLIC_MONITOR_ORIGIN or NEXT_PUBLIC_APP_URL must be configured');
-  const apiKey = encodeURIComponent(String(site.api_key));
-  return `<script src="${origin}/monitor.js?apiKey=${apiKey}" async></script>`;
+  const url = new URL('/monitor.js', origin);
+  url.searchParams.set('apiKey', String(site.api_key));
+  if (gtmContainerId) url.searchParams.set('gtmContainerId', String(gtmContainerId));
+  return `<script src="${url.toString()}" async></script>`;
 }
 
-export function monitorTagPayload(site: { id: number | string; api_key: string }, triggerId: string) {
+export function monitorTagPayload(site: { id: number | string; api_key: string }, triggerId: string, gtmContainerId?: string) {
   return {
     name: GTM_MONITOR_TAG_NAME,
     type: 'html',
     notes: 'Managed by GA4Fix. This tag observes analytics, GTM, consent, performance, and blocked-request evidence for the selected site.',
-    parameter: [{ type: 'TEMPLATE', key: 'html', value: monitorTagHtml(site) }, { type: 'BOOLEAN', key: 'supportDocumentWrite', value: 'false' }],
+    parameter: [{ type: 'TEMPLATE', key: 'html', value: monitorTagHtml(site, gtmContainerId) }, { type: 'BOOLEAN', key: 'supportDocumentWrite', value: 'false' }],
     firingTriggerId: [triggerId],
     tagFiringOption: 'oncePerLoad',
   };

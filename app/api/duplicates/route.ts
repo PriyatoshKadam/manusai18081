@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '../../../lib/auth';
 import { query } from '../../../lib/db';
 
+const REPEAT_SENSITIVE_EVENTS = ['login', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe'];
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -9,13 +11,119 @@ export async function GET(req: NextRequest) {
   if (!Number.isSafeInteger(siteId) || siteId <= 0) return NextResponse.json({ error: 'siteId required' }, { status: 400 });
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const rows = await query(
-    `SELECT id, event_name, vendor, category, code, message, root_cause, fix_steps, raw, occurrence_count, distinct_pushes, page_url, created_at
-       FROM alerts WHERE site_id = $1 AND category IN ('analytics','gtm') AND resolved = false
-         AND code IN ('duplicate_event','duplicate_network_request','gtm_multiple_tags_or_triggers','gtm_gtm_and_direct_implementation','gtm_datalayer_duplicate_push')
-         AND created_at > NOW() - INTERVAL '24 hours'
-       ORDER BY created_at DESC LIMIT 100`,
-    [siteId],
-  );
-  return NextResponse.json({ duplicates: rows.rows });
+
+  const [alertRows, networkRows, repeatRows] = await Promise.all([
+    query(
+      `SELECT id, event_name, vendor, category, code, message, root_cause, fix_steps, raw, occurrence_count, distinct_pushes, page_url, created_at
+         FROM alerts WHERE site_id = $1 AND category IN ('analytics','gtm') AND resolved = false
+           AND code IN ('duplicate_event','duplicate_network_request','gtm_multiple_tags_or_triggers','gtm_gtm_and_direct_implementation','gtm_datalayer_duplicate_push')
+           AND created_at > NOW() - INTERVAL '24 hours'
+         ORDER BY created_at DESC LIMIT 100`,
+      [siteId],
+    ),
+    query(
+      `SELECT event_name, vendor, page_url, session_id, request_signature,
+              COUNT(*)::int AS occurrence_count,
+              COUNT(DISTINCT dl_push_index)::int AS distinct_pushes,
+              MIN(received_at) AS first_seen,
+              MAX(received_at) AS last_seen,
+              ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids
+         FROM events
+        WHERE site_id = $1
+          AND vendor = 'ga4'
+          AND observation_kind = 'network'
+          AND request_signature IS NOT NULL
+          AND session_id IS NOT NULL
+          AND received_at > NOW() - INTERVAL '24 hours'
+        GROUP BY event_name, vendor, page_url, session_id, request_signature
+       HAVING COUNT(*) > 1
+        ORDER BY last_seen DESC
+        LIMIT 100`,
+      [siteId],
+    ),
+    query(
+      `WITH ordered AS (
+         SELECT id, event_name, vendor, page_url, session_id, request_signature, received_at,
+                LAG(received_at) OVER (PARTITION BY site_id, vendor, event_name, session_id ORDER BY received_at) AS previous_seen
+           FROM events
+          WHERE site_id = $1
+            AND vendor = 'ga4'
+            AND observation_kind = 'network'
+            AND session_id IS NOT NULL
+            AND LOWER(COALESCE(event_name, '')) = ANY($2::text[])
+            AND received_at > NOW() - INTERVAL '24 hours'
+       )
+       SELECT event_name, vendor, page_url, session_id,
+              COUNT(*)::int AS occurrence_count,
+              COUNT(DISTINCT request_signature)::int AS signature_count,
+              MIN(received_at) AS first_seen,
+              MAX(received_at) AS last_seen,
+              ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids
+         FROM ordered
+        WHERE previous_seen IS NOT NULL AND received_at - previous_seen <= INTERVAL '120 seconds'
+        GROUP BY event_name, vendor, page_url, session_id
+       HAVING COUNT(*) > 1
+        ORDER BY last_seen DESC
+        LIMIT 100`,
+      [siteId, REPEAT_SENSITIVE_EVENTS],
+    ),
+  ]);
+
+  const alerts = alertRows.rows.map((row: any) => ({
+    ...row,
+    sourceType: 'alert',
+    duplicateKey: `${row.code}:${row.id}`,
+  }));
+  const derivedNetwork = networkRows.rows.map((row: any) => ({
+    id: `network-${row.event_ids?.[0] || row.last_seen}`,
+    event_name: row.event_name,
+    vendor: row.vendor,
+    category: 'analytics',
+    code: 'duplicate_network_request',
+    message: `${row.event_name || 'GA4 event'} produced ${row.occurrence_count} matching network requests in one browser session.`,
+    root_cause: 'The same normalized GA4 network request signature was observed more than once in one browser session. This usually indicates duplicate tags, duplicate triggers, or a retry path.',
+    fix_steps: ['Open GTM Preview or Tag Assistant and inspect every tag firing for this event.', 'Check whether two GA4 Event tags use the same trigger.', 'Check for a direct gtag() or analytics SDK implementation alongside GTM.', 'Check whether a retry or SPA lifecycle handler sends the same request twice.'],
+    raw: { sessionId: row.session_id, requestSignature: row.request_signature, eventIds: row.event_ids, firstSeen: row.first_seen, lastSeen: row.last_seen },
+    occurrence_count: row.occurrence_count,
+    distinct_pushes: row.distinct_pushes,
+    page_url: row.page_url,
+    created_at: row.last_seen,
+    sourceType: 'derived_network_evidence',
+    duplicateKey: `network:${row.session_id}:${row.event_name}:${row.request_signature}`,
+  }));
+  const derivedRepeats = repeatRows.rows.map((row: any) => ({
+    id: `repeat-${row.event_ids?.[0] || row.last_seen}`,
+    event_name: row.event_name,
+    vendor: row.vendor,
+    category: 'analytics',
+    code: 'duplicate_event',
+    message: `${row.event_name || 'GA4 event'} occurred ${row.occurrence_count} times within 120 seconds in one browser session.`,
+    root_cause: Number(row.signature_count) === 1
+      ? 'The same event and normalized request evidence repeated in one browser session.'
+      : 'The same event repeated in one browser session, but request parameters differed. Verify whether two GTM tags, triggers, or implementation paths fired.',
+    fix_steps: ['Open GTM Preview or Tag Assistant and inspect every firing for this event.', 'Compare dataLayer pushes, tag names, trigger conditions, and request parameters.', 'Check for a direct gtag() or analytics SDK implementation alongside GTM.', 'For purchase, verify transaction_id is unique; for login, verify the success callback runs only once.'],
+    raw: { sessionId: row.session_id, eventIds: row.event_ids, signatureCount: row.signature_count, firstSeen: row.first_seen, lastSeen: row.last_seen },
+    occurrence_count: row.occurrence_count,
+    distinct_pushes: null,
+    page_url: row.page_url,
+    created_at: row.last_seen,
+    sourceType: 'derived_repeat_evidence',
+    duplicateKey: `repeat:${row.session_id}:${row.event_name}:${row.page_url || ''}`,
+  }));
+
+  const merged = [...alerts, ...derivedNetwork, ...derivedRepeats];
+  const seen = new Set<string>();
+  const duplicates = merged.filter((item) => {
+    const raw = typeof item.raw === 'string' ? (() => { try { return JSON.parse(item.raw); } catch { return {}; } })() : item.raw || {};
+    const evidenceKey = item.code === 'duplicate_network_request' && raw.sessionId && (raw.requestSignature || raw.request_signature)
+      ? `network:${raw.sessionId}:${raw.requestSignature || raw.request_signature}`
+      : item.code === 'duplicate_event' && raw.sessionId && raw.eventIds?.length
+        ? `repeat:${raw.sessionId}:${item.event_name}:${item.page_url || ''}`
+        : item.duplicateKey;
+    if (seen.has(evidenceKey)) return false;
+    seen.add(evidenceKey);
+    return true;
+  }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 100);
+
+  return NextResponse.json({ duplicates });
 }
