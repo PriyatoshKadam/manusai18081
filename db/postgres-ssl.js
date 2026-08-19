@@ -30,7 +30,9 @@ function getPostgresOptions(url) {
 
   const ca = readCa();
   const configured = process.env.PG_SSL_REJECT_UNAUTHORIZED;
-  const rejectUnauthorized = configured === 'true' || (configured !== 'false' && Boolean(ca || !isRenderHost(url)));
+  const selfSignedCompatibility = process.env.PG_SSL === 'true' || isRenderHost(url);
+  const rejectUnauthorized = configured === 'true' || (configured !== 'false' && (Boolean(ca) || !selfSignedCompatibility));
+  if (!rejectUnauthorized && !ca) console.warn('[Postgres] TLS certificate verification is disabled; set PG_CA_CERT/PG_CA_CERT_PATH or PG_SSL_REJECT_UNAUTHORIZED=true to enable it.');
   return {
     connectionString: withoutSslConnectionOptions(url),
     ssl: { rejectUnauthorized, ...(ca ? { ca } : {}) },
