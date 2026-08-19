@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
   if (!validUid || !validState) return redirect(req, 'invalid_state');
 
   try {
-    const tokenResponse = await exchangeCode(code);
+    const tokenResponse = await exchangeCode(code, req.url);
     const accessToken = tokenResponse.access_token;
     if (!accessToken) throw new Error('Google did not return an access token');
     const identity = await googleUserInfo(accessToken);

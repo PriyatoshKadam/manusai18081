@@ -29,10 +29,13 @@ export function decryptSecret(value: string) {
   return Buffer.concat([decipher.update(Buffer.from(dataText, 'base64url')), decipher.final()]).toString('utf8');
 }
 
-export function gtmRedirectUri() {
+export function gtmRedirectUri(requestUrl?: string) {
   const configured = process.env.GTM_REDIRECT_URI?.trim();
+  const requestFallback = requestUrl ? (() => {
+    try { return new URL('/api/gtm/callback', requestUrl).toString(); } catch { return ''; }
+  })() : '';
   const fallback = process.env.NEXT_PUBLIC_APP_URL?.trim() ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/api/gtm/callback` : '';
-  const value = configured || fallback;
+  const value = configured || requestFallback || fallback;
   if (!value) return '';
   try {
     const url = new URL(value);
@@ -43,12 +46,13 @@ export function gtmRedirectUri() {
   }
 }
 
-export function buildGtmAuthorizationUrl(state: string) {
-  const clientId = process.env.GTM_CLIENT_ID;
-  if (!clientId || !gtmRedirectUri()) throw new Error('GTM_CLIENT_ID and GTM_REDIRECT_URI must be configured');
+export function buildGtmAuthorizationUrl(state: string, requestUrl?: string) {
+  const clientId = process.env.GTM_CLIENT_ID?.trim();
+  if (!clientId) throw new Error('GTM_CLIENT_ID is missing. Add the Google OAuth web-client ID to the deployed service environment.');
+  if (!gtmRedirectUri(requestUrl)) throw new Error('GTM_REDIRECT_URI is invalid and NEXT_PUBLIC_APP_URL is not configured.');
   const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   url.searchParams.set('client_id', clientId);
-  url.searchParams.set('redirect_uri', gtmRedirectUri());
+  url.searchParams.set('redirect_uri', gtmRedirectUri(requestUrl));
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('access_type', 'offline');
   url.searchParams.set('prompt', 'consent');
@@ -64,11 +68,14 @@ export async function googleUserInfo(accessToken: string) {
   return payload as { email?: string; sub?: string };
 }
 
-export async function exchangeCode(code: string) {
-  const clientId = process.env.GTM_CLIENT_ID;
-  const clientSecret = process.env.GTM_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error('GTM OAuth credentials are not configured');
-  const body = new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: gtmRedirectUri(), grant_type: 'authorization_code' });
+export async function exchangeCode(code: string, requestUrl?: string) {
+  const clientId = process.env.GTM_CLIENT_ID?.trim();
+  const clientSecret = process.env.GTM_CLIENT_SECRET?.trim();
+  if (!clientId) throw new Error('GTM_CLIENT_ID is missing');
+  if (!clientSecret) throw new Error('GTM_CLIENT_SECRET is missing');
+  const redirectUri = gtmRedirectUri(requestUrl);
+  if (!redirectUri) throw new Error('GTM redirect URI is invalid');
+  const body = new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' });
   const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const payload = await response.json();
   if (!response.ok || !payload.refresh_token) throw new Error(payload.error_description || 'Google did not return a refresh token');

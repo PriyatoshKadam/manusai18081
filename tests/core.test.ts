@@ -68,6 +68,10 @@ describe('GTM Connect helpers', () => {
       expect(authorization.searchParams.get('access_type')).toBe('offline');
       expect(authorization.searchParams.get('scope')).toContain('tagmanager.publish');
       expect(decryptSecret(encryptSecret('refresh-token-value'))).toBe('refresh-token-value');
+
+      delete process.env.GTM_REDIRECT_URI;
+      const fallbackAuthorization = new URL(buildGtmAuthorizationUrl('state-token', 'https://monitoring-0jsu.onrender.com/api/gtm/connect'));
+      expect(fallbackAuthorization.searchParams.get('redirect_uri')).toBe('https://monitoring-0jsu.onrender.com/api/gtm/callback');
     } finally {
       process.env.SESSION_SECRET = originalSecret;
       process.env.GTM_CLIENT_ID = originalClient;
