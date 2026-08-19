@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS adblock_events (
   user_agent TEXT,
   ip_hash TEXT,
   blocked_vendors JSONB DEFAULT '[]'::jsonb,
+  confidence TEXT NOT NULL DEFAULT 'confirmed',
   detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -201,6 +202,7 @@ ALTER TABLE adblock_events
   ADD COLUMN IF NOT EXISTS user_agent TEXT,
   ADD COLUMN IF NOT EXISTS ip_hash TEXT,
   ADD COLUMN IF NOT EXISTS blocked_vendors JSONB DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS confidence TEXT NOT NULL DEFAULT 'confirmed',
   ADD COLUMN IF NOT EXISTS session_id TEXT,
   ADD COLUMN IF NOT EXISTS blocked_url TEXT,
   ADD COLUMN IF NOT EXISTS event_name TEXT,
@@ -299,3 +301,13 @@ CREATE TABLE IF NOT EXISTS gtm_installations (
 
 CREATE INDEX IF NOT EXISTS idx_gtm_installations_user_site
   ON gtm_installations(user_id, site_id, created_at DESC);
+
+-- Legacy unmatched-event reports are correlation evidence, not confirmed ad blocking.
+UPDATE adblock_events
+SET confidence = CASE
+  WHEN detection_method = 'ga4_event_blocked' OR signal = 'ga4_event' THEN 'correlation_gap'
+  WHEN detection_method = 'ingest_transport_blocked' OR signal = 'ingest_transport' THEN 'telemetry_gap'
+  ELSE COALESCE(NULLIF(confidence, ''), 'confirmed')
+END
+WHERE detection_method = 'ga4_event_blocked'
+   OR signal IN ('ga4_event', 'ingest_transport');

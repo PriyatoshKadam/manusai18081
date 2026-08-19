@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const rows = await query(
     `SELECT id, event_name, vendor, category, code, message, root_cause, fix_steps, raw, occurrence_count, distinct_pushes, page_url, created_at
        FROM alerts WHERE site_id = $1 AND category IN ('analytics','gtm') AND resolved = false
-         AND code IN ('duplicate_event','gtm_multiple_tags_or_triggers','gtm_gtm_and_direct_implementation','gtm_datalayer_duplicate_push')
+         AND code IN ('duplicate_event','duplicate_network_request','gtm_multiple_tags_or_triggers','gtm_gtm_and_direct_implementation','gtm_datalayer_duplicate_push')
          AND created_at > NOW() - INTERVAL '24 hours'
        ORDER BY created_at DESC LIMIT 100`,
     [siteId],

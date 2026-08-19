@@ -1,0 +1,9 @@
+# HAR findings (2026-08-19)
+
+The supplied `dev-app.gafix.ai.har` contains six successful loads of `https://monitoring-0jsu.onrender.com/monitor.js?apiKey=...`. All six use the same 64-character API-key shape, return HTTP 200, and contain monitor version 12.0. The deployed script body matches the repository `public/monitor.js` byte-for-byte.
+
+The HAR contains no request to `https://monitoring-0jsu.onrender.com/api/ingest` and no request to `https://monitoring-0jsu.onrender.com/api/blocked`. It does contain two successful GA4 requests for `login` at `https://dev-app.gafix.ai/metrics/g/collect`, at 07:13:10.515Z and 07:13:10.526Z, both returning HTTP 204. This proves the browser fired the login network event twice, but the GA4Fix monitor did not deliver any corresponding telemetry in the capture. The page CSP includes `https://monitoring-0jsu.onrender.com` in both `script-src` and `connect-src`, so the visible HAR does not indicate a CSP denial.
+
+The current audit dashboard button only POSTs to `/api/audit`; it does not emit `dataLayer.push({event: 'run_audit'})` or a GA4 event. Therefore a runtime monitor cannot observe the button action as a customer-site event. The duplicate-alert API omits the `duplicate_network_request` alert code even though server detection can create it. The ad-block dashboard labels `ga4_event_blocked` as definitive ad-block impact and includes those rows in the blocked-event KPI, although an unmatched correlation can also result from monitor timing, page unload, missing GTM mapping, or telemetry ingestion failure.
+
+Planned corrections are: emit a real `run_audit` dataLayer event from the audit action; flush telemetry with `sendBeacon` on pagehide/visibility changes; expose network duplicate alerts; and separate confirmed transport/resource failures from unmatched-event correlation signals in ad-block KPIs and labels.

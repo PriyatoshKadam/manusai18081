@@ -45,6 +45,11 @@ function allowedOrigin(req: NextRequest, site: { domain: string; first_party_dom
   if (!host) return true;
   return hostnameMatches(host, site.domain) || hostnameMatches(host, site.first_party_domain);
 }
+function signalConfidence(method: string, signal: string) {
+  if (method === 'ga4_event_unmatched' || signal === 'ga4_event_correlation') return 'correlation_gap';
+  if (method === 'ingest_transport_blocked' || signal === 'ingest_transport') return 'telemetry_gap';
+  return 'confirmed';
+}
 
 async function recordBlocked(req: NextRequest, values: { apiKey: string; method: string; eventName: string | null; pageUrl: string | null; blockedUrl: string | null; sessionId: string | null; signal: string | null }) {
   if (!/^[a-f0-9]{48,64}$/i.test(values.apiKey)) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
@@ -58,14 +63,15 @@ async function recordBlocked(req: NextRequest, values: { apiKey: string; method:
   const blockedUrl = text(values.blockedUrl, MAX_TEXT) || null;
   const blockedVendors = vendorsForSignal(method, blockedUrl || '');
   const signal = text(values.signal, 80) || method;
+  const confidence = signalConfidence(method, signal);
   const sessionId = text(values.sessionId, 128) || null;
   const dedupeKey = `${site.id}:${sessionId || clientIpHash(req)}:${method}:${eventName || ''}:${blockedUrl || ''}`;
   const limited = rateLimit(`blocked:${dedupeKey}`, 4, 60_000);
   if (!limited.allowed) return json({ ok: true, deduped: true });
   await query(
-    `INSERT INTO adblock_events (site_id, detection_method, page_url, user_agent, ip_hash, blocked_vendors, session_id, blocked_url, event_name, signal)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)`,
-    [site.id, method, pageUrl, text(req.headers.get('user-agent'), 500), clientIpHash(req), JSON.stringify(blockedVendors), sessionId, blockedUrl, eventName, signal],
+    `INSERT INTO adblock_events (site_id, detection_method, page_url, user_agent, ip_hash, blocked_vendors, confidence, session_id, blocked_url, event_name, signal)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)`,
+    [site.id, method, pageUrl, text(req.headers.get('user-agent'), 500), clientIpHash(req), JSON.stringify(blockedVendors), confidence, sessionId, blockedUrl, eventName, signal],
   );
   return json({ ok: true, deduped: false });
 }

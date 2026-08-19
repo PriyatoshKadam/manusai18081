@@ -41,6 +41,8 @@ export default function AuditPage() {
     setRunning(true);
     setMessage('');
     try {
+      const layer = (window as any).dataLayer = (window as any).dataLayer || [];
+      layer.push({ event: 'run_audit', audit_type: 'runtime_evidence', site_id: Number(siteId), audit_source: 'ga4fix_dashboard', audit_started_at: Date.now() });
       const response = await fetch('/api/audit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siteId: Number(siteId) }) });
       const body = await response.json();
       if (!response.ok) throw new Error(body.error || 'Unable to run audit');

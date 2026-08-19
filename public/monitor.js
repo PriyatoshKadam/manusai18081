@@ -159,7 +159,16 @@
       if (request && request.catch) request.catch(function () { reportBlocked('ingest_transport_blocked', { blockedUrl: ingestUrl, signal: 'ingest_transport' }); });
       return;
     } catch (_) {}
-    try { if (navigator.sendBeacon) navigator.sendBeacon(ingestUrl, new Blob([body], { type: 'application/json' })); } catch (_) {}
+    try { if (navigator.sendBeacon) navigator.sendBeacon(ingestUrl, new Blob([body], { type: 'text/plain;charset=UTF-8' })); } catch (_) {}
+  }
+  function flushOnPageExit() {
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    if (!queue.length) return;
+    var body = JSON.stringify({ apiKey: apiKey, gtmContainerId: gtmContainerId, events: queue.splice(0, queue.length) });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon(ingestUrl, new Blob([body], { type: 'text/plain;charset=UTF-8' }))) return;
+    } catch (_) {}
+    try { fetch(ingestUrl, { method: 'POST', body: body, keepalive: true, credentials: 'omit', headers: { 'Content-Type': 'application/json' } }); } catch (_) {}
   }
   function reportBlocked(method, details) {
     details = details || {};
@@ -188,7 +197,7 @@
     setTimeout(function () {
       if (pending.indexOf(event) === -1 || event.networkMatched) return;
       pending.splice(pending.indexOf(event), 1);
-      reportBlocked('ga4_event_blocked', { eventName: event.eventName, occurrenceId: event.occurrenceId, sessionId: sessionId, reason: 'datalayer_event_without_matching_network_request', signal: 'ga4_event' });
+      reportBlocked('ga4_event_unmatched', { eventName: event.eventName, occurrenceId: event.occurrenceId, sessionId: sessionId, reason: 'datalayer_event_without_matching_network_request', signal: 'ga4_event_correlation' });
     }, WAIT_MS);
     return event;
   }
@@ -276,6 +285,8 @@
     try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false); }); } catch (_) {}
   }
   patchDataLayer(); patchNetwork(); patchHistory();
+  try { window.addEventListener('pagehide', flushOnPageExit); } catch (_) {}
+  try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushOnPageExit(); }); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false); } }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
   try { setInterval(scanPerformance, 1000); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.name === 'first-paint') captureVital('fcp', entry.startTime); }); }).observe({ type: 'paint', buffered: true }); } } catch (_) {}
