@@ -15,6 +15,15 @@ function parseId(value: string) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await getSession();
+  if (!session) return errorResponse('Unauthorized', 401);
+  const { id } = await params; const siteId = parseId(id); if (!siteId) return errorResponse('Invalid site ID');
+  const result = await query(`SELECT id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id, meta_pixel_id, tiktok_pixel_id, first_party_domain, CASE WHEN slack_webhook_url IS NOT NULL AND slack_webhook_url <> '' THEN true ELSE false END AS site_slack_configured FROM sites WHERE id=$1 AND user_id=$2`, [siteId, session.uid]);
+  if (!result.rows[0]) return errorResponse('Site not found', 404);
+  return NextResponse.json({ site: { ...result.rows[0], global_slack_configured: Boolean(process.env.SLACK_WEBHOOK_URL?.trim()) } });
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
   if (!session) return errorResponse('Unauthorized', 401);

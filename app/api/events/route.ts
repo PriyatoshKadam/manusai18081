@@ -3,6 +3,7 @@ import { getSession } from '../../../lib/auth';
 import { query } from '../../../lib/db';
 
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
+const displayName = `(CASE WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', '')) ELSE event_name END)`;
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -24,20 +25,26 @@ export async function GET(req: NextRequest) {
     [siteId],
   );
   const eventsQ = vendor
-    ? `SELECT event_name, event_type, vendor, COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
+    ? `SELECT ${displayName} AS event_name, event_type, vendor,
+              MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
+              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
               COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
               SUM(CASE WHEN (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL THEN 1 ELSE 0 END)::int AS failed,
               SUM(CASE WHEN event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false) THEN 1 ELSE 0 END)::int AS err
        FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
-       GROUP BY event_name, event_type, vendor ORDER BY cnt DESC LIMIT 100`
-    : `SELECT event_name, event_type, vendor, COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
+       GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
+    : `SELECT ${displayName} AS event_name, event_type, vendor,
+              MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
+              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
               COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
               SUM(CASE WHEN (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL THEN 1 ELSE 0 END)::int AS failed,
               0 AS err
        FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
-       GROUP BY event_name, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
+       GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
   const eventsRes = vendor ? await query(eventsQ, [siteId, vendor]) : await query(eventsQ, [siteId]);
   const alerts = await query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]);
   return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows });

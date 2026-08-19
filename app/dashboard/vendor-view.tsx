@@ -85,7 +85,7 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
                 const hasAlert = alerts.find((a: any) => a.event_name === e.event_name);
                 return (
                   <tr key={i} className="hover:bg-ink-50">
-                    <td className="px-4 py-3 mono">{e.event_name || '(unnamed)'}</td>
+                    <td className="px-4 py-3 mono">{e.event_name || (vendor === 'gads' && (e.conversion_label || e.conversion_id) ? `${e.conversion_label || 'Conversion'}${e.conversion_id ? ` · ${e.conversion_id}` : ''}` : '(unnamed)')} {vendor === 'gads' && e.event_name && (e.conversion_label || e.conversion_id) ? <span className="block text-[10px] text-ink-400 not-italic">{e.conversion_label || 'Conversion'}{e.conversion_id ? ` · ${e.conversion_id}` : ''}</span> : null}</td>
                     <td className="px-4 py-3 text-ink-500 capitalize">{e.event_type || 'unknown'}</td>
                     <td className="px-4 py-3 text-right font-medium">{Number(e.cnt).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-ink-500">{Number(e.sessions || 0).toLocaleString()}</td>

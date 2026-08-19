@@ -356,8 +356,18 @@ CREATE TABLE IF NOT EXISTS alert_policies (
   slack_enabled BOOLEAN NOT NULL DEFAULT TRUE,
   email_enabled BOOLEAN NOT NULL DEFAULT FALSE,
   webhook_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  realtime_min_severity TEXT NOT NULL DEFAULT 'critical',
+  digest_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  digest_hour SMALLINT NOT NULL DEFAULT 9,
+  last_digest_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE alert_policies
+  ADD COLUMN IF NOT EXISTS realtime_min_severity TEXT NOT NULL DEFAULT 'critical',
+  ADD COLUMN IF NOT EXISTS digest_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS digest_hour SMALLINT NOT NULL DEFAULT 9,
+  ADD COLUMN IF NOT EXISTS last_digest_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS alert_deliveries (
   id BIGSERIAL PRIMARY KEY,
@@ -492,3 +502,24 @@ CREATE INDEX IF NOT EXISTS idx_compliance_site_status
   ON compliance_findings(site_id, status, last_seen DESC);
 CREATE INDEX IF NOT EXISTS idx_site_webhooks_site
   ON site_webhooks(site_id, enabled);
+
+-- ============================================================
+-- Daily operational digest reports
+-- ============================================================
+CREATE TABLE IF NOT EXISTS alert_digests (
+  id BIGSERIAL PRIMARY KEY,
+  site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  window_start TIMESTAMPTZ NOT NULL,
+  window_end TIMESTAMPTZ NOT NULL,
+  total_events INT NOT NULL DEFAULT 0,
+  duplicate_events INT NOT NULL DEFAULT 0,
+  confirmed_blocked_events INT NOT NULL DEFAULT 0,
+  correlation_gaps INT NOT NULL DEFAULT 0,
+  transport_failures INT NOT NULL DEFAULT 0,
+  root_causes JSONB NOT NULL DEFAULT '[]'::jsonb,
+  report_text TEXT NOT NULL,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(site_id, window_start, window_end)
+);
+CREATE INDEX IF NOT EXISTS idx_alert_digests_site_time ON alert_digests(site_id, window_end DESC);

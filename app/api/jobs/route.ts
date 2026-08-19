@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../lib/db';
-import { processPendingDeliveries } from '../../../lib/notifications';
+import { processDailyDigests, processPendingDeliveries } from '../../../lib/notifications';
 import { refreshBaselines, runAnomalySweep } from '../../../lib/anomaly';
 import { reconcileRevenue } from '../../../lib/revenue';
 import { runEnabledSyntheticJourneys } from '../../../lib/synthetic';
@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
       (results.revenue as any[]).push({ siteId: Number(site.id), findings: findings.length });
     }
   }
-  if (job === 'all') await processPendingDeliveries(100);
+  if (job === 'all') { await processPendingDeliveries(100); await processDailyDigests(100); }
+  if (job === 'digest') await processDailyDigests(100);
   return NextResponse.json({ ok: true, job, results });
 }

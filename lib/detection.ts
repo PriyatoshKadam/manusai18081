@@ -302,7 +302,7 @@ async function checkPurchase(event: ParsedEvent) {
   const value = getPurchaseValue(event.params);
   const transactionId = getTransactionId(event.params);
   if (!currency) await createAlert({ siteId: event.siteId, severity: 'critical', code: 'missing_purchase_currency', vendor: event.vendor, eventName: event.eventName, message: 'Purchase event is missing a currency parameter.', rootCause: 'GA4 received purchase without currency.', fixSteps: ['Send currency with every purchase event.', 'Use a three-letter ISO 4217 code such as USD, EUR, or INR.', 'Verify currency is present in GTM and direct-code purchase implementations.'], pageUrl: event.pageUrl, raw: { eventId: event.eventId, transactionId: transactionId || null, value: value || null, params: event.params }});
-  if (!transactionId) await createAlert({ siteId: event.siteId, severity: 'warning', code: 'missing_purchase_transaction_id', vendor: event.vendor, eventName: event.eventName, message: 'Purchase event is missing transaction_id.', rootCause: 'Without transaction_id, duplicate purchase detection cannot reliably identify the same transaction.', fixSteps: ['Send a unique transaction_id with every purchase.', 'Use the same transaction ID across all purchase implementations.', 'Do not generate a new transaction_id each time the tag fires.'], pageUrl: event.pageUrl, raw: { eventId: event.eventId, value: value || null, currency: currency || null, params: event.params }});
+  if (!transactionId) await createAlert({ siteId: event.siteId, severity: 'critical', code: 'missing_purchase_transaction_id', vendor: event.vendor, eventName: event.eventName, message: 'Purchase event is missing transaction_id.', rootCause: 'Without transaction_id, duplicate purchase detection cannot reliably identify the same transaction.', fixSteps: ['Send a unique transaction_id with every purchase.', 'Use the same transaction ID across all purchase implementations.', 'Do not generate a new transaction_id each time the tag fires.'], pageUrl: event.pageUrl, raw: { eventId: event.eventId, value: value || null, currency: currency || null, params: event.params }});
 }
 
 async function checkFirstSeenCustomEvent(event: ParsedEvent) {
@@ -329,7 +329,7 @@ async function createGtmAlert(event: ParsedEvent, duplicate: DuplicateMatch) {
       ? `${event.eventName} is being sent by more than one implementation path.`
       : `${event.eventName} was pushed repeatedly with the same event payload in one browser session.`;
   await createAlert({
-    siteId: event.siteId, severity: 'warning', code, category: 'gtm', vendor: event.vendor, eventName: event.eventName,
+    siteId: event.siteId, severity: EXPECTED_REPEAT_EVENTS.has(event.eventName?.trim().toLowerCase() || '') ? 'warning' : 'critical', code, category: 'gtm', vendor: event.vendor, eventName: event.eventName,
     message, rootCause: classifyDuplicateRootCause(event, duplicate), pageUrl: event.pageUrl,
     occurrenceCount: 2, distinctPushes: event.dlPushIndex !== duplicate.dlPushIndex ? 2 : 1,
     fixSteps: [
@@ -352,7 +352,9 @@ export async function runDetection(event: ParsedEvent) {
       if (event.vendor === 'gtm' || duplicate.vendor === 'gtm') {
         await createGtmAlert(event, duplicate);
       } else {
-        await createAlert({ siteId: event.siteId, severity: event.eventName?.trim().toLowerCase() === 'purchase' ? 'critical' : 'warning', code: event.observationKind === 'network' ? 'duplicate_network_request' : 'duplicate_event', category: 'analytics', vendor: event.vendor, eventName: event.eventName, message: `${event.eventName} fired more than once with the same deterministic identity.`, rootCause: classifyDuplicateRootCause(event, duplicate), fixSteps: ['Check whether more than one GTM tag or trigger sends this event.', 'Check direct gtag() or vendor SDK implementations.', 'For purchase, verify transaction_id is unique.', 'For SPA page views, compare navigation IDs before treating a repeat as a defect.'], pageUrl: event.pageUrl, raw: { eventId: event.eventId, duplicateOf: duplicate.id, sessionId: event.sessionId, requestSignature: event.requestSignature, transport: event.transport, params: event.params } });
+        const normalizedName = event.eventName?.trim().toLowerCase() || '';
+        const duplicateSeverity = normalizedName === 'purchase' || REPEAT_SENSITIVE_EVENTS.has(normalizedName) || !EXPECTED_REPEAT_EVENTS.has(normalizedName) ? 'critical' : 'warning';
+        await createAlert({ siteId: event.siteId, severity: duplicateSeverity, code: event.observationKind === 'network' ? 'duplicate_network_request' : 'duplicate_event', category: 'analytics', vendor: event.vendor, eventName: event.eventName, message: `${event.eventName} fired more than once with the same deterministic identity.`, rootCause: classifyDuplicateRootCause(event, duplicate), fixSteps: ['Check whether more than one GTM tag or trigger sends this event.', 'Check direct gtag() or vendor SDK implementations.', 'For purchase, verify transaction_id is unique.', 'For SPA page views, compare navigation IDs before treating a repeat as a defect.'], pageUrl: event.pageUrl, raw: { eventId: event.eventId, duplicateOf: duplicate.id, sessionId: event.sessionId, requestSignature: event.requestSignature, transport: event.transport, params: event.params } });
       }
     }
     await checkPurchase(event);
