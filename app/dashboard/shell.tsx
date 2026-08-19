@@ -44,14 +44,18 @@ export default function DashboardShell({
     ]},
     { section: 'Diagnostics', items: [
       { href: '/dashboard/audit', label: 'Runtime audit', icon: iconShield },
+      { href: '/dashboard/health', label: 'Tag health', icon: iconShield },
       { href: '/dashboard/duplicates', label: 'Duplicate events', icon: iconLayers },
       { href: '/dashboard/gtm', label: 'GTM diagnostics', icon: iconLayers },
       { href: '/dashboard/adblock', label: 'Ad-blocker impact', icon: iconShield },
       { href: '/dashboard/consent', label: 'Consent Mode', icon: iconLock },
+      { href: '/dashboard/synthetic', label: 'Synthetic checks', icon: iconShield },
+      { href: '/dashboard/compliance', label: 'Compliance', icon: iconShield },
     ]},
     { section: 'Setup', items: [
       { href: '/dashboard/install', label: 'Manual GTM install', icon: iconCode },
       { href: '/dashboard/gtm-connect', label: 'Connect GTM', icon: iconLink, highlight: true },
+      { href: '/dashboard/integrations', label: 'Integrations & exports', icon: iconLink },
       { href: '/dashboard/settings', label: 'Settings', icon: iconGear },
     ]},
   ];
@@ -153,12 +157,16 @@ function pageTitle(path: string) {
     '/dashboard/meta': 'Meta Pixel',
     '/dashboard/tiktok': 'TikTok Pixel',
     '/dashboard/audit': 'Runtime audit',
+    '/dashboard/health': 'Tag health',
     '/dashboard/duplicates': 'Duplicate events',
     '/dashboard/gtm': 'GTM diagnostics',
     '/dashboard/adblock': 'Ad-blocker impact',
     '/dashboard/consent': 'Consent Mode',
+    '/dashboard/synthetic': 'Synthetic checks',
+    '/dashboard/compliance': 'Compliance',
     '/dashboard/install': 'Manual GTM install',
     '/dashboard/gtm-connect': 'Connect GTM',
+    '/dashboard/integrations': 'Integrations & exports',
     '/dashboard/settings': 'Settings',
   };
   return titles[path] || 'Dashboard';

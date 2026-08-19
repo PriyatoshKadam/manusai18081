@@ -1,0 +1,38 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+
+export default function HealthPage() {
+  const search = useSearchParams();
+  const siteId = search.get('siteId');
+  const [data, setData] = useState<any>(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    if (!siteId) return;
+    let active = true;
+    async function load() {
+      try {
+        const response = await fetch(`/api/tag-health?siteId=${encodeURIComponent(siteId)}`, { cache: 'no-store' });
+        const body = await response.json();
+        if (!response.ok) throw new Error(body.error || 'Unable to load tag health');
+        if (active) { setData(body); setError(''); }
+      } catch (err) { if (active) setError(err instanceof Error ? err.message : 'Unable to load tag health'); }
+    }
+    load(); const timer = setInterval(load, 15000); return () => { active = false; clearInterval(timer); };
+  }, [siteId]);
+  if (!siteId) return <div className="text-sm text-ink-400">Select a site.</div>;
+  if (!data && !error) return <div className="text-sm text-ink-400">Loading tag health…</div>;
+  if (error && !data) return <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>;
+  const health = data?.health || [];
+  const anomalies = data?.anomalies || [];
+  const revenue = data?.revenue || [];
+  const compliance = data?.compliance || [];
+  return <div className="fade-in max-w-7xl space-y-6">
+    <div><div className="text-xs font-semibold uppercase tracking-wider text-brand-600">Operations</div><h2 className="text-2xl font-semibold text-ink-950 mt-1">Tag health and anomalies</h2><p className="text-sm text-ink-500 mt-2">Real-user health scores, adaptive drift signals, revenue reconciliation, and compliance evidence. Synthetic checks remain labeled separately.</p></div>
+    {error && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Live refresh paused: {error}</div>}
+    <section className="card overflow-hidden"><div className="p-4 border-b border-ink-100"><h3 className="font-semibold text-ink-950">Live tag health</h3><p className="text-xs text-ink-500 mt-1">Last 24 hours of observed fires, failures, latency, and consent-denied observations.</p></div>{health.length ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-ink-50 text-xs uppercase text-ink-500"><tr><th className="text-left p-3">Vendor</th><th className="text-left p-3">Event</th><th className="text-right p-3">Health</th><th className="text-right p-3">Fires</th><th className="text-right p-3">Failures</th><th className="text-right p-3">P75 latency</th><th className="text-right p-3">Consent denied</th></tr></thead><tbody className="divide-y divide-ink-100">{health.map((row: any, i: number) => <tr key={`${row.vendor}-${row.event_name}-${i}`}><td className="p-3 font-medium uppercase">{row.vendor}</td><td className="p-3 mono">{row.event_name || '—'}</td><td className={`p-3 text-right font-semibold ${Number(row.health_score) < 80 ? 'text-red-600' : Number(row.health_score) < 95 ? 'text-amber-600' : 'text-green-600'}`}>{row.health_score}</td><td className="p-3 text-right">{row.fires}</td><td className="p-3 text-right">{row.failures}</td><td className="p-3 text-right">{row.p75_latency_ms} ms</td><td className="p-3 text-right">{row.consent_denied}</td></tr>)}</tbody></table></div> : <div className="p-8 text-center text-sm text-ink-400">No real-user tag evidence yet.</div>}</section>
+    <section className="card overflow-hidden"><div className="p-4 border-b border-ink-100"><h3 className="font-semibold text-ink-950">Real-user performance</h3><p className="text-xs text-ink-500 mt-1">P75 values over the last 7 days, grouped by page URL.</p></div>{data?.performance?.length ? <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-ink-50 text-xs uppercase text-ink-500"><tr><th className="p-3 text-left">Page</th><th className="p-3 text-right">Samples</th><th className="p-3 text-right">LCP</th><th className="p-3 text-right">FCP</th><th className="p-3 text-right">INP</th><th className="p-3 text-right">TTFB</th><th className="p-3 text-right">CLS</th></tr></thead><tbody className="divide-y divide-ink-100">{data.performance.map((item: any, i: number) => <tr key={`${item.page_url}-${i}`}><td className="p-3 max-w-sm truncate">{item.page_url || '—'}</td><td className="p-3 text-right">{item.samples}</td><td className="p-3 text-right">{item.p75_lcp} ms</td><td className="p-3 text-right">{item.p75_fcp} ms</td><td className="p-3 text-right">{item.p75_inp} ms</td><td className="p-3 text-right">{item.p75_ttfb} ms</td><td className="p-3 text-right">{item.p75_cls}</td></tr>)}</tbody></table></div> : <div className="p-8 text-center text-sm text-ink-400">No Core Web Vitals evidence yet.</div>}</section><div className="grid lg:grid-cols-3 gap-6"><Panel title="Active anomaly findings" empty="No anomaly findings.">{anomalies.map((item: any) => <div key={item.id} className="border-b border-ink-100 py-3 last:border-0"><div className="flex justify-between gap-3"><span className="font-medium">{item.event_name || item.vendor}</span><span className="pill bg-amber-100 text-amber-800">{item.severity}</span></div><p className="text-sm text-ink-600 mt-1">{item.message}</p></div>)}</Panel><Panel title="Revenue reconciliation" empty="No transaction reconciliation evidence.">{revenue.map((item: any) => <div key={item.transaction_id} className="border-b border-ink-100 py-3 last:border-0"><div className="flex justify-between gap-3"><span className="mono text-sm">{item.transaction_id}</span><span className={`pill ${item.status === 'value_mismatch' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>{item.status}</span></div><p className="text-xs text-ink-500 mt-1">Delta: {item.delta_value || 0} {item.currency || ''}</p></div>)}</Panel><Panel title="Compliance evidence" empty="No open compliance findings.">{compliance.map((item: any, i: number) => <div key={`${item.category}-${i}`} className="border-b border-ink-100 py-3 last:border-0"><div className="flex justify-between gap-3"><span className="font-medium">{item.category}</span><span className="pill bg-red-100 text-red-800">{item.severity}</span></div><p className="text-xs text-ink-500 mt-1">{item.resource_url || item.page_url || 'Evidence captured from runtime telemetry'}</p></div>)}</Panel></div>
+  </div>;
+}
+function Panel({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) { return <section className="card p-5"><h3 className="font-semibold text-ink-950 mb-3">{title}</h3>{children || <p className="text-sm text-ink-400">{empty}</p>}</section>; }

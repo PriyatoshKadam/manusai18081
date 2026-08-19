@@ -64,6 +64,9 @@ In Render → Environment, add these (keep your existing `DATABASE_URL`):
 | `GTM_REDIRECT_URI` | `https://monitoring-0jsu.onrender.com/api/gtm/callback` |
 | `NODE_ENV` | `production` |
 | `SLACK_WEBHOOK_URL` | (optional — for Slack alerts) |
+| `RESEND_API_KEY` | (optional — for email alert delivery) |
+| `ALERT_FROM_EMAIL` | (optional — verified Resend sender) |
+| `CRON_SECRET` | Secret used to authorize background anomaly, revenue, synthetic, and delivery jobs |
 
 ### GTM Connect setup
 
@@ -80,6 +83,8 @@ GA4Fix has one monitor script and one supported GTM installation. The recommende
 Duplicate diagnostics include both server alerts and derived session-scoped evidence from repeated normalized network requests or repeated repeat-sensitive events such as `login`. This makes a duplicate visible even when alert creation and ingestion arrive in a different order.
 
 Ad-blocker reporting distinguishes **confirmed** transport/resource/script failures from **correlation gaps** where a dataLayer event did not yet match a network request, and from **telemetry gaps** where GA4Fix could not deliver its own evidence. Correlation gaps are investigation signals, not proof that a browser has an ad blocker.
+
+The operational features are available under Tag health, Synthetic checks, Compliance, and Integrations & exports. A trusted scheduler should call `POST /api/jobs` with `Authorization: Bearer <CRON_SECRET>` and a JSON body such as `{ "job": "all" }` at the desired interval. The job refreshes rolling baselines, creates anomaly and revenue-reconciliation findings, runs enabled synthetic journeys, and retries pending Slack/email/webhook deliveries. The endpoint is intentionally protected and is not exposed to dashboard users.
 
 ### Step 4 — Trigger a deploy
 

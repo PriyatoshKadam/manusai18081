@@ -57,6 +57,12 @@ export type NormalizedTelemetryEvent = {
   failureReason: string | null;
   consentState: Record<string, unknown>;
   webVitals: Record<string, unknown>;
+  revenueValue: number | null;
+  revenueCurrency: string | null;
+  transactionId: string | null;
+  resourceDomain: string | null;
+  resourceType: string | null;
+  isSynthetic: boolean;
 };
 
 export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEvent {
@@ -76,8 +82,13 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
   const rawLatencyMs = Number(event.latencyMs);
   const rawConsent = cleanValue(event.consentState || {}, 0);
   const rawVitals = cleanValue(event.webVitals || {}, 0);
+  const rawRevenue = Number(event.revenueValue ?? event.revenue_value ?? params.value ?? params['ep.value'] ?? params['epn.value']);
+  const rawCurrency = boundedString(event.revenueCurrency ?? event.revenue_currency ?? params.currency ?? params['ep.currency'], 12)?.trim().toUpperCase() || null;
+  const rawTransaction = boundedString(event.transactionId ?? event.transaction_id ?? params.transaction_id ?? params['ep.transaction_id'], 240)?.trim() || null;
+  let resourceDomain: string | null = null;
+  try { resourceDomain = event.rawUrl ? new URL(String(event.rawUrl)).hostname.toLowerCase().slice(0, 255) : null; } catch {}
   const observationKind = safeToken(rawObservationKind, 32) || '';
-  const allowedKinds = new Set(['network', 'datalayer', 'gtm', 'monitor_ready', 'diagnostic']);
+  const allowedKinds = new Set(['network', 'datalayer', 'gtm', 'function', 'monitor_ready', 'diagnostic']);
   if (!allowedKinds.has(observationKind)) throw new Error('Invalid observation kind');
   return {
     vendor: (boundedString(event.vendor, 40)?.trim().toLowerCase() || 'unknown').replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'unknown',
@@ -101,6 +112,12 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     failureReason: boundedString(event.failureReason, 240),
     consentState: rawConsent && typeof rawConsent === 'object' && !Array.isArray(rawConsent) ? rawConsent as Record<string, unknown> : {},
     webVitals: rawVitals && typeof rawVitals === 'object' && !Array.isArray(rawVitals) ? rawVitals as Record<string, unknown> : {},
+    revenueValue: Number.isFinite(rawRevenue) && rawRevenue >= -1000000000 && rawRevenue <= 1000000000 ? rawRevenue : null,
+    revenueCurrency: rawCurrency && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : null,
+    transactionId: rawTransaction,
+    resourceDomain,
+    resourceType: boundedString(event.resourceType ?? event.resource_type, 80)?.trim() || null,
+    isSynthetic: event.isSynthetic === true || event.is_synthetic === true,
   };
 }
 

@@ -12,6 +12,9 @@ export default function SettingsPage() {
   const [editing, setEditing] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [policySiteId, setPolicySiteId] = useState<number | null>(null);
+  const [policy, setPolicy] = useState<any>(null);
+  const [policyMessage, setPolicyMessage] = useState('');
 
   useEffect(() => { load(); }, []);
   async function load() {
@@ -21,10 +24,24 @@ export default function SettingsPage() {
       if (!res.ok) throw new Error(data.error || 'Unable to load sites');
       setSites(data.sites || []);
       if ((data.sites || []).length === 0) setShowAdd(true);
+      else if (!policySiteId) setPolicySiteId(Number(data.sites[0].id));
       setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load sites');
     }
+  }
+
+  useEffect(() => {
+    if (!policySiteId) return;
+    fetch(`/api/alert-policy?siteId=${policySiteId}`, { cache: 'no-store' }).then((res) => res.json()).then((body) => setPolicy(body.policy || null)).catch(() => setPolicy(null));
+  }, [policySiteId]);
+
+  async function savePolicy() {
+    if (!policySiteId || !policy) return;
+    setPolicyMessage('');
+    const res = await fetch('/api/alert-policy', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ siteId: policySiteId, ...policy }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) setPolicyMessage(body.error || 'Unable to save policy'); else { setPolicy(body.policy); setPolicyMessage('Alert policy saved.'); }
   }
 
   async function addSite(form: FormData) {
@@ -91,6 +108,8 @@ export default function SettingsPage() {
       </div>
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>}
+
+      {policy && <section className="bg-white rounded-xl border border-ink-200 p-6 mb-6"><div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="font-semibold text-ink-950">Alert policy</h3><p className="text-xs text-ink-500 mt-1">Control anomaly sensitivity and flood protection per site.</p></div><select value={policySiteId || ''} onChange={(e) => setPolicySiteId(Number(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">{sites.map((site) => <option key={site.id} value={site.id}>{site.domain}</option>)}</select></div><div className="grid md:grid-cols-3 gap-4"><PolicyInput label="Failure drift threshold" value={policy.failure_rate_threshold} onChange={(value: string) => setPolicy({ ...policy, failure_rate_threshold: Number(value) })} /><PolicyInput label="Latency multiplier" value={policy.latency_multiplier} onChange={(value: string) => setPolicy({ ...policy, latency_multiplier: Number(value) })} /><PolicyInput label="Alert limit per window" value={policy.flood_limit} onChange={(value: string) => setPolicy({ ...policy, flood_limit: Number(value) })} /></div><div className="flex items-center gap-4 mt-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={policy.slack_enabled !== false} onChange={(e) => setPolicy({ ...policy, slack_enabled: e.target.checked })} /> Slack</label><label className="flex items-center gap-2"><input type="checkbox" checked={policy.email_enabled === true} onChange={(e) => setPolicy({ ...policy, email_enabled: e.target.checked })} /> Email</label><label className="flex items-center gap-2"><input type="checkbox" checked={policy.webhook_enabled === true} onChange={(e) => setPolicy({ ...policy, webhook_enabled: e.target.checked })} /> Webhook</label></div><div className="flex items-center gap-3 mt-4"><button onClick={savePolicy} className="bg-ink-950 text-white px-4 py-2 rounded-lg text-sm font-medium">Save policy</button>{policyMessage && <span className="text-xs text-ink-500">{policyMessage}</span>}</div></section>}
 
       {showAdd && (
         <form
@@ -176,6 +195,8 @@ function Field({ name, label, placeholder, defaultValue, required }: any) {
     </div>
   );
 }
+
+function PolicyInput({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) { return <label className="block"><span className="block text-xs font-medium text-ink-600 mb-1">{label}</span><input type="number" step="0.01" value={value ?? ''} onChange={(e) => onChange(e.target.value)} className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm" /></label>; }
 
 function Row({ label, v, highlight }: any) {
   return (

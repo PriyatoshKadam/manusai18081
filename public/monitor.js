@@ -120,13 +120,21 @@
     if (/px\.ads\.linkedin\.com|snap\.licdn\.com/.test(value)) return 'linkedin';
     if (/snapchat|tr\.snapchat\.com/.test(value)) return 'snapchat';
     if (/pinterest|pintrk/.test(value)) return 'pinterest';
+    if (/bat\.bing\.com|bing\.com\/action|uetq/.test(value)) return 'bing';
     if (/reddit/.test(value)) return 'reddit';
+    if (/criteo/.test(value)) return 'criteo';
     if (/clarity\.ms/.test(value)) return 'clarity';
+    if (/hotjar/.test(value)) return 'hotjar';
+    if (/fullstory/.test(value)) return 'fullstory';
+    if (/heap/.test(value)) return 'heap';
     if (/mixpanel/.test(value)) return 'mixpanel';
     if (/amplitude/.test(value)) return 'amplitude';
     if (/segment\.io/.test(value)) return 'segment';
     if (/hubspot/.test(value)) return 'hubspot';
     if (/klaviyo/.test(value)) return 'klaviyo';
+    if (/braze/.test(value)) return 'braze';
+    if (/optimizely/.test(value)) return 'optimizely';
+    if (/vwo/.test(value)) return 'vwo';
     if (/intercom/.test(value)) return 'intercom';
     return null;
   }
@@ -255,6 +263,37 @@
       window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}); } } catch (_) {} return originalGtag.apply(this, arguments); };
     }
   }
+  function recordVendorFunction(vendor, method, args) {
+    var values = Array.prototype.slice.call(args || []);
+    var objectArg = values[1] && typeof values[1] === 'object' ? values[1] : null;
+    var eventName = text(objectArg && (objectArg.event || objectArg.event_name || objectArg.action) || values[1] || values[0] || method || 'call', 120);
+    var candidate = values[2] && typeof values[2] === 'object' ? values[2] : objectArg || {};
+    var params = safeParams(candidate);
+    send({ type: 'function', vendor: vendor, eventName: eventName, params: params, clientId: text(params.cid || params.client_id, 160), transactionId: transactionId(params), pageUrl: pageUrl(), source: method, observationKind: 'function', transport: 'function', sessionId: sessionId, occurrenceId: token('function'), networkOccurrenceId: null, requestSignature: signature(params, eventName), dlPushIndex: null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() });
+  }
+  function wrapVendorGlobal(name, vendor) {
+    try {
+      var original = window[name];
+      if (typeof original !== 'function' || original.__g4fWrapped) return;
+      var wrapped = function () { try { recordVendorFunction(vendor, name, arguments); } catch (_) {} return original.apply(this, arguments); };
+      wrapped.__g4fWrapped = true;
+      window[name] = wrapped;
+    } catch (_) {}
+  }
+  function wrapVendorMethod(objectName, methodName, vendor) {
+    try {
+      var object = window[objectName];
+      if (!object || typeof object[methodName] !== 'function' || object[methodName].__g4fWrapped) return;
+      var original = object[methodName];
+      var wrapped = function () { try { recordVendorFunction(vendor, objectName + '.' + methodName, arguments); } catch (_) {} return original.apply(this, arguments); };
+      wrapped.__g4fWrapped = true;
+      object[methodName] = wrapped;
+    } catch (_) {}
+  }
+  function patchVendorFunctions() {
+    [['fbq', 'meta'], ['pintrk', 'pinterest'], ['snaptr', 'snapchat'], ['lintrk', 'linkedin'], ['rdt', 'reddit'], ['hj', 'hotjar'], ['uetq', 'bing']].forEach(function (item) { wrapVendorGlobal(item[0], item[1]); });
+    [['ttq', 'track', 'tiktok'], ['ttq', 'page', 'tiktok'], ['klaviyo', 'track', 'klaviyo'], ['heap', 'track', 'heap'], ['FS', 'event', 'fullstory'], ['analytics', 'track', 'segment']].forEach(function (item) { wrapVendorMethod(item[0], item[1], item[2]); });
+  }
   function patchNetwork() {
     if (typeof window.fetch === 'function') {
       var fetch = window.fetch;
@@ -284,7 +323,8 @@
   function scanPerformance() {
     try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false); }); } catch (_) {}
   }
-  patchDataLayer(); patchNetwork(); patchHistory();
+  patchDataLayer(); patchVendorFunctions(); patchNetwork(); patchHistory();
+  try { setInterval(patchVendorFunctions, 1000); } catch (_) {}
   try { window.addEventListener('pagehide', flushOnPageExit); } catch (_) {}
   try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushOnPageExit(); }); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false); } }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
@@ -292,10 +332,27 @@
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.name === 'first-paint') captureVital('fcp', entry.startTime); }); }).observe({ type: 'paint', buffered: true }); } } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('lcp', entry.startTime); }); }).observe({ type: 'largest-contentful-paint', buffered: true }); } } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('cls', entry.value || 0); }); }).observe({ type: 'layout-shift', buffered: true }); } } catch (_) {}
+  try { var navEntry = performance.getEntriesByType('navigation')[0]; if (navEntry) captureVital('ttfb', navEntry.responseStart || 0); } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.interactionId || entry.duration) captureVital('inp', entry.duration || 0); }); }).observe({ type: 'event', buffered: true, durationThreshold: 40 }); } } catch (_) {}
   try { window.addEventListener('error', function (event) { var target = event.target; var url = target && (target.src || target.href); if (url && vendorFor(url, {})) { reportBlocked('resource_error', { blockedUrl: url, sessionId: sessionId, signal: 'resource_error' }); diagnostic('resource_error', { blockedUrl: text(url, 2048), target: text(target.tagName, 40) }); } else if (!target) diagnostic('console_error', { message: text(event.message || 'Unhandled window error', 512), filename: text(event.filename, 2048), line: event.lineno || null }); }, true); } catch (_) {}
   try { window.addEventListener('unhandledrejection', function (event) { diagnostic('unhandled_rejection', { reason: text(event.reason && event.reason.message ? event.reason.message : event.reason, 512) }); }); } catch (_) {}
   try { var originalConsoleError = console.error; console.error = function () { var args = Array.prototype.slice.call(arguments); diagnostic('console_error', { message: text(args.map(function (value) { return typeof value === 'string' ? value : stable(safeParams(value)); }).join(' '), 1024) }); return originalConsoleError.apply(this, arguments); }; } catch (_) {}
   try { if (typeof MutationObserver !== 'undefined') new MutationObserver(function (records) { records.forEach(function (record) { Array.prototype.slice.call(record.addedNodes || []).forEach(function (node) { if (node && node.tagName === 'SCRIPT' && node.src && vendorFor(node.src, {})) diagnostic('script_injected', { vendor: vendorFor(node.src, {}), url: text(node.src, 2048) }); }); }); }).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
+  try { window.addEventListener('securitypolicyviolation', function (event) { diagnostic('csp_violation', { blockedUrl: text(event.blockedURI, 2048), directive: text(event.effectiveDirective, 120), policy: text(event.originalPolicy, 512), disposition: text(event.disposition, 40) }); }); } catch (_) {}
+  try {
+    var sriSeen = {};
+    function scanSensitiveScripts() {
+      var path = String(location.pathname || '').toLowerCase();
+      if (!/(checkout|payment|confirm|order|cart)/.test(path)) return;
+      Array.prototype.slice.call(document.scripts || []).forEach(function (script) {
+        var src = script && script.src;
+        if (!src || !/^https?:/i.test(src) || src.indexOf(location.origin) === 0 || script.integrity || sriSeen[src]) return;
+        sriSeen[src] = true;
+        diagnostic('sri_missing', { url: text(src, 2048), pagePath: path, reason: 'External script on a sensitive path has no integrity attribute' });
+      });
+    }
+    scanSensitiveScripts(); setInterval(scanSensitiveScripts, 5000);
+  } catch (_) {}
   try { window.__g4fDebug = function () { return { version: g.version, sessionId: sessionId, navigationId: navigationId, counts: Object.assign({}, counts), pending: pending.map(function (e) { return { eventName: e.eventName, occurrenceId: e.occurrenceId, pushIndex: e.dlPushIndex, matched: !!e.networkMatched }; }), queueLength: queue.length }; }; } catch (_) {}
   g.ready = true;
   send({ type: 'monitor_ready', vendor: 'ga4fix', observationKind: 'monitor_ready', sessionId: sessionId, navigationId: navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), pageUrl: pageUrl(), timestamp: Date.now() });

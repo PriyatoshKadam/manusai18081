@@ -33,6 +33,12 @@ services:
         sync: false
       - key: SLACK_WEBHOOK_URL
         sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: ALERT_FROM_EMAIL
+        sync: false
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
