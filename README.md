@@ -57,6 +57,7 @@ In Render → Environment, add these (keep your existing `DATABASE_URL`):
 | `SESSION_SECRET` | Generate a random secret with `openssl rand -base64 32` |
 | `IP_HASH_SECRET` | Generate a separate random secret for keyed IP pseudonymization |
 | `PG_SSL` | `true` |
+| `PG_SSL_REJECT_UNAUTHORIZED` | `false` for Render Postgres when no CA bundle is available; transport remains encrypted, and providing `PG_CA_CERT`/`PG_CA_CERT_PATH` enables verification |
 | `NEXT_PUBLIC_MONITOR_ORIGIN` | The host serving `/monitor.js`, `/api/ingest`, and `/api/blocked` |
 | `GTM_CLIENT_ID` | Google Cloud OAuth web-client ID |
 | `GTM_CLIENT_SECRET` | Google Cloud OAuth web-client secret; store it only in Render secrets |
@@ -67,6 +68,8 @@ In Render → Environment, add these (keep your existing `DATABASE_URL`):
 ### GTM Connect setup
 
 GA4Fix now includes a **Connect GTM** page under Dashboard → Setup. To enable it, create or select a Google Cloud project, enable the Tag Manager API, configure an OAuth consent screen, and create a Web application OAuth client. Register the exact production redirect URI shown above. The consent screen should explain that GA4Fix reads and edits the selected GTM container and can publish a container version after the customer confirms the action. Google’s documented scopes used by this integration are `tagmanager.readonly`, `tagmanager.edit.containers`, `tagmanager.edit.containerversions`, and `tagmanager.publish`.
+
+The migration uses the same PostgreSQL TLS configuration as the application pool. It removes `sslmode` and related SSL parameters from the connection string before passing an explicit `ssl` object to `node-postgres`; this prevents the connection string from silently replacing the CA or verification settings. Render Postgres is detected by hostname. If no CA bundle is provided, the deployment uses encrypted TLS with the explicit `PG_SSL_REJECT_UNAUTHORIZED=false` setting shown above to accommodate Render’s self-signed certificate chain. If Render provides a CA bundle for the database, set `PG_CA_CERT` or `PG_CA_CERT_PATH` and remove the override so certificate verification remains enabled.
 
 After the customer clicks **Connect Google account**, GA4Fix lists the accounts and containers available to that Google identity. **Add monitor tag to GTM** creates a new reviewable workspace with a Custom HTML tag and All Pages trigger; it does not change the live container. The separate **Publish container** action creates a version and publishes it only after an in-product confirmation. Customers can open the workspace in GTM and review the version history before publishing.
 

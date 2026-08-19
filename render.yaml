@@ -17,6 +17,8 @@ services:
         generateValue: true
       - key: PG_SSL
         value: "true"
+      - key: PG_SSL_REJECT_UNAUTHORIZED
+        value: "false"
       - key: ALLOW_INSECURE_DEV_AUTH
         value: "false"
       - key: NEXT_PUBLIC_MONITOR_ORIGIN
