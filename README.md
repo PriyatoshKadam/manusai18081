@@ -58,8 +58,17 @@ In Render → Environment, add these (keep your existing `DATABASE_URL`):
 | `IP_HASH_SECRET` | Generate a separate random secret for keyed IP pseudonymization |
 | `PG_SSL` | `true` |
 | `NEXT_PUBLIC_MONITOR_ORIGIN` | The host serving `/monitor.js`, `/api/ingest`, and `/api/blocked` |
+| `GTM_CLIENT_ID` | Google Cloud OAuth web-client ID |
+| `GTM_CLIENT_SECRET` | Google Cloud OAuth web-client secret; store it only in Render secrets |
+| `GTM_REDIRECT_URI` | `https://monitoring-0jsu.onrender.com/api/gtm/callback` |
 | `NODE_ENV` | `production` |
 | `SLACK_WEBHOOK_URL` | (optional — for Slack alerts) |
+
+### GTM Connect setup
+
+GA4Fix now includes a **Connect GTM** page under Dashboard → Setup. To enable it, create or select a Google Cloud project, enable the Tag Manager API, configure an OAuth consent screen, and create a Web application OAuth client. Register the exact production redirect URI shown above. The consent screen should explain that GA4Fix reads and edits the selected GTM container and can publish a container version after the customer confirms the action. Google’s documented scopes used by this integration are `tagmanager.readonly`, `tagmanager.edit.containers`, `tagmanager.edit.containerversions`, and `tagmanager.publish`.
+
+After the customer clicks **Connect Google account**, GA4Fix lists the accounts and containers available to that Google identity. **Add monitor tag to GTM** creates a new reviewable workspace with a Custom HTML tag and All Pages trigger; it does not change the live container. The separate **Publish container** action creates a version and publishes it only after an in-product confirmation. Customers can open the workspace in GTM and review the version history before publishing.
 
 ### Step 4 — Trigger a deploy
 
@@ -74,10 +83,11 @@ Click **Manual Deploy → Deploy latest commit**. The build will:
 
 Once deployed, go to `https://monitoring-0jsu.onrender.com/signup` and create an account. Then:
 
-1. Add a site (Settings tab) with your domain and GTM container ID
-2. Go to Install and copy the compact monitor loader
-3. Paste it into a Custom HTML tag in GTM, set trigger to All Pages, priority 1000
-4. Publish GTM — events start streaming immediately
+1. Add a site in Settings with your domain and GTM container ID.
+2. Open Dashboard → Setup → Connect GTM and connect the Google account that has access to the container.
+3. Select the account and container, review the generated monitor tag, and click **Add monitor tag to GTM**.
+4. Review the new workspace in GTM, then return to GA4Fix and click **Publish container** after confirming the live change.
+5. Events start streaming after the published GTM container propagates to visitors.
 
 ### Optional — first-party domain for accurate ad-blocker detection
 

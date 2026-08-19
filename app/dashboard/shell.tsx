@@ -50,7 +50,8 @@ export default function DashboardShell({
       { href: '/dashboard/consent', label: 'Consent Mode', icon: iconLock },
     ]},
     { section: 'Setup', items: [
-      { href: '/dashboard/install', label: 'Install snippet', icon: iconCode, highlight: true },
+      { href: '/dashboard/install', label: 'Install snippet', icon: iconCode },
+      { href: '/dashboard/gtm-connect', label: 'Connect GTM', icon: iconLink, highlight: true },
       { href: '/dashboard/settings', label: 'Settings', icon: iconGear },
     ]},
   ];
@@ -157,6 +158,7 @@ function pageTitle(path: string) {
     '/dashboard/adblock': 'Ad-blocker impact',
     '/dashboard/consent': 'Consent Mode',
     '/dashboard/install': 'Install snippet',
+    '/dashboard/gtm-connect': 'Connect GTM',
     '/dashboard/settings': 'Settings',
   };
   return titles[path] || 'Dashboard';
@@ -168,4 +170,5 @@ function iconLayers() { return (<svg width="16" height="16" viewBox="0 0 24 24" 
 function iconShield() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg>); }
 function iconLock() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>); }
 function iconCode() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>); }
+function iconLink() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>); }
 function iconGear() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>); }

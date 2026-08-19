@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { classifyDuplicateRootCause, classifyEvent, getEventIdentity, normalizePageUrl } from '../lib/detection';
 import { normalizeHostname, normalizeSiteInput } from '../lib/site-validation';
 import { normalizeTelemetryEvent, parseIngestBody } from '../lib/ingest-validation';
+import { buildGtmAuthorizationUrl, decryptSecret, encryptSecret, monitorTagPayload } from '../lib/gtm';
 
 describe('site validation', () => {
   it('normalizes hostnames and rejects paths', () => {
@@ -50,6 +51,37 @@ describe('event identity and classification', () => {
   it('explains duplicate root cause from dataLayer and transport evidence', () => {
     expect(classifyDuplicateRootCause(base, { id: 1, dlPushIndex: 3, source: 'gtm', rawUrl: null })).toContain('dataLayer');
     expect(classifyDuplicateRootCause({ ...base, dlPushIndex: 4, source: 'fetch' }, { id: 1, dlPushIndex: 4, source: 'gtm', rawUrl: null })).toContain('transport');
+  });
+});
+
+describe('GTM Connect helpers', () => {
+  it('builds scoped OAuth URLs and round-trips encrypted credentials', () => {
+    const originalSecret = process.env.SESSION_SECRET;
+    const originalClient = process.env.GTM_CLIENT_ID;
+    const originalRedirect = process.env.GTM_REDIRECT_URI;
+    process.env.SESSION_SECRET = 'test-session-secret-that-is-at-least-32-chars';
+    process.env.GTM_CLIENT_ID = 'client-id.apps.googleusercontent.com';
+    process.env.GTM_REDIRECT_URI = 'https://monitor.example.com/api/gtm/callback';
+    try {
+      const authorization = new URL(buildGtmAuthorizationUrl('state-token'));
+      expect(authorization.searchParams.get('client_id')).toBe(process.env.GTM_CLIENT_ID);
+      expect(authorization.searchParams.get('access_type')).toBe('offline');
+      expect(authorization.searchParams.get('scope')).toContain('tagmanager.publish');
+      expect(decryptSecret(encryptSecret('refresh-token-value'))).toBe('refresh-token-value');
+    } finally {
+      process.env.SESSION_SECRET = originalSecret;
+      process.env.GTM_CLIENT_ID = originalClient;
+      process.env.GTM_REDIRECT_URI = originalRedirect;
+    }
+  });
+
+  it('builds a bounded Custom HTML monitor tag payload', () => {
+    process.env.NEXT_PUBLIC_MONITOR_ORIGIN = 'https://monitor.example.com/';
+    const tag = monitorTagPayload({ id: 1, api_key: 'a'.repeat(48) }, 'trigger-1');
+    expect(tag.type).toBe('html');
+    expect(tag.firingTriggerId).toEqual(['trigger-1']);
+    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?apiKey=');
+    delete process.env.NEXT_PUBLIC_MONITOR_ORIGIN;
   });
 });
 

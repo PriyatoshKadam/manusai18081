@@ -260,3 +260,42 @@ ALTER TABLE audit_runs
 
 CREATE INDEX IF NOT EXISTS idx_audit_runs_site_time
   ON audit_runs(site_id, created_at DESC);
+
+-- ============================================================
+-- Google Tag Manager OAuth connections
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS gtm_connections (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  google_email TEXT,
+  refresh_token_encrypted TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE gtm_connections
+  ADD COLUMN IF NOT EXISTS google_email TEXT,
+  ADD COLUMN IF NOT EXISTS refresh_token_encrypted TEXT,
+  ADD COLUMN IF NOT EXISTS scope TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE TABLE IF NOT EXISTS gtm_installations (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  account_id TEXT NOT NULL,
+  container_id TEXT NOT NULL,
+  workspace_id TEXT,
+  tag_id TEXT,
+  trigger_id TEXT,
+  version_id TEXT,
+  status TEXT NOT NULL DEFAULT 'workspace_created',
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gtm_installations_user_site
+  ON gtm_installations(user_id, site_id, created_at DESC);
