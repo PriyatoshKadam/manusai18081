@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '../../../lib/auth';
 import { query } from '../../../lib/db';
 
-const REPEAT_SENSITIVE_EVENTS = ['login', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe'];
+const REPEAT_SENSITIVE_EVENTS = ['login', 'run_audit', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe'];
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -42,23 +42,33 @@ export async function GET(req: NextRequest) {
       [siteId],
     ),
     query(
-      `WITH ordered AS (
+      `WITH raw AS (
          SELECT id, event_name, vendor, page_url, session_id, request_signature, received_at,
-                LAG(received_at) OVER (PARTITION BY site_id, vendor, event_name, session_id ORDER BY received_at) AS previous_seen
+                COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text) AS occurrence_key,
+                observation_kind
            FROM events
           WHERE site_id = $1
             AND vendor = 'ga4'
-            AND observation_kind = 'network'
             AND session_id IS NOT NULL
             AND LOWER(COALESCE(event_name, '')) = ANY($2::text[])
             AND received_at > NOW() - INTERVAL '24 hours'
+       ), occurrences AS (
+         SELECT DISTINCT ON (session_id, event_name, occurrence_key) *
+           FROM raw
+          ORDER BY session_id, event_name, occurrence_key,
+                   CASE WHEN observation_kind = 'network' THEN 1 WHEN observation_kind = 'datalayer' THEN 2 ELSE 3 END,
+                   received_at DESC
+       ), ordered AS (
+         SELECT *, LAG(received_at) OVER (PARTITION BY vendor, event_name, session_id ORDER BY received_at) AS previous_seen
+           FROM occurrences
        )
        SELECT event_name, vendor, page_url, session_id,
               COUNT(*)::int AS occurrence_count,
               COUNT(DISTINCT request_signature)::int AS signature_count,
               MIN(received_at) AS first_seen,
               MAX(received_at) AS last_seen,
-              ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids
+              ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids,
+              ARRAY_AGG(DISTINCT observation_kind) AS observation_kinds
          FROM ordered
         WHERE previous_seen IS NOT NULL AND received_at - previous_seen <= INTERVAL '120 seconds'
         GROUP BY event_name, vendor, page_url, session_id
@@ -102,7 +112,7 @@ export async function GET(req: NextRequest) {
       ? 'The same event and normalized request evidence repeated in one browser session.'
       : 'The same event repeated in one browser session, but request parameters differed. Verify whether two GTM tags, triggers, or implementation paths fired.',
     fix_steps: ['Open GTM Preview or Tag Assistant and inspect every firing for this event.', 'Compare dataLayer pushes, tag names, trigger conditions, and request parameters.', 'Check for a direct gtag() or analytics SDK implementation alongside GTM.', 'For purchase, verify transaction_id is unique; for login, verify the success callback runs only once.'],
-    raw: { sessionId: row.session_id, eventIds: row.event_ids, signatureCount: row.signature_count, firstSeen: row.first_seen, lastSeen: row.last_seen },
+    raw: { sessionId: row.session_id, eventIds: row.event_ids, signatureCount: row.signature_count, observationKinds: row.observation_kinds, firstSeen: row.first_seen, lastSeen: row.last_seen },
     occurrence_count: row.occurrence_count,
     distinct_pushes: null,
     page_url: row.page_url,

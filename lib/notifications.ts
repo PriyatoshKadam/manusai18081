@@ -95,12 +95,12 @@ export async function enqueueAlertDeliveries(alert: AlertNotification) {
   if (!alert.alertId) return;
   try {
     const destination = await query(
-      `SELECT s.slack_webhook_url, u.email,
+      `SELECT COALESCE(NULLIF(s.slack_webhook_url, ''), $2) AS slack_webhook_url, u.email,
               COALESCE(ap.slack_enabled, TRUE) AS slack_enabled,
               COALESCE(ap.email_enabled, FALSE) AS email_enabled
          FROM sites s JOIN users u ON u.id = s.user_id
          LEFT JOIN alert_policies ap ON ap.site_id = s.id
-        WHERE s.id = $1 LIMIT 1`, [alert.siteId],
+        WHERE s.id = $1 LIMIT 1`, [alert.siteId, process.env.SLACK_WEBHOOK_URL?.trim() || null],
     );
     const row = destination.rows[0];
     if (row?.slack_enabled && row.slack_webhook_url) await query(`INSERT INTO alert_deliveries (alert_id, site_id, channel, destination) VALUES ($1,$2,'slack',$3) ON CONFLICT DO NOTHING`, [alert.alertId, alert.siteId, row.slack_webhook_url]);

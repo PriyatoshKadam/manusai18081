@@ -165,6 +165,7 @@ ALTER TABLE alerts
   ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'analytics',
   ADD COLUMN IF NOT EXISTS occurrence_count INT,
   ADD COLUMN IF NOT EXISTS distinct_pushes INT,
+  ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_alerts_site_category
@@ -172,6 +173,8 @@ CREATE INDEX IF NOT EXISTS idx_alerts_site_category
 
 CREATE INDEX IF NOT EXISTS idx_alerts_site_time
   ON alerts(site_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_alerts_repeat_lookup
+  ON alerts(site_id, code, vendor, event_name, resolved, created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_alerts_site_severity
   ON alerts(site_id, severity, resolved);

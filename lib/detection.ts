@@ -44,7 +44,7 @@ const AUTOMATIC_EVENTS = new Set([
 ]);
 const INTERNAL_EVENTS = new Set(['exception', 'debug', 'monitor_event', 'monitor_ready']);
 const EXPECTED_REPEAT_EVENTS = new Set(['scroll', 'user_engagement', 'click', 'video_progress']);
-const REPEAT_SENSITIVE_EVENTS = new Set(['login', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe']);
+const REPEAT_SENSITIVE_EVENTS = new Set(['login', 'run_audit', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe']);
 
 export function classifyEvent(eventName: string | null, vendor?: string | null): string {
   if (vendor && vendor.toLowerCase() === 'gtm') return 'internal';
@@ -246,21 +246,30 @@ async function createAlert(input: {
 }) {
   const dedupeMinutes = input.dedupeMinutes ?? 10;
   const dedupeKey = `${input.code}:${input.vendor || ''}:${input.eventName || ''}`;
+  const existing = await query(
+    `UPDATE alerts SET occurrence_count = COALESCE(occurrence_count, 1) + 1, last_seen = NOW(), raw = $6::jsonb
+      WHERE site_id = $1 AND code = $3 AND COALESCE(vendor,'') = COALESCE($5,'')
+        AND COALESCE(event_name,'') = COALESCE($4,'') AND resolved = false
+        AND created_at >= NOW() - ($7 * INTERVAL '1 minute')
+      RETURNING id`,
+    [input.siteId, input.severity, input.code, input.eventName, input.vendor, JSON.stringify(input.raw), dedupeMinutes],
+  );
+  if (existing.rowCount) return;
   const inserted = await query(
     `INSERT INTO alerts
-       (site_id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, occurrence_count, distinct_pushes, confidence, dedupe_key, notification_status)
-     SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13,$14,$15,'pending'
+       (site_id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, occurrence_count, distinct_pushes, confidence, dedupe_key, notification_status, last_seen)
+     SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,1,$13,$14,$15,'pending',NOW()
       WHERE NOT EXISTS (
         SELECT 1 FROM alerts
          WHERE site_id = $1 AND code = $3 AND COALESCE(vendor,'') = COALESCE($5,'')
            AND COALESCE(event_name,'') = COALESCE($6,'') AND resolved = false
-           AND created_at >= NOW() - ($16 * INTERVAL '1 minute')
+           AND created_at >= NOW() - ($15 * INTERVAL '1 minute')
       )
       RETURNING id`,
-    [input.siteId, input.severity, input.code, input.category || 'analytics', input.vendor, input.eventName, input.message, input.rootCause, JSON.stringify(input.fixSteps), input.pageUrl || null, JSON.stringify(input.raw), input.occurrenceCount || null, input.distinctPushes || null, 'confirmed', dedupeKey, dedupeMinutes],
+    [input.siteId, input.severity, input.code, input.category || 'analytics', input.vendor, input.eventName, input.message, input.rootCause, JSON.stringify(input.fixSteps), input.pageUrl || null, JSON.stringify(input.raw), input.distinctPushes || null, 'confirmed', dedupeKey, dedupeMinutes],
   );
   if (inserted.rowCount) {
-    void enqueueAlertDeliveries({ alertId: Number(inserted.rows[0].id), siteId: input.siteId, severity: input.severity, category: input.category || 'analytics', vendor: input.vendor, eventName: input.eventName, message: input.message, rootCause: input.rootCause, pageUrl: input.pageUrl, fixSteps: input.fixSteps });
+    await enqueueAlertDeliveries({ alertId: Number(inserted.rows[0].id), siteId: input.siteId, severity: input.severity, category: input.category || 'analytics', vendor: input.vendor, eventName: input.eventName, message: input.message, rootCause: input.rootCause, pageUrl: input.pageUrl, fixSteps: input.fixSteps });
   }
 }
 
