@@ -1,4 +1,5 @@
 import { query } from './db';
+import { notifySlack } from './notifications';
 
 export interface ParsedEvent {
   siteId: number;
@@ -239,7 +240,7 @@ async function createAlert(input: {
   dedupeMinutes?: number;
 }) {
   const dedupeMinutes = input.dedupeMinutes ?? 10;
-  await query(
+  const inserted = await query(
     `INSERT INTO alerts
        (site_id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, occurrence_count, distinct_pushes)
      SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11::jsonb,$12,$13
@@ -251,6 +252,10 @@ async function createAlert(input: {
       )`,
     [input.siteId, input.severity, input.code, input.category || 'analytics', input.vendor, input.eventName, input.message, input.rootCause, JSON.stringify(input.fixSteps), input.pageUrl || null, JSON.stringify(input.raw), input.occurrenceCount || null, input.distinctPushes || null, dedupeMinutes],
   );
+  if (inserted.rowCount) {
+    const site = await query('SELECT slack_webhook_url FROM sites WHERE id = $1', [input.siteId]);
+    void notifySlack(site.rows[0]?.slack_webhook_url, { siteId: input.siteId, severity: input.severity, category: input.category || 'analytics', vendor: input.vendor, eventName: input.eventName, message: input.message, rootCause: input.rootCause });
+  }
 }
 
 function getPurchaseCurrency(params: Record<string, any>) {
