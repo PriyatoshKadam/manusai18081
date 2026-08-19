@@ -91,6 +91,11 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS gtm_container_id TEXT,
   ADD COLUMN IF NOT EXISTS navigation_id TEXT,
   ADD COLUMN IF NOT EXISTS delivery_status TEXT DEFAULT 'observed',
+  ADD COLUMN IF NOT EXISTS status_code INT,
+  ADD COLUMN IF NOT EXISTS latency_ms INT,
+  ADD COLUMN IF NOT EXISTS failure_reason TEXT,
+  ADD COLUMN IF NOT EXISTS consent_state JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS web_vitals JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_events_site_occurrence
@@ -107,6 +112,9 @@ CREATE INDEX IF NOT EXISTS idx_events_site_time
 
 CREATE INDEX IF NOT EXISTS idx_events_site_vendor
   ON events(site_id, vendor);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_failure
+  ON events(site_id, vendor, status_code, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_name
   ON events(site_id, event_name);

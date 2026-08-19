@@ -14,7 +14,7 @@
   var g = window.__g4f = window.__g4f || {};
   if (g.__monitorInstalled) return;
   g.__monitorInstalled = true;
-  g.version = '11.0';
+  g.version = '12.0';
   g.k = apiKey;
   g.c = gtmContainerId;
   g.q = g.q || [];
@@ -34,6 +34,8 @@
   var sentBlocked = Object.create(null);
   var counts = Object.create(null);
   var processedGtagObjects = [];
+  var consentState = { gpc: !!navigator.globalPrivacyControl, do_not_track: navigator.doNotTrack || null };
+  var webVitals = {};
   var MAX_QUEUE = 250;
   var MAX_PENDING = 300;
   var WAIT_MS = 3500;
@@ -92,6 +94,9 @@
     return output;
   }
   function safeParams(value) { return safeValue(value || {}, 0, []); }
+  function captureConsent(value) { consentState = merge(consentState, safeParams(value || {})); }
+  function captureVital(name, value) { if (name && Number.isFinite(Number(value))) webVitals[name] = Math.round(Number(value) * 100) / 100; }
+  function diagnostic(name, params) { send({ type: 'diagnostic', vendor: 'browser', eventName: name, params: safeParams(params || {}), pageUrl: pageUrl(), source: 'browser', observationKind: 'diagnostic', sessionId: sessionId, occurrenceId: token('diagnostic'), navigationId: navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() }); }
   function stable(value) {
     if (value === null || value === undefined) return '';
     if (Array.isArray(value)) return '[' + value.map(stable).sort().join(',') + ']';
@@ -179,7 +184,7 @@
     var event = { vendor: vendor || 'ga4', eventName: text(eventName, 120), params: safe, source: source || 'dataLayer', observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() };
     pending.push(event); if (pending.length > MAX_PENDING) pending.shift();
     var name = normalize(eventName); counts[name] = (counts[name] || 0) + 1;
-    send({ type: kind || 'datalayer', vendor: event.vendor, eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: event.navigationId, gtmContainerId: gtmContainerId, timestamp: event.timestamp });
+    send({ type: kind || 'datalayer', vendor: event.vendor, eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: event.navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: event.timestamp });
     setTimeout(function () {
       if (pending.indexOf(event) === -1 || event.networkMatched) return;
       pending.splice(pending.indexOf(event), 1);
@@ -195,8 +200,10 @@
     var vendor = 'ga4';
     if (Array.isArray(item) || typeof item.length === 'number') {
       if (item[0] === 'event') { name = item[1]; params = item[2] || {}; source = 'gtag'; }
-      if (item[0] === 'config' || item[0] === 'set' || item[0] === 'consent') return null;
+      if (item[0] === 'config' || item[0] === 'set') return null;
+      if (item[0] === 'consent') { captureConsent(item[2] || item[1] || {}); return null; }
     } else if (typeof item === 'object') { name = item.event || item.event_name || item.eventName || null; }
+    if (name && /^(consent_update|consent)$/i.test(String(name))) { captureConsent(params); return null; }
     if (!name) return null;
     if (/^gtm(?:\.|$)/i.test(String(name))) vendor = 'gtm';
     return currentEvent(name, params && typeof params === 'object' ? params : {}, source, 'datalayer', pushIndex, vendor);
@@ -211,7 +218,7 @@
     }
     return null;
   }
-  function network(url, body, transport, failed) {
+  function network(url, body, transport, failed, deferSend) {
     if (!url || ownUrl(url)) return null;
     var params = merge(paramsFromUrl(url), parseBody(body));
     var vendor = vendorFor(url, params);
@@ -225,8 +232,8 @@
     if (transport === 'performance' && previousNetwork && previousNetwork.transport !== 'performance' && Date.now() - previousNetwork.timestamp < 5000) return null;
     networkHistory[historyKey] = { transport: transport, timestamp: Date.now() };
     var match = vendor === 'ga4' ? matchPending(name, normalizedParams, Date.now(), requestSig) : null;
-    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, timestamp: Date.now() };
-    send(event);
+    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
+    if (!deferSend) send(event);
     if (failed) reportBlocked(vendor + '_transport_blocked', { eventName: name, blockedUrl: url, sessionId: sessionId, signal: vendor + '_transport' });
     return event;
   }
@@ -236,7 +243,7 @@
     dataLayer.push = function () { for (var j = 0; j < arguments.length; j += 1) { pushIndex += 1; if (!wasProcessed(arguments[j])) dataLayerEvent(arguments[j]); } return original.apply(this, arguments); };
     if (typeof window.gtag === 'function') {
       var originalGtag = window.gtag;
-      window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } } catch (_) {} return originalGtag.apply(this, arguments); };
+      window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}); } } catch (_) {} return originalGtag.apply(this, arguments); };
     }
   }
   function patchNetwork() {
@@ -244,17 +251,17 @@
       var fetch = window.fetch;
       window.fetch = function (input, init) {
         var url = typeof input === 'string' ? input : input && input.url; var body = init && init.body;
-        var parsed = network(url, body, 'fetch', false);
+        var parsed = network(url, body, 'fetch', false, true);
         var result;
-        try { result = fetch.apply(this, arguments); } catch (error) { if (parsed) reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); throw error; }
-        if (result && result.catch && parsed) result.catch(function () { reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); });
+        try { result = fetch.apply(this, arguments); } catch (error) { if (parsed) { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } throw error; }
+        if (result && result.then && parsed) result.then(function (response) { parsed.statusCode = Number(response.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (!response.ok) { parsed.failureReason = 'http_' + parsed.statusCode; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }).catch(function () { if (parsed) { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } });
         return result;
       };
     }
     try {
       var open = XMLHttpRequest.prototype.open, sendXhr = XMLHttpRequest.prototype.send;
       XMLHttpRequest.prototype.open = function (method, url) { this.__g4f = { method: method, url: url }; return open.apply(this, arguments); };
-      XMLHttpRequest.prototype.send = function (body) { var item = this.__g4f; var parsed = item && network(item.url, body, 'xhr', false); if (parsed) { this.addEventListener('error', function () { reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); this.addEventListener('abort', function () { reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); } return sendXhr.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function (body) { var item = this.__g4f; var parsed = item && network(item.url, body, 'xhr', false, true); if (parsed) { this.addEventListener('load', function () { parsed.statusCode = Number(this.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (this.status >= 400) { parsed.failureReason = 'http_' + this.status; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }); this.addEventListener('error', function () { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); this.addEventListener('abort', function () { parsed.failureReason = 'aborted'; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); } return sendXhr.apply(this, arguments); };
     } catch (_) {}
     try {
       var beacon = navigator.sendBeacon;
@@ -271,8 +278,14 @@
   patchDataLayer(); patchNetwork(); patchHistory();
   try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false); } }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
   try { setInterval(scanPerformance, 1000); } catch (_) {}
-  try { window.addEventListener('error', function (event) { var target = event.target; var url = target && (target.src || target.href); if (url && vendorFor(url, {})) reportBlocked('resource_error', { blockedUrl: url, sessionId: sessionId, signal: 'resource_error' }); }, true); } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.name === 'first-paint') captureVital('fcp', entry.startTime); }); }).observe({ type: 'paint', buffered: true }); } } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('lcp', entry.startTime); }); }).observe({ type: 'largest-contentful-paint', buffered: true }); } } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('cls', entry.value || 0); }); }).observe({ type: 'layout-shift', buffered: true }); } } catch (_) {}
+  try { window.addEventListener('error', function (event) { var target = event.target; var url = target && (target.src || target.href); if (url && vendorFor(url, {})) { reportBlocked('resource_error', { blockedUrl: url, sessionId: sessionId, signal: 'resource_error' }); diagnostic('resource_error', { blockedUrl: text(url, 2048), target: text(target.tagName, 40) }); } else if (!target) diagnostic('console_error', { message: text(event.message || 'Unhandled window error', 512), filename: text(event.filename, 2048), line: event.lineno || null }); }, true); } catch (_) {}
+  try { window.addEventListener('unhandledrejection', function (event) { diagnostic('unhandled_rejection', { reason: text(event.reason && event.reason.message ? event.reason.message : event.reason, 512) }); }); } catch (_) {}
+  try { var originalConsoleError = console.error; console.error = function () { var args = Array.prototype.slice.call(arguments); diagnostic('console_error', { message: text(args.map(function (value) { return typeof value === 'string' ? value : stable(safeParams(value)); }).join(' '), 1024) }); return originalConsoleError.apply(this, arguments); }; } catch (_) {}
+  try { if (typeof MutationObserver !== 'undefined') new MutationObserver(function (records) { records.forEach(function (record) { Array.prototype.slice.call(record.addedNodes || []).forEach(function (node) { if (node && node.tagName === 'SCRIPT' && node.src && vendorFor(node.src, {})) diagnostic('script_injected', { vendor: vendorFor(node.src, {}), url: text(node.src, 2048) }); }); }); }).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}
   try { window.__g4fDebug = function () { return { version: g.version, sessionId: sessionId, navigationId: navigationId, counts: Object.assign({}, counts), pending: pending.map(function (e) { return { eventName: e.eventName, occurrenceId: e.occurrenceId, pushIndex: e.dlPushIndex, matched: !!e.networkMatched }; }), queueLength: queue.length }; }; } catch (_) {}
   g.ready = true;
-  send({ type: 'monitor_ready', vendor: 'ga4fix', observationKind: 'monitor_ready', sessionId: sessionId, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() });
+  send({ type: 'monitor_ready', vendor: 'ga4fix', observationKind: 'monitor_ready', sessionId: sessionId, navigationId: navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), pageUrl: pageUrl(), timestamp: Date.now() });
 })();

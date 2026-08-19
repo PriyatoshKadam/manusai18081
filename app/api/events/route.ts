@@ -25,10 +25,17 @@ export async function GET(req: NextRequest) {
   );
   const eventsQ = vendor
     ? `SELECT event_name, event_type, vendor, COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
+              COUNT(DISTINCT session_id)::int AS sessions,
+              COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
+              SUM(CASE WHEN (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL THEN 1 ELSE 0 END)::int AS failed,
               SUM(CASE WHEN event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false) THEN 1 ELSE 0 END)::int AS err
        FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY event_name, event_type, vendor ORDER BY cnt DESC LIMIT 100`
-    : `SELECT event_name, event_type, vendor, COUNT(DISTINCT ${occurrenceKey})::int AS cnt, 0 AS err
+    : `SELECT event_name, event_type, vendor, COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
+              COUNT(DISTINCT session_id)::int AS sessions,
+              COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
+              SUM(CASE WHEN (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL THEN 1 ELSE 0 END)::int AS failed,
+              0 AS err
        FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY event_name, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
   const eventsRes = vendor ? await query(eventsQ, [siteId, vendor]) : await query(eventsQ, [siteId]);

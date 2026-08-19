@@ -52,6 +52,11 @@ export type NormalizedTelemetryEvent = {
   transport: string | null;
   gtmContainerId: string | null;
   navigationId: string | null;
+  statusCode: number | null;
+  latencyMs: number | null;
+  failureReason: string | null;
+  consentState: Record<string, unknown>;
+  webVitals: Record<string, unknown>;
 };
 
 export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEvent {
@@ -67,6 +72,10 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
   const rawIndex = event.dlPushIndex;
   const dlPushIndex = Number.isSafeInteger(rawIndex) && Number(rawIndex) >= 0 ? Number(rawIndex) : null;
   const rawObservationKind = boundedString(event.observationKind ?? event.kind, 32)?.trim() || 'network';
+  const rawStatusCode = Number(event.statusCode);
+  const rawLatencyMs = Number(event.latencyMs);
+  const rawConsent = cleanValue(event.consentState || {}, 0);
+  const rawVitals = cleanValue(event.webVitals || {}, 0);
   const observationKind = safeToken(rawObservationKind, 32) || '';
   const allowedKinds = new Set(['network', 'datalayer', 'gtm', 'monitor_ready', 'diagnostic']);
   if (!allowedKinds.has(observationKind)) throw new Error('Invalid observation kind');
@@ -87,6 +96,11 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     transport: safeToken(event.transport, 40),
     gtmContainerId: safeToken(event.gtmContainerId, 40),
     navigationId: safeToken(event.navigationId, 160),
+    statusCode: Number.isInteger(rawStatusCode) && rawStatusCode >= 0 && rawStatusCode <= 999 ? rawStatusCode : null,
+    latencyMs: Number.isFinite(rawLatencyMs) && rawLatencyMs >= 0 && rawLatencyMs <= 120000 ? Math.round(rawLatencyMs) : null,
+    failureReason: boundedString(event.failureReason, 240),
+    consentState: rawConsent && typeof rawConsent === 'object' && !Array.isArray(rawConsent) ? rawConsent as Record<string, unknown> : {},
+    webVitals: rawVitals && typeof rawVitals === 'object' && !Array.isArray(rawVitals) ? rawVitals as Record<string, unknown> : {},
   };
 }
 

@@ -68,6 +68,10 @@ describe('ingest validation', () => {
     expect(normalizeTelemetryEvent({ vendor: 'GA4', eventName: 'run_audit', observationKind: 'datalayer', sessionId: 'session-1', occurrenceId: 'event-1', navigationId: 'nav-1', gtmContainerId: 'GTM-ABC123', params: { audit_type: 'full' } })).toMatchObject({ vendor: 'ga4', eventName: 'run_audit', observationKind: 'datalayer', sessionId: 'session-1', occurrenceId: 'event-1', navigationId: 'nav-1' });
   });
 
+  it('preserves bounded response, latency, consent, and vitals evidence', () => {
+    expect(normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'run_audit', statusCode: 204, latencyMs: 87.4, failureReason: null, consentState: { analytics_storage: 'granted' }, webVitals: { lcp: 1234.56 } })).toMatchObject({ statusCode: 204, latencyMs: 87, consentState: { analytics_storage: 'granted' }, webVitals: { lcp: 1234.56 } });
+  });
+
   it('rejects unsafe observation kinds and tokens', () => {
     expect(() => normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'run_audit', observationKind: 'javascript:alert(1)' })).toThrow('Invalid observation kind');
   });

@@ -23,6 +23,11 @@ export interface ParsedEvent {
   transport?: string | null;
   gtmContainerId?: string | null;
   navigationId?: string | null;
+  statusCode?: number | null;
+  latencyMs?: number | null;
+  failureReason?: string | null;
+  consentState?: Record<string, unknown>;
+  webVitals?: Record<string, unknown>;
 }
 
 type DuplicateMatch = ParsedEvent & { id: number };
@@ -258,6 +263,19 @@ function getTransactionId(params: Record<string, any>) {
   return firstValue(params.transaction_id, params.transactionId, params['ep.transaction_id'], params['epn.transaction_id'], params.ecommerce?.transaction_id, params.ecommerce?.transactionId);
 }
 
+async function checkTransportAndConsent(event: ParsedEvent) {
+  if (!event.vendor || !['ga4', 'gads', 'meta', 'tiktok', 'linkedin', 'snapchat', 'pinterest'].includes(event.vendor)) return;
+  if ((event.statusCode && event.statusCode >= 400) || event.failureReason) {
+    const code = event.statusCode && event.statusCode >= 400 ? 'tag_http_failure' : 'tag_transport_failure';
+    const reason = event.failureReason || `http_${event.statusCode}`;
+    await createAlert({ siteId: event.siteId, severity: event.eventName?.trim().toLowerCase() === 'purchase' ? 'critical' : 'warning', code, category: 'transport', vendor: event.vendor, eventName: event.eventName, message: `${event.vendor} ${event.eventName || 'tag'} failed to deliver (${reason}).`, rootCause: 'The browser observed a failed analytics transport or an HTTP error response.', fixSteps: ['Check the request URL and response status in the browser Network panel.', 'Check CSP, consent rules, ad blockers, and vendor endpoint configuration.', 'Compare the dataLayer push with the network request in GTM Preview or Tag Assistant.'], pageUrl: event.pageUrl || '', raw: { eventId: event.eventId, statusCode: event.statusCode || null, latencyMs: event.latencyMs || null, failureReason: reason, rawUrl: event.rawUrl || null }, dedupeMinutes: 10 });
+  }
+  const analyticsStorage = String(event.consentState?.analytics_storage || '').toLowerCase();
+  if (event.vendor === 'ga4' && analyticsStorage === 'denied') {
+    await createAlert({ siteId: event.siteId, severity: 'critical', code: 'tag_fired_after_consent_denied', category: 'consent', vendor: event.vendor, eventName: event.eventName, message: `GA4 ${event.eventName || 'event'} fired while analytics_storage was denied.`, rootCause: 'The event was observed after the browser reported denied analytics storage consent.', fixSteps: ['Verify Consent Mode v2 defaults and update signals.', 'Gate non-essential tags behind the CMP consent callback.', 'Check whether cookieless pings are intentional and documented.'], pageUrl: event.pageUrl || '', raw: { eventId: event.eventId, consentState: event.consentState || {}, params: event.params }, dedupeMinutes: 10 });
+  }
+}
+
 async function checkPurchase(event: ParsedEvent) {
   if (event.vendor !== 'ga4' || event.eventName?.trim().toLowerCase() !== 'purchase') return;
   const currency = getPurchaseCurrency(event.params);
@@ -308,6 +326,7 @@ async function createGtmAlert(event: ParsedEvent, duplicate: DuplicateMatch) {
 export async function runDetection(event: ParsedEvent) {
   try {
     await checkFirstSeenCustomEvent(event);
+    await checkTransportAndConsent(event);
     const duplicate = await checkDuplicateEvent(event);
     if (duplicate) {
       if (event.vendor === 'gtm' || duplicate.vendor === 'gtm') {

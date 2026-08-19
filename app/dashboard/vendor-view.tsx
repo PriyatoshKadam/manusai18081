@@ -74,6 +74,9 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
                 <th className="text-left px-4 py-2 font-medium">Event name</th>
                 <th className="text-left px-4 py-2 font-medium">Type</th>
                 <th className="text-right px-4 py-2 font-medium">Count</th>
+                <th className="text-right px-4 py-2 font-medium">Sessions</th>
+                <th className="text-right px-4 py-2 font-medium">Latency</th>
+                <th className="text-right px-4 py-2 font-medium">Failed</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
               </tr>
             </thead>
@@ -85,6 +88,9 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
                     <td className="px-4 py-3 mono">{e.event_name || '(unnamed)'}</td>
                     <td className="px-4 py-3 text-ink-500 capitalize">{e.event_type || 'unknown'}</td>
                     <td className="px-4 py-3 text-right font-medium">{Number(e.cnt).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-ink-500">{Number(e.sessions || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-ink-500">{Number(e.avg_latency_ms || 0) ? `${Number(e.avg_latency_ms).toLocaleString()} ms` : '—'}</td>
+                    <td className={`px-4 py-3 text-right ${Number(e.failed || 0) ? 'text-red-600 font-medium' : 'text-ink-500'}`}>{Number(e.failed || 0).toLocaleString()}</td>
                     <td className="px-4 py-3">
                       {hasAlert ? (
                         <span className="pill bg-amber-100 text-amber-800">{hasAlert.code.replace(/_/g, ' ')}</span>
