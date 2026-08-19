@@ -43,6 +43,7 @@ export default function DashboardShell({
       { href: '/dashboard/tiktok', label: 'TikTok Pixel', badge: 'TT', badgeColor: 'bg-ink-950' },
     ]},
     { section: 'Diagnostics', items: [
+      { href: '/dashboard/audit', label: 'Runtime audit', icon: iconShield },
       { href: '/dashboard/duplicates', label: 'Duplicate events', icon: iconLayers },
       { href: '/dashboard/gtm', label: 'GTM diagnostics', icon: iconLayers },
       { href: '/dashboard/adblock', label: 'Ad-blocker impact', icon: iconShield },
@@ -150,6 +151,7 @@ function pageTitle(path: string) {
     '/dashboard/ads': 'Google Ads',
     '/dashboard/meta': 'Meta Pixel',
     '/dashboard/tiktok': 'TikTok Pixel',
+    '/dashboard/audit': 'Runtime audit',
     '/dashboard/duplicates': 'Duplicate events',
     '/dashboard/gtm': 'GTM diagnostics',
     '/dashboard/adblock': 'Ad-blocker impact',

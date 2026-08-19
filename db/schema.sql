@@ -234,3 +234,29 @@ ALTER TABLE custom_events_seen
   ADD COLUMN IF NOT EXISTS first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   ADD COLUMN IF NOT EXISTS count BIGINT NOT NULL DEFAULT 1;
+
+-- ============================================================
+-- Runtime audit snapshots
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS audit_runs (
+  id BIGSERIAL PRIMARY KEY,
+  site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'runtime_evidence',
+  score INT NOT NULL DEFAULT 0,
+  checks_total INT NOT NULL DEFAULT 0,
+  checks_passed INT NOT NULL DEFAULT 0,
+  findings JSONB NOT NULL DEFAULT '[]'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE audit_runs
+  ADD COLUMN IF NOT EXISTS mode TEXT NOT NULL DEFAULT 'runtime_evidence',
+  ADD COLUMN IF NOT EXISTS score INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS checks_total INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS checks_passed INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS findings JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_audit_runs_site_time
+  ON audit_runs(site_id, created_at DESC);
