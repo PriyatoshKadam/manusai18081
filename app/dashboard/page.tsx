@@ -7,7 +7,6 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AlertModal from './alert-modal';
 import { SeverityChip, timeAgo } from './ui';
-import FlowSummaryGraph from './flow-summary';
 import { CommandKpi, DashboardSection, EvidenceRail, EventHeatmap, ScoreRing } from './command-visuals';
 
 export default function OverviewPage() {
@@ -58,8 +57,6 @@ export default function OverviewPage() {
   const health = data.health || [];
   const duplicates = data.duplicates || [];
   const deliveries = data.deliveries || [];
-  const flow = data.flow || [];
-  const blockedFlow = data.blockedFlow || [];
   const events = data.events || [];
   const avgHealth = health.length ? Math.round(health.reduce((sum: number, row: any) => sum + Number(row.health_score || 0), 0) / health.length) : null;
   const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0);
@@ -95,7 +92,6 @@ export default function OverviewPage() {
       <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Action queue" title="Evidence that deserves attention" description="Prioritized from duplicate, alert, and failure signals." action={<Link href={`/dashboard/duplicates?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Open lab →</Link>} /><EvidenceRail items={actions} /></div>
     </section>
 
-    <div className="overflow-hidden rounded-2xl border border-white/[.08] shadow-2xl shadow-black/10"><FlowSummaryGraph rows={flow} blockedRows={blockedFlow} /></div>
 
     <section className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
       <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Operator queue" title="Action center" description="Open evidence, not vague health scores." action={<Link href={`/dashboard/health?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Deep health view →</Link>} />{actions.length ? <div className="divide-y divide-white/[.06]">{actions.map((item: any, index: number) => <button key={`${item.id}-${index}`} onClick={() => setSelectedAlert(item.sourceType === 'alert' ? item : { ...item, severity: 'warning' })} className="flex w-full items-start gap-3 py-3 text-left transition hover:bg-white/[.03]"><SeverityChip severity={item.severity || 'warning'} /><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-100">{item.message}</div><div className="mt-1 text-xs text-slate-500">{item.event_name || item.vendor || 'tag'} · {item.occurrence_count || 0} observed fires</div></div><span className="whitespace-nowrap text-xs text-slate-500">{timeAgo(item.created_at || item.last_seen)}</span></button>)}</div> : <div className="empty-visual">No prioritized action. Monitoring is collecting evidence.</div>}</div>

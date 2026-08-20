@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 type Site = { id: number; domain: string; api_key: string; first_party_domain?: string | null };
 
@@ -12,7 +12,18 @@ export default function DashboardShell({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [siteId, setSiteId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('gafix-theme');
+    if (saved === 'light' || saved === 'dark') setTheme(saved);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem('gafix-theme', theme);
+    document.documentElement.style.colorScheme = theme;
+  }, [theme]);
 
   useEffect(() => {
     const qId = Number(searchParams.get('siteId') || 0);
@@ -66,7 +77,7 @@ export default function DashboardShell({
   ];
 
   return (
-    <div className="dashboard-shell min-h-screen">
+    <div className={`dashboard-shell min-h-screen ${theme === 'light' ? 'dashboard-light' : 'dashboard-dark'}`} data-theme={theme}>
       <div className="flex">
         <aside className="w-64 min-h-screen bg-[#0b111b] border-r border-white/[.07] text-white flex flex-col fixed left-0 top-0 shadow-2xl shadow-black/20">
           <div className="p-4 border-b border-white/10">
@@ -143,6 +154,7 @@ export default function DashboardShell({
               )}
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')} className="dashboard-theme-toggle" aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}><span className="dashboard-theme-icon">{theme === 'dark' ? '☼' : '◐'}</span><span className="hidden sm:inline">{theme === 'dark' ? 'Light' : 'Dark'}</span></button>
               {currentSite && (
                 <span className="dashboard-top-control"><span className="text-slate-500">Site</span><strong className="mono">{currentSite.domain}</strong></span>
               )}
