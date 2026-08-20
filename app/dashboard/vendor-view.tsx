@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AlertModal from './alert-modal';
 import { SeverityChip, timeAgo } from './ui';
+import { EventSessionChart, SourceLaneChart } from './event-analytics';
 
 export default function VendorView({ vendor, label, id }: { vendor: string; label: string; id: string | null }) {
   const search = useSearchParams();
@@ -58,6 +59,11 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
           <div className="text-xs text-ink-400 uppercase">Validation issues</div>
           <div className={`text-2xl font-semibold mt-1 ${errorCount ? 'text-red-600' : 'text-ink-950'}`}>{errorCount}</div>
         </div>
+      </div>
+
+      <div className="mb-6 grid gap-5 xl:grid-cols-2">
+        <EventSessionChart events={events} />
+        <SourceLaneChart sources={data.sources || []} />
       </div>
 
       <div className="bg-white rounded-xl border border-ink-200 mb-6">

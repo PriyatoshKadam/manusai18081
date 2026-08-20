@@ -56,6 +56,7 @@ describe('event identity and classification', () => {
 
   it('recognizes same-occurrence GTM fan-out as duplicate evidence', () => {
     expect(isGtmFanoutEvidence({ ...base, vendor: 'ga4', gtmContainerId: 'GTM-TEST123', occurrenceId: 'event-1' }, { vendor: 'ga4', gtmContainerId: 'GTM-TEST123', dlPushIndex: 4 })).toBe(true);
+    expect(isGtmFanoutEvidence({ ...base, vendor: 'ga4', sessionId: 'session-1', occurrenceId: 'event-1', gtmContainerId: null, dlPushIndex: null }, { vendor: 'ga4', sessionId: 'session-1', occurrenceId: 'event-1', gtmContainerId: null, dlPushIndex: null })).toBe(true);
     expect(isGtmFanoutEvidence({ ...base, vendor: 'ga4', gtmContainerId: null, dlPushIndex: null }, { vendor: 'ga4', gtmContainerId: null, dlPushIndex: null })).toBe(false);
   });
 

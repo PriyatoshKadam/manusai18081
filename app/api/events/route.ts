@@ -66,6 +66,11 @@ export async function GET(req: NextRequest) {
       GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')`,
     [siteId],
   );
-  const alerts = await query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]);
-  return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows, flow: flow.rows, blockedFlow: blockedFlow.rows });
+  const [alerts, sources] = await Promise.all([
+    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
+    query(`SELECT event_name, source, observation_kind, COUNT(*)::int AS count
+           FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
+           GROUP BY event_name, source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),
+  ]);
+  return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows, flow: flow.rows, blockedFlow: blockedFlow.rows, sources: sources.rows });
 }

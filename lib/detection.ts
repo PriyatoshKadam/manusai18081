@@ -163,8 +163,9 @@ function analyticsStorageDenied(event: ParsedEvent): boolean {
   return decodeGcs(gcs)?.analytics_storage === 'denied';
 }
 
-export function isGtmFanoutEvidence(event: ParsedEvent, previous: Pick<DuplicateMatch, 'vendor' | 'gtmContainerId' | 'dlPushIndex'>) {
-  return event.vendor === 'gtm' || previous.vendor === 'gtm' || Boolean(event.gtmContainerId || previous.gtmContainerId || event.dlPushIndex !== null || previous.dlPushIndex !== null);
+export function isGtmFanoutEvidence(event: ParsedEvent, previous: Pick<DuplicateMatch, 'vendor' | 'gtmContainerId' | 'dlPushIndex'> & Partial<Pick<DuplicateMatch, 'sessionId' | 'occurrenceId'>>) {
+  const sameOccurrence = Boolean(event.sessionId && event.occurrenceId && event.sessionId === previous.sessionId && event.occurrenceId === previous.occurrenceId);
+  return event.vendor === 'gtm' || previous.vendor === 'gtm' || sameOccurrence || Boolean(event.gtmContainerId || previous.gtmContainerId || event.dlPushIndex !== null || previous.dlPushIndex !== null);
 }
 
 export function classifyDuplicateRootCause(current: ParsedEvent, previous: Pick<DuplicateMatch, 'id' | 'dlPushIndex' | 'source' | 'rawUrl'>): string {
@@ -347,7 +348,8 @@ async function checkFirstSeenCustomEvent(event: ParsedEvent) {
 }
 
 async function createGtmAlert(event: ParsedEvent, duplicate: DuplicateMatch) {
-  const samePush = event.dlPushIndex !== null && duplicate.dlPushIndex !== null && event.dlPushIndex === duplicate.dlPushIndex;
+  const sameOccurrence = Boolean(event.sessionId && event.occurrenceId && event.sessionId === duplicate.sessionId && event.occurrenceId === duplicate.occurrenceId);
+  const samePush = sameOccurrence || (event.dlPushIndex !== null && duplicate.dlPushIndex !== null && event.dlPushIndex === duplicate.dlPushIndex);
   const differentSource = !!event.source && !!duplicate.source && event.source !== duplicate.source;
   const code = samePush ? 'gtm_multiple_tags_or_triggers' : differentSource ? 'gtm_gtm_and_direct_implementation' : 'gtm_datalayer_duplicate_push';
   const message = samePush
@@ -358,7 +360,7 @@ async function createGtmAlert(event: ParsedEvent, duplicate: DuplicateMatch) {
   await createAlert({
     siteId: event.siteId, severity: EXPECTED_REPEAT_EVENTS.has(event.eventName?.trim().toLowerCase() || '') ? 'warning' : 'critical', code, category: 'gtm', vendor: event.vendor, eventName: event.eventName,
     message, rootCause: classifyDuplicateRootCause(event, duplicate), pageUrl: event.pageUrl,
-    occurrenceCount: 2, distinctPushes: event.dlPushIndex !== duplicate.dlPushIndex ? 2 : 1,
+    occurrenceCount: 2, distinctPushes: samePush ? 1 : 2,
     fixSteps: [
       'In GTM, open Triggers and confirm only one trigger matches this event name and condition.',
       'Open Tags and check whether multiple GA4 Event tags fire from the same trigger.',

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AlertModal from '../alert-modal';
 import { SeverityChip, timeAgo } from '../ui';
+import { DataLayerProvenance, EventSessionChart, SourceLaneChart } from '../event-analytics';
 
 export default function GtmDiagnosticsPage() {
   const search = useSearchParams();
@@ -32,6 +33,7 @@ export default function GtmDiagnosticsPage() {
   const customEvents = data.customEvents || [];
   const dataLayer = data.dataLayer || [];
   const sources = data.sources || [];
+  const provenance = data.provenance || [];
 
   return (
     <div className="fade-in max-w-6xl space-y-6">
@@ -63,6 +65,13 @@ export default function GtmDiagnosticsPage() {
           <li><b>4. Network:</b> compare requests and check for direct gtag or SDK sends.</li>
         </ol>
       </div>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <EventSessionChart events={customEvents} />
+        <SourceLaneChart sources={sources} />
+      </div>
+
+      <DataLayerProvenance rows={provenance} />
 
       <section className="bg-white rounded-xl border border-ink-200">
         <div className="p-4 border-b border-ink-100"><h3 className="font-semibold text-ink-950">Custom GA4 events</h3><p className="text-xs text-ink-500 mt-1">Custom names are shown independently from GA4 recommended events. Each row includes total observations and distinct browser sessions.</p></div>

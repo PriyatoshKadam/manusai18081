@@ -61,8 +61,7 @@ export async function GET(req: NextRequest) {
     query(
       `WITH raw AS (
          SELECT id, event_name, vendor, page_url, session_id, request_signature, received_at,
-                COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text) AS occurrence_key,
-                observation_kind
+                occurrence_id, network_occurrence_id, observation_kind
            FROM events
           WHERE site_id = $1
             AND vendor = 'ga4'
@@ -70,26 +69,25 @@ export async function GET(req: NextRequest) {
             AND LOWER(COALESCE(event_name, '')) = ANY($2::text[])
             AND received_at > NOW() - INTERVAL '24 hours'
        ), occurrences AS (
-         SELECT DISTINCT ON (session_id, event_name, occurrence_key) *
+         SELECT event_name, vendor, page_url, session_id, occurrence_id,
+                COUNT(*)::int AS occurrence_count,
+                COUNT(DISTINCT request_signature)::int AS signature_count,
+                MIN(received_at) AS first_seen,
+                MAX(received_at) AS last_seen,
+                ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids,
+                ARRAY_AGG(DISTINCT observation_kind) AS observation_kinds
            FROM raw
-          ORDER BY session_id, event_name, occurrence_key,
-                   CASE WHEN observation_kind = 'network' THEN 1 WHEN observation_kind = 'datalayer' THEN 2 ELSE 3 END,
-                   received_at DESC
-       ), ordered AS (
-         SELECT *, LAG(received_at) OVER (PARTITION BY vendor, event_name, session_id ORDER BY received_at) AS previous_seen
+          WHERE occurrence_id IS NOT NULL
+          GROUP BY event_name, vendor, page_url, session_id, occurrence_id
+       ), repeated AS (
+         SELECT *, LAG(last_seen) OVER (PARTITION BY vendor, event_name, session_id ORDER BY last_seen) AS previous_seen
            FROM occurrences
        )
-       SELECT event_name, vendor, page_url, session_id,
-              COUNT(*)::int AS occurrence_count,
-              COUNT(DISTINCT request_signature)::int AS signature_count,
-              MIN(received_at) AS first_seen,
-              MAX(received_at) AS last_seen,
-              ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids,
-              ARRAY_AGG(DISTINCT observation_kind) AS observation_kinds
-         FROM ordered
-        WHERE previous_seen IS NOT NULL AND received_at - previous_seen <= INTERVAL '120 seconds'
-        GROUP BY event_name, vendor, page_url, session_id
-       HAVING COUNT(*) > 1
+       SELECT event_name, vendor, page_url, session_id, occurrence_id,
+              occurrence_count, signature_count, first_seen, last_seen, event_ids, observation_kinds
+         FROM repeated
+        WHERE occurrence_count > 1
+           OR (previous_seen IS NOT NULL AND first_seen - previous_seen <= INTERVAL '120 seconds')
         ORDER BY last_seen DESC
         LIMIT 100`,
       [siteId, REPEAT_SENSITIVE_EVENTS],
@@ -129,13 +127,13 @@ export async function GET(req: NextRequest) {
       ? 'The same event and normalized request evidence repeated in one browser session.'
       : 'The same event repeated in one browser session, but request parameters differed. Verify whether two GTM tags, triggers, or implementation paths fired.',
     fix_steps: ['Open GTM Preview or Tag Assistant and inspect every firing for this event.', 'Compare dataLayer pushes, tag names, trigger conditions, and request parameters.', 'Check for a direct gtag() or analytics SDK implementation alongside GTM.', 'For purchase, verify transaction_id is unique; for login, verify the success callback runs only once.'],
-    raw: { sessionId: row.session_id, eventIds: row.event_ids, signatureCount: row.signature_count, observationKinds: row.observation_kinds, firstSeen: row.first_seen, lastSeen: row.last_seen },
+    raw: { sessionId: row.session_id, occurrenceId: row.occurrence_id, eventIds: row.event_ids, occurrenceCount: row.occurrence_count, signatureCount: row.signature_count, observationKinds: row.observation_kinds, firstSeen: row.first_seen, lastSeen: row.last_seen },
     occurrence_count: row.occurrence_count,
-    distinct_pushes: null,
+    distinct_pushes: row.occurrence_id ? 1 : null,
     page_url: row.page_url,
     created_at: row.last_seen,
     sourceType: 'derived_repeat_evidence',
-    duplicateKey: `repeat:${row.session_id}:${row.event_name}:${row.page_url || ''}`,
+    duplicateKey: `repeat:${row.session_id}:${row.event_name}:${row.occurrence_id || row.page_url || ''}`,
   }));
 
   const derivedFanout = fanoutRows.rows.map((row: any) => ({
@@ -144,11 +142,11 @@ export async function GET(req: NextRequest) {
     vendor: row.vendor,
     category: 'gtm',
     code: 'gtm_multiple_tags_or_triggers',
-    message: `${row.event_name || 'GA4 event'} produced ${row.network_count} network calls from one dataLayer occurrence.`,
+    message: `${row.event_name || 'GA4 event'} produced ${row.occurrence_count} network calls from one dataLayer occurrence.`,
     root_cause: 'Multiple GTM tags or triggers appear to have responded to the same dataLayer event. This is the strongest browser-side evidence of tag fan-out.',
     fix_steps: ['Open GTM Preview and inspect the exact dataLayer event.', 'Check whether two GA4 Event tags fire from that one trigger.', 'Disable duplicate tags or narrow their trigger conditions.', 'Verify the network request count falls to one after publishing.'],
-    raw: { sessionId: row.session_id, occurrenceId: row.occurrence_id, eventIds: row.event_ids, networkCount: row.network_count, signatureCount: row.signature_count, firstSeen: row.first_seen, lastSeen: row.last_seen },
-    occurrence_count: row.network_count,
+    raw: { sessionId: row.session_id, occurrenceId: row.occurrence_id, eventIds: row.event_ids, networkCount: row.occurrence_count, signatureCount: row.signature_count, observationKinds: row.observation_kinds, firstSeen: row.first_seen, lastSeen: row.last_seen },
+    occurrence_count: row.occurrence_count,
     distinct_pushes: 1,
     page_url: row.page_url,
     created_at: row.last_seen,

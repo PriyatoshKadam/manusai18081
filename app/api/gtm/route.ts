@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
   if (!Number.isSafeInteger(siteId) || siteId <= 0) return NextResponse.json({ error: 'siteId required' }, { status: 400 });
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  const [alerts, dataLayer, custom, sources] = await Promise.all([
+  const [alerts, dataLayer, custom, sources, provenance] = await Promise.all([
     query(`SELECT id, severity, code, event_name, message, root_cause, fix_steps, page_url, raw, occurrence_count, distinct_pushes, created_at
            FROM alerts WHERE site_id = $1 AND category = 'gtm' AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
     query(`SELECT event_name, COUNT(*)::int AS pushes, COUNT(DISTINCT session_id)::int AS sessions, COUNT(DISTINCT navigation_id)::int AS navigations,
@@ -23,6 +23,9 @@ export async function GET(req: NextRequest) {
     query(`SELECT event_name, source, observation_kind, COUNT(*)::int AS count
            FROM events WHERE site_id = $1 AND vendor = 'ga4' AND received_at > NOW() - INTERVAL '24 hours'
            GROUP BY event_name, source, observation_kind ORDER BY count DESC LIMIT 200`, [siteId]),
+    query(`SELECT event_name, source, observation_kind, session_id, dl_push_index, occurrence_id, network_occurrence_id, navigation_id, page_url, received_at
+           FROM events WHERE site_id = $1 AND vendor = 'ga4' AND received_at > NOW() - INTERVAL '24 hours'
+           ORDER BY received_at DESC LIMIT 160`, [siteId]),
   ]);
-  return NextResponse.json({ alerts: alerts.rows, dataLayer: dataLayer.rows, customEvents: custom.rows, sources: sources.rows });
+  return NextResponse.json({ alerts: alerts.rows, dataLayer: dataLayer.rows, customEvents: custom.rows, sources: sources.rows, provenance: provenance.rows });
 }

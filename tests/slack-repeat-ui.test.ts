@@ -18,7 +18,8 @@ describe('Slack and repeated-event regressions', () => {
     expect(detection).toContain('occurrence_count = COALESCE(occurrence_count, 1) + 1');
     expect(detection).toContain('last_seen = NOW()');
     expect(duplicates).toContain("'run_audit'");
-    expect(duplicates).toContain('occurrence_key');
+    expect(duplicates).toContain('occurrence_id');
+    expect(duplicates).toContain('occurrence_count > 1');
   });
 
   it('exposes a customer-facing action center and delivery status', () => {
