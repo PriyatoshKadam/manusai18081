@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AlertModal from './alert-modal';
@@ -17,7 +17,7 @@ export default function OverviewPage() {
   const stats = data.stats || {}; const alerts = data.alerts || []; const health = data.health || []; const duplicates = data.duplicates || []; const deliveries = data.deliveries || [];
   const avgHealth = health.length ? Math.round(health.reduce((sum: number, row: any) => sum + Number(row.health_score || 0), 0) / health.length) : null;
   const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0); const deliveryFailures = deliveries.filter((item: any) => item.status === 'failed').length; const repeated = duplicates.filter((item: any) => ['login', 'run_audit'].includes(String(item.event_name || '').toLowerCase()));
-  const actions = useMemo(() => [...repeated.slice(0, 4), ...alerts.filter((item: any) => !repeated.some((dup: any) => dup.event_name === item.event_name)).slice(0, 4)], [alerts, repeated]);
+  const actions = [...repeated.slice(0, 4), ...alerts.filter((item: any) => !repeated.some((dup: any) => dup.event_name === item.event_name)).slice(0, 4)];
   return <div className="fade-in space-y-6 max-w-7xl">
     <section className="rounded-2xl bg-ink-950 text-white p-6 md:p-8 relative overflow-hidden"><div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-brand-500/20 blur-3xl" /><div className="relative flex flex-col md:flex-row md:items-end justify-between gap-6"><div><div className="text-xs uppercase tracking-[0.2em] text-brand-300">GA4Fix command center</div><h2 className="text-3xl font-semibold mt-2">Know what fired, what failed, and what to fix next.</h2><p className="text-sm text-ink-300 mt-3 max-w-2xl">Evidence from real sessions, network responses, consent state, performance, and duplicate analysis—without treating correlation gaps as proof of ad blocking.</p></div><div className="rounded-xl bg-white/10 px-5 py-4 min-w-[190px]"><div className="text-xs uppercase tracking-wide text-ink-300">Overall tag health</div><div className="text-4xl font-semibold mt-1">{avgHealth === null ? '—' : avgHealth}<span className="text-lg text-ink-400">/100</span></div><div className="text-xs mt-2 text-ink-300">{avgHealth === null ? 'Collecting evidence' : avgHealth >= 95 ? 'Stable real-user signal' : avgHealth >= 80 ? 'Review recommended' : 'Action required'}</div></div></div></section>
     {error && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Live refresh issue: {error}</div>}

@@ -17,7 +17,9 @@ describe('overview and alert policy contract', () => {
   it('exposes a testable Slack configuration path and resilient overview loading', () => {
     expect(read('app/api/alert-deliveries/test/route.ts')).toContain('SLACK_WEBHOOK_URL');
     expect(read('app/dashboard/integrations/page.tsx')).toContain('Send test message to Slack');
-    expect(read('app/dashboard/page.tsx')).toContain('fetchJson');
+    const overview = read('app/dashboard/page.tsx');
+    expect(overview).toContain('fetchJson');
+    expect(overview).not.toContain('useMemo');
   });
 
   it('documents synthetic and Ads identity for customers', () => {
