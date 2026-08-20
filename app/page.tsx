@@ -95,10 +95,7 @@ function TelemetryStage() {
           <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 font-mono text-[10px] text-slate-400">AUTO · 24H</span>
         </div>
         <div className="relative mt-4 grid grid-cols-3 gap-2 sm:gap-3"><StageMetric label="Fires / min" value="1,247" tone="lime" /><StageMetric label="Sessions" value="582" tone="blue" /><StageMetric label="At risk" value="₹18.4k" tone="rose" /></div>
-        <div className="relative mt-5 rounded-2xl border border-white/[.08] bg-[#080d16]/90 p-3 sm:p-4">
-          <div className="mb-3 flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-500">Event stream</span><span className="font-mono text-[10px] text-[#b8f56b]">● collecting</span></div>
-          <div className="space-y-2 overflow-hidden">{[...liveEvents, ...liveEvents].map((event, index) => <LiveEvent key={`${event.time}-${event.event}-${index}`} event={event} index={index} />)}</div>
-        </div>
+        <EventConveyor />
         <div className="relative mt-4 grid gap-3 sm:grid-cols-[1fr_1.25fr]">
           <div className="rounded-2xl border border-white/[.08] bg-white/[.03] p-4"><div className="flex items-center justify-between"><span className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-500">Delivery map</span><span className="text-[10px] text-[#8fa8ff]">2 paths</span></div><MiniFlow /></div>
           <div className="rounded-2xl border border-[#ff718d]/20 bg-[#ff718d]/[.06] p-4">
@@ -110,6 +107,19 @@ function TelemetryStage() {
       </div>
     </div>
   );
+}
+
+function EventConveyor() {
+  return <div className="gafix-conveyor relative mt-5 overflow-hidden rounded-2xl border border-white/[.08] bg-[#080d16]/95 p-3 sm:p-4">
+    <div className="mb-4 flex items-center justify-between"><div><span className="text-[10px] font-bold uppercase tracking-[.16em] text-slate-500">Event conveyor</span><p className="mt-1 text-xs font-semibold text-white">New signals arrive, move, and become evidence</p></div><span className="font-mono text-[10px] text-[#b8f56b]">● receiving</span></div>
+    <div className="gafix-conveyor-head hidden grid-cols-[1fr_1fr_1fr_1fr] gap-2 px-2 pb-2 text-[9px] font-bold uppercase tracking-[.12em] text-slate-600 sm:grid"><span>Browser</span><span>Inspect</span><span>Destination</span><span>Alert bus</span></div>
+    <div className="gafix-conveyor-track">
+      <div className="gafix-conveyor-route gafix-conveyor-route-one" /><div className="gafix-conveyor-route gafix-conveyor-route-two" /><div className="gafix-conveyor-route gafix-conveyor-route-three" />
+      <div className="gafix-conveyor-station gafix-conveyor-station-browser"><span className="gafix-station-dot bg-[#b8f56b]" /><span>browser</span></div><div className="gafix-conveyor-station gafix-conveyor-station-inspect"><span className="gafix-station-dot bg-[#8fa8ff]" /><span>inspect</span></div><div className="gafix-conveyor-station gafix-conveyor-station-destination"><span className="gafix-station-dot bg-[#b18cff]" /><span>destination</span></div><div className="gafix-conveyor-station gafix-conveyor-station-alert"><span className="gafix-station-dot bg-[#ff718d]" /><span>alert</span></div>
+      {[...liveEvents, ...liveEvents].map((event, index) => <div key={`${event.time}-${event.event}-${index}`} className={`gafix-conveyor-card ${event.status === '500' ? 'is-alert' : ''}`} style={{ animationDelay: `${index * 2.1}s` }}><span className="font-mono text-[9px] text-slate-600">{event.time}</span><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${event.tone === 'lime' ? 'bg-[#b8f56b]' : event.tone === 'blue' ? 'bg-[#8fa8ff]' : event.tone === 'violet' ? 'bg-[#b18cff]' : 'bg-[#f6b94c]'}`} /><span className="font-semibold text-slate-200">{event.event}</span><span className="text-[9px] text-slate-500">{event.vendor}</span><span className={`ml-auto rounded-full px-1.5 py-1 text-[9px] font-bold ${event.status === '500' ? 'bg-[#ff718d]/15 text-[#ff9aae]' : 'bg-[#b8f56b]/10 text-[#cfff9d]'}`}>{event.status === '500' ? 'alert' : event.status}</span></div>)}
+    </div>
+    <div className="mt-3 flex items-center justify-between rounded-xl border border-[#ff718d]/20 bg-[#ff718d]/[.06] px-3 py-2"><div className="flex items-center gap-2"><span className="gafix-alert-ping flex h-5 w-5 items-center justify-center rounded-full bg-[#ff718d]/20 text-[10px] font-bold text-[#ff9aae]">!</span><span className="text-[10px] font-semibold text-[#ffb1bf]">Alert detected: purchase delivery degraded</span></div><span className="font-mono text-[9px] text-[#ff9aae]">→ Slack · critical</span></div>
+  </div>;
 }
 
 function LiveEvent({ event, index }: { event: (typeof liveEvents)[number]; index: number }) {

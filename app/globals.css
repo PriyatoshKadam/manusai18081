@@ -200,3 +200,24 @@ html, body {
 @keyframes gafixConfidence { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @media (max-width: 1023px) { .gafix-stage-shell { transform: none; } .gafix-stage-shell:hover { transform: translateY(-3px); } }
 @media (prefers-reduced-motion: reduce) { .gafix-stage-shell, .gafix-stage-shell:hover, .gafix-hover-lift, .gafix-hover-lift:hover { transform: none; transition: none; } .gafix-stage-glow, .gafix-pulse-dot, .gafix-event-row, .gafix-row-beacon, .gafix-flow-packet, .gafix-confidence-bar { animation: none !important; } }
+
+
+/* GAfix event conveyor: a spatial, slide-by-slide event-to-alert narrative */
+.gafix-conveyor { box-shadow: inset 0 1px 0 rgba(255,255,255,.04), 0 20px 50px rgba(0,0,0,.2); }
+.gafix-conveyor-track { position: relative; height: 174px; overflow: hidden; border-radius: 1rem; background: radial-gradient(circle at 12% 50%, rgba(184,245,107,.08), transparent 22%), radial-gradient(circle at 88% 50%, rgba(255,113,141,.08), transparent 22%), rgba(255,255,255,.025); }
+.gafix-conveyor-track::before { content: ''; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 28px 28px; opacity: .5; }
+.gafix-conveyor-route { position: absolute; left: 8%; right: 8%; height: 1px; background: linear-gradient(90deg, rgba(184,245,107,.08), rgba(143,168,255,.35), rgba(177,140,255,.35), rgba(255,113,141,.24)); box-shadow: 0 0 12px rgba(109,140,255,.25); }
+.gafix-conveyor-route-one { top: 38%; } .gafix-conveyor-route-two { top: 50%; opacity: .34; } .gafix-conveyor-route-three { top: 62%; opacity: .18; }
+.gafix-conveyor-station { position: absolute; top: 12px; z-index: 2; display: flex; align-items: center; gap: 5px; color: #6f7e94; font-family: var(--font-mono); font-size: 9px; text-transform: uppercase; letter-spacing: .08em; }
+.gafix-conveyor-station-browser { left: 7%; } .gafix-conveyor-station-inspect { left: 34%; } .gafix-conveyor-station-destination { left: 61%; } .gafix-conveyor-station-alert { right: 7%; color: #a87b88; }
+.gafix-station-dot { width: 6px; height: 6px; border-radius: 999px; box-shadow: 0 0 0 4px rgba(255,255,255,.04); }
+.gafix-conveyor-card { position: absolute; z-index: 3; top: 72px; left: -230px; display: flex; width: min(218px, 72%); align-items: center; gap: 7px; white-space: nowrap; border: 1px solid rgba(255,255,255,.11); border-radius: 13px; background: linear-gradient(145deg, rgba(28,39,55,.98), rgba(14,21,32,.98)); padding: 10px 11px; box-shadow: 0 12px 24px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.05); animation: gafixConveyorSlide 9.4s cubic-bezier(.2,.78,.2,1) infinite; }
+.gafix-conveyor-card::after { content: ''; position: absolute; right: -7px; width: 7px; height: 7px; border-radius: 999px; background: #b8f56b; box-shadow: 0 0 0 5px rgba(184,245,107,.08), 0 0 16px rgba(184,245,107,.8); }
+.gafix-conveyor-card.is-alert { border-color: rgba(255,113,141,.5); background: linear-gradient(145deg, rgba(54,28,43,.98), rgba(26,18,29,.98)); }
+.gafix-conveyor-card.is-alert::after { background: #ff718d; box-shadow: 0 0 0 5px rgba(255,113,141,.1), 0 0 16px rgba(255,113,141,.85); }
+.gafix-alert-ping { animation: gafixAlertPing 1.8s ease-out infinite; }
+@keyframes gafixConveyorSlide { 0% { left: -230px; opacity: 0; transform: translate3d(0, 8px, 0) rotateX(12deg) scale(.92); } 7% { opacity: 1; } 24% { transform: translate3d(21vw, 0, 0) rotateX(0) scale(1); } 46% { transform: translate3d(45vw, -1px, 0) rotateX(0) scale(1); } 68% { transform: translate3d(69vw, 0, 0) rotateX(-2deg) scale(1); opacity: 1; } 82% { opacity: .95; } 100% { left: calc(100% - 10px); opacity: 0; transform: translate3d(0, -4px, 0) rotateX(-12deg) scale(.9); } }
+@keyframes gafixAlertPing { 0%, 100% { box-shadow: 0 0 0 0 rgba(255,113,141,.35); } 60% { box-shadow: 0 0 0 7px rgba(255,113,141,0); } }
+@media (max-width: 639px) { .gafix-conveyor-track { height: 160px; } .gafix-conveyor-card { top: 70px; width: min(205px, 84%); } .gafix-conveyor-card { animation-name: gafixConveyorSlideMobile; } .gafix-conveyor-station-inspect { left: 31%; } .gafix-conveyor-station-destination { left: 55%; } .gafix-conveyor-station-alert { right: 5%; } }
+@keyframes gafixConveyorSlideMobile { 0% { left: -220px; opacity: 0; transform: translate3d(0, 8px, 0) scale(.9); } 8% { opacity: 1; } 28% { transform: translate3d(20vw, 0, 0) scale(1); } 50% { transform: translate3d(42vw, 0, 0) scale(1); } 72% { transform: translate3d(64vw, 0, 0) scale(1); opacity: 1; } 100% { left: calc(100% - 8px); opacity: 0; transform: translate3d(0, -4px, 0) scale(.9); } }
+@media (prefers-reduced-motion: reduce) { .gafix-conveyor-card, .gafix-alert-ping { animation: none !important; } .gafix-conveyor-card { left: 8%; opacity: 1; transform: none; } .gafix-conveyor-card:nth-of-type(n+5) { display: none; } }
