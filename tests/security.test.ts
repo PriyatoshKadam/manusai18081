@@ -48,8 +48,10 @@ describe('security hardening', () => {
     expect(read('public/monitor.js')).toContain('return original.apply(this, arguments);');
   });
 
-  it('enforces same-origin unsafe API requests and constant-time cron authorization', () => {
-    expect(read('proxy.ts')).toContain('Cross-site request blocked');
+  it('enforces same-origin unsafe API requests while exempting telemetry paths', () => {
+    const proxy = read('proxy.ts');
+    expect(proxy).toContain('Cross-site request blocked');
+    expect(proxy).toContain('!TELEMETRY_PATHS.has(req.nextUrl.pathname)');
     expect(read('app/api/jobs/route.ts')).toContain('crypto.timingSafeEqual');
     expect(read('app/api/jobs/route.ts')).toContain("Unsupported job");
   });

@@ -47,7 +47,7 @@ export async function proxy(req: NextRequest) {
   }
 
   const unsafeMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
-  if (unsafeMethod && req.nextUrl.pathname.startsWith('/api/') && configuredHost) {
+  if (unsafeMethod && req.nextUrl.pathname.startsWith('/api/') && configuredHost && !TELEMETRY_PATHS.has(req.nextUrl.pathname)) {
     const origin = req.headers.get('origin');
     const referer = req.headers.get('referer');
     const suppliedOrigin = origin || (referer ? (() => { try { return new URL(referer).origin; } catch { return ''; } })() : '');
