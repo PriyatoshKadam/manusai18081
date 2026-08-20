@@ -8,26 +8,105 @@ import Link from 'next/link';
 import AlertModal from './alert-modal';
 import { SeverityChip, timeAgo } from './ui';
 import FlowSummaryGraph from './flow-summary';
+import { CommandKpi, DashboardSection, EvidenceRail, EventHeatmap, ScoreRing } from './command-visuals';
 
 export default function OverviewPage() {
-  const search = useSearchParams(); const siteId = search.get('siteId');
-  const [data, setData] = useState<any>(null); const [selectedAlert, setSelectedAlert] = useState<any>(null); const [error, setError] = useState('');
-  useEffect(() => { if (!siteId) return; let active = true; async function load() { try { const qs = `siteId=${encodeURIComponent(siteId)}`; const fetchJson = async (path: string, fallback: any) => { try { const response = await fetch(path, { cache: 'no-store' }); const body = await response.json(); if (!response.ok) throw new Error(body.error || `${path} failed`); return body; } catch (cause) { if (active) setError(cause instanceof Error ? cause.message : `${path} unavailable`); return fallback; } }; const [overview, health, duplicates, deliveries] = await Promise.all([fetchJson(`/api/events?${qs}`, { stats: {}, events: [], alerts: [] }), fetchJson(`/api/tag-health?${qs}`, { health: [], anomalies: [], revenue: [], compliance: [], performance: [] }), fetchJson(`/api/duplicates?${qs}`, { duplicates: [] }), fetchJson(`/api/alert-deliveries?${qs}`, { deliveries: [] })]); if (active) setData({ ...overview, ...health, ...duplicates, ...deliveries }); } catch (e) { if (active) setError(e instanceof Error ? e.message : 'Live monitoring unavailable'); } } load(); const timer = setInterval(load, 10000); return () => { active = false; clearInterval(timer); }; }, [siteId]);
+  const search = useSearchParams();
+  const siteId = search.get('siteId');
+  const [data, setData] = useState<any>(null);
+  const [selectedAlert, setSelectedAlert] = useState<any>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!siteId) return;
+    let active = true;
+    async function load() {
+      try {
+        const qs = `siteId=${encodeURIComponent(siteId)}`;
+        const fetchJson = async (path: string, fallback: any) => {
+          try {
+            const response = await fetch(path, { cache: 'no-store' });
+            const body = await response.json();
+            if (!response.ok) throw new Error(body.error || `${path} failed`);
+            return body;
+          } catch (cause) {
+            if (active) setError(cause instanceof Error ? cause.message : `${path} unavailable`);
+            return fallback;
+          }
+        };
+        const [overview, health, duplicates, deliveries] = await Promise.all([
+          fetchJson(`/api/events?${qs}`, { stats: {}, events: [], alerts: [], flow: [], blockedFlow: [] }),
+          fetchJson(`/api/tag-health?${qs}`, { health: [], anomalies: [], revenue: [], compliance: [], performance: [] }),
+          fetchJson(`/api/duplicates?${qs}`, { duplicates: [] }),
+          fetchJson(`/api/alert-deliveries?${qs}`, { deliveries: [] }),
+        ]);
+        if (active) { setData({ ...overview, ...health, ...duplicates, ...deliveries }); setError(''); }
+      } catch (cause) {
+        if (active) setError(cause instanceof Error ? cause.message : 'Live monitoring unavailable');
+      }
+    }
+    load();
+    const timer = setInterval(load, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [siteId]);
+
   if (!siteId) return <EmptyState />;
-  if (!data) return <div className="text-ink-400 text-sm">Loading live evidence…</div>;
-  const stats = data.stats || {}; const alerts = data.alerts || []; const health = data.health || []; const duplicates = data.duplicates || []; const deliveries = data.deliveries || []; const flow = data.flow || []; const blockedFlow = data.blockedFlow || [];
+  if (!data) return <div className="text-sm text-slate-500">Loading live evidence…</div>;
+
+  const stats = data.stats || {};
+  const alerts = data.alerts || [];
+  const health = data.health || [];
+  const duplicates = data.duplicates || [];
+  const deliveries = data.deliveries || [];
+  const flow = data.flow || [];
+  const blockedFlow = data.blockedFlow || [];
+  const events = data.events || [];
   const avgHealth = health.length ? Math.round(health.reduce((sum: number, row: any) => sum + Number(row.health_score || 0), 0) / health.length) : null;
-  const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0); const deliveryFailures = deliveries.filter((item: any) => item.status === 'failed').length; const repeated = duplicates.filter((item: any) => ['login', 'run_audit'].includes(String(item.event_name || '').toLowerCase()));
+  const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0);
+  const deliveryFailures = deliveries.filter((item: any) => item.status === 'failed').length;
+  const repeated = duplicates.filter((item: any) => ['login', 'run_audit'].includes(String(item.event_name || '').toLowerCase()));
   const actions = [...repeated.slice(0, 4), ...alerts.filter((item: any) => !repeated.some((dup: any) => dup.event_name === item.event_name)).slice(0, 4)];
-  return <div className="fade-in space-y-6 max-w-7xl">
-    <section className="rounded-2xl bg-ink-950 text-white p-6 md:p-8 relative overflow-hidden"><div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-brand-500/20 blur-3xl" /><div className="relative flex flex-col md:flex-row md:items-end justify-between gap-6"><div><div className="text-xs uppercase tracking-[0.2em] text-brand-300">GA4Fix command center</div><h2 className="text-3xl font-semibold mt-2">Know what fired, what failed, and what to fix next.</h2><p className="text-sm text-ink-300 mt-3 max-w-2xl">Evidence from real sessions, network responses, consent state, performance, and duplicate analysis—without treating correlation gaps as proof of ad blocking.</p></div><div className="rounded-xl bg-white/10 px-5 py-4 min-w-[190px]"><div className="text-xs uppercase tracking-wide text-ink-300">Overall tag health</div><div className="text-4xl font-semibold mt-1">{avgHealth === null ? '—' : avgHealth}<span className="text-lg text-ink-400">/100</span></div><div className="text-xs mt-2 text-ink-300">{avgHealth === null ? 'Collecting evidence' : avgHealth >= 95 ? 'Stable real-user signal' : avgHealth >= 80 ? 'Review recommended' : 'Action required'}</div></div></div></section>
-    {error && <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">Live refresh issue: {error}</div>}
-    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3"><Metric label="Events / hour" value={stats.events_hour || 0} note={`${stats.events_24h || 0} in 24h`} /><Metric label="Failed fires" value={failed} note="Last 24h" tone={failed ? 'red' : 'green'} /><Metric label="Repeat findings" value={duplicates.length} note={`${repeated.length} login/run_audit`} tone={duplicates.length ? 'amber' : 'green'} /><Metric label="Open alerts" value={stats.active_alerts || 0} note={`${stats.critical_alerts || 0} critical`} tone={stats.active_alerts ? 'amber' : 'green'} /><Metric label="Delivery failures" value={deliveryFailures} note="Slack/email/webhook" tone={deliveryFailures ? 'red' : 'green'} /></div>
-    <FlowSummaryGraph rows={flow} blockedRows={blockedFlow} />
-    <div className="grid lg:grid-cols-[1.3fr_0.7fr] gap-6"><section className="card overflow-hidden"><div className="p-5 border-b border-ink-100 flex items-center justify-between"><div><h3 className="font-semibold text-ink-950">Action center</h3><p className="text-xs text-ink-500 mt-1">Prioritized evidence that deserves an investigation.</p></div><Link href={`/dashboard/duplicates?siteId=${siteId}`} className="text-xs font-semibold text-brand-600 hover:text-brand-800">Open duplicate lab →</Link></div>{actions.length ? <div className="divide-y divide-ink-100">{actions.map((item: any, index: number) => <button key={`${item.id}-${index}`} onClick={() => setSelectedAlert(item.sourceType === 'alert' ? item : { ...item, severity: 'warning' })} className="w-full text-left p-4 hover:bg-ink-50 flex items-start gap-3"><div className="mt-0.5 h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0" /><div className="min-w-0 flex-1"><div className="font-medium text-sm text-ink-950">{item.message}</div><div className="text-xs text-ink-500 mt-1">{item.event_name || item.vendor || 'tag'} · {item.sourceType === 'alert' ? `${item.occurrence_count || 1} observed alert occurrence(s)` : `${item.occurrence_count || 0} observed fires`}</div></div><span className="text-xs text-ink-400 whitespace-nowrap">{timeAgo(item.created_at || item.last_seen)}</span></button>)}</div> : <div className="p-10 text-center"><div className="text-3xl">✓</div><div className="font-medium text-ink-950 mt-2">No prioritized action</div><p className="text-sm text-ink-500 mt-1">Monitoring is collecting evidence and no repeated-fire or active-alert issue is open.</p></div>}</section><section className="card p-5"><div className="flex items-center justify-between"><div><h3 className="font-semibold text-ink-950">Delivery health</h3><p className="text-xs text-ink-500 mt-1">Alerts should be observable end to end.</p></div><Link href={`/dashboard/integrations?siteId=${siteId}`} className="text-xs font-semibold text-brand-600">Manage →</Link></div><div className="mt-5 space-y-3">{['slack','email','webhook'].map((channel) => { const channelRows = deliveries.filter((item: any) => item.channel === channel); const last = channelRows[0]; return <div key={channel} className="flex items-center justify-between border-b border-ink-100 pb-3 last:border-0"><span className="capitalize text-sm text-ink-700">{channel}</span>{last ? <span className={`pill ${last.status === 'delivered' ? 'bg-green-100 text-green-800' : last.status === 'failed' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'}`}>{last.status}</span> : <span className="text-xs text-ink-400">No delivery yet</span>}</div>; })}</div><div className="mt-5 rounded-lg bg-ink-50 p-3 text-xs text-ink-600">A global `SLACK_WEBHOOK_URL` is used when no site-specific webhook is configured. Failed deliveries retry with backoff and are visible here.</div></section></div>
-    <section className="card overflow-hidden"><div className="p-5 border-b border-ink-100 flex items-center justify-between"><div><h3 className="font-semibold text-ink-950">Live event pulse</h3><p className="text-xs text-ink-500 mt-1">Aggregated by event name, with every occurrence retained in the evidence store.</p></div><Link href={`/dashboard/health?siteId=${siteId}`} className="text-xs font-semibold text-brand-600">Deep health view →</Link></div><div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-ink-50 text-xs uppercase text-ink-500"><tr><th className="p-3 text-left">Event</th><th className="p-3 text-left">Vendor</th><th className="p-3 text-right">Fires</th><th className="p-3 text-right">Sessions</th><th className="p-3 text-right">Failures</th><th className="p-3 text-right">Latency</th></tr></thead><tbody className="divide-y divide-ink-100">{(data.events || []).slice(0, 12).map((event: any, i: number) => <tr key={`${event.event_name}-${event.vendor}-${i}`} className="hover:bg-ink-50"><td className="p-3 mono">{event.event_name || '(unnamed)'}</td><td className="p-3 uppercase text-xs text-ink-500">{event.vendor}</td><td className="p-3 text-right font-medium">{Number(event.cnt || 0).toLocaleString()}</td><td className="p-3 text-right text-ink-500">{Number(event.sessions || 0).toLocaleString()}</td><td className={`p-3 text-right ${Number(event.failed || 0) ? 'text-red-600 font-medium' : 'text-ink-500'}`}>{Number(event.failed || 0).toLocaleString()}</td><td className="p-3 text-right text-ink-500">{Number(event.avg_latency_ms || 0) ? `${Number(event.avg_latency_ms).toLocaleString()} ms` : '—'}</td></tr>)}</tbody></table></div></section>
+  const totalSessions = events.reduce((sum: number, row: any) => sum + Number(row.sessions || 0), 0);
+  const totalFires = events.reduce((sum: number, row: any) => sum + Number(row.cnt || 0), 0);
+  const avgEventsPerSession = totalSessions ? (totalFires / totalSessions).toFixed(1) : '—';
+
+  return <div className="fade-in mx-auto max-w-[1500px] space-y-7">
+    <section className="relative overflow-hidden rounded-[1.35rem] border border-white/[.08] bg-[#111a28] p-6 shadow-2xl shadow-black/20 lg:p-8">
+      <div className="absolute -right-20 -top-32 h-80 w-80 rounded-full bg-[#657fff]/20 blur-3xl" />
+      <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-[#a8f06a]/10 blur-3xl" />
+      <div className="relative grid gap-8 lg:grid-cols-[1fr_220px] lg:items-center">
+        <div><div className="dashboard-eyebrow">Real-user command center · 24h window</div><h2 className="mt-3 max-w-3xl text-3xl font-semibold leading-tight tracking-[-.04em] text-white lg:text-4xl">See the signal before it becomes a reporting problem.</h2><p className="mt-4 max-w-2xl text-sm leading-6 text-slate-400">GA4Fix correlates what actual visitors did, what the dataLayer pushed, what the browser requested, which domain received it, and whether the event arrived intact.</p><div className="mt-6 flex flex-wrap items-center gap-2"><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> Collector active</span><span className="dashboard-top-control"><strong>{number(totalSessions)}</strong> sessions observed</span><span className="dashboard-top-control"><strong>{number(totalFires)}</strong> fires mapped</span></div></div>
+        <ScoreRing value={avgHealth} label="Overall tag health" detail={avgHealth === null ? 'Collecting evidence' : avgHealth >= 95 ? 'Stable real-user signal' : 'Review recommended'} />
+      </div>
+    </section>
+
+    {error && <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-200">Live refresh issue: {error}</div>}
+
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <CommandKpi label="Events / hour" value={number(stats.events_hour)} note={`${number(stats.events_24h)} observed in 24h`} tone="blue" />
+      <CommandKpi label="Fires / session" value={avgEventsPerSession} note="Across observed sessions" tone="violet" />
+      <CommandKpi label="Failed fires" value={number(failed)} note="Observed request failures" tone={failed ? 'rose' : 'lime'} />
+      <CommandKpi label="Duplicate evidence" value={number(duplicates.length)} note={`${number(repeated.length)} repeat-sensitive`} tone={duplicates.length ? 'amber' : 'lime'} />
+      <CommandKpi label="Delivery failures" value={number(deliveryFailures)} note="Alert channels" tone={deliveryFailures ? 'rose' : 'lime'} />
+    </div>
+
+    <section className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]">
+      <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Event intelligence" title="What is the browser doing?" description="Volume, session spread, and duplicate pressure from the same real-user evidence store." /><EventHeatmap events={events} /></div>
+      <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Action queue" title="Evidence that deserves attention" description="Prioritized from duplicate, alert, and failure signals." action={<Link href={`/dashboard/duplicates?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Open lab →</Link>} /><EvidenceRail items={actions} /></div>
+    </section>
+
+    <div className="overflow-hidden rounded-2xl border border-white/[.08] shadow-2xl shadow-black/10"><FlowSummaryGraph rows={flow} blockedRows={blockedFlow} /></div>
+
+    <section className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
+      <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Operator queue" title="Action center" description="Open evidence, not vague health scores." action={<Link href={`/dashboard/health?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Deep health view →</Link>} />{actions.length ? <div className="divide-y divide-white/[.06]">{actions.map((item: any, index: number) => <button key={`${item.id}-${index}`} onClick={() => setSelectedAlert(item.sourceType === 'alert' ? item : { ...item, severity: 'warning' })} className="flex w-full items-start gap-3 py-3 text-left transition hover:bg-white/[.03]"><SeverityChip severity={item.severity || 'warning'} /><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-100">{item.message}</div><div className="mt-1 text-xs text-slate-500">{item.event_name || item.vendor || 'tag'} · {item.occurrence_count || 0} observed fires</div></div><span className="whitespace-nowrap text-xs text-slate-500">{timeAgo(item.created_at || item.last_seen)}</span></button>)}</div> : <div className="empty-visual">No prioritized action. Monitoring is collecting evidence.</div>}</div>
+      <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Outbound reliability" title="Delivery health" description="Alert channels should be observable end to end." action={<Link href={`/dashboard/integrations?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Manage →</Link>} /><div className="space-y-2">{['slack', 'email', 'webhook'].map((channel) => { const last = deliveries.find((item: any) => item.channel === channel); return <div key={channel} className="flex items-center justify-between border-b border-white/[.06] py-3 last:border-0"><span className="text-sm capitalize text-slate-300">{channel}</span>{last ? <span className={`pill ${last.status === 'delivered' ? 'bg-[#a8f06a]/10 text-[#b9f57e]' : last.status === 'failed' ? 'bg-[#ff718d]/10 text-[#ff9aae]' : 'bg-[#f6b94c]/10 text-[#ffd27a]'}`}>{last.status}</span> : <span className="text-xs text-slate-500">No delivery yet</span>}</div>; })}</div><div className="mt-5 rounded-xl border border-[#6d8cff]/15 bg-[#6d8cff]/[.06] p-3 text-xs leading-5 text-slate-400">Failed deliveries retry with backoff and remain visible here. High-priority tag incidents route in real time; lower-priority evidence rolls into the digest.</div></div>
+    </section>
+
+    <section className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Live evidence table" title="Live event pulse" description="Every row is an aggregated view over retained occurrence-level evidence." action={<Link href={`/dashboard/ga4?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Open vendor view →</Link>} /><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-sm"><thead className="border-b border-white/[.07] text-[10px] uppercase tracking-[.12em] text-slate-500"><tr><th className="p-3 text-left">Event</th><th className="p-3 text-left">Vendor</th><th className="p-3 text-right">Fires</th><th className="p-3 text-right">Sessions</th><th className="p-3 text-right">Failures</th><th className="p-3 text-right">Avg latency</th></tr></thead><tbody className="divide-y divide-white/[.05]">{events.slice(0, 12).map((event: any, i: number) => <tr key={`${event.event_name}-${event.vendor}-${i}`} className="transition hover:bg-white/[.03]"><td className="p-3 font-mono text-slate-200">{event.event_name || '(unnamed)'}</td><td className="p-3 text-xs uppercase text-slate-500">{event.vendor}</td><td className="p-3 text-right font-medium text-slate-200">{number(event.cnt)}</td><td className="p-3 text-right text-slate-400">{number(event.sessions)}</td><td className={`p-3 text-right ${Number(event.failed || 0) ? 'font-medium text-[#ff718d]' : 'text-slate-500'}`}>{number(event.failed)}</td><td className="p-3 text-right text-slate-400">{Number(event.avg_latency_ms || 0) ? `${number(event.avg_latency_ms)} ms` : '—'}</td></tr>)}</tbody></table></div></section>
+
     <AlertModal alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
   </div>;
 }
-function Metric({ label, value, note, tone = 'neutral' }: { label: string; value: number | string; note: string; tone?: string }) { const color = tone === 'red' ? 'text-red-600' : tone === 'amber' ? 'text-amber-600' : tone === 'green' ? 'text-green-600' : 'text-ink-950'; return <div className="card p-4"><div className="text-[11px] text-ink-400 uppercase tracking-wide">{label}</div><div className={`text-2xl font-semibold mt-2 ${color}`}>{value}</div><div className="text-xs text-ink-500 mt-1">{note}</div></div>; }
-function EmptyState() { return <div className="max-w-lg mx-auto text-center py-16"><div className="w-16 h-16 rounded-2xl bg-brand-500/10 flex items-center justify-center mx-auto mb-4"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#4553f5" strokeWidth="2"><path d="M12 2 15 9 22 10l-5 5 1 7-6-3-6 3 1-7-5-5 7-1 3-7z" /></svg></div><h2 className="text-xl font-semibold text-ink-950 mb-2">Add your first site to get started</h2><p className="text-sm text-ink-500 mb-6">Connect one GTM monitor tag and see every fire, failure, duplicate, consent decision, and performance signal in one place.</p><Link href="/dashboard/settings" className="inline-block bg-ink-950 text-white px-6 py-2.5 rounded-lg hover:bg-ink-800 text-sm font-medium">Add a site</Link></div>; }
+
+function number(value: unknown) { return Number(value || 0).toLocaleString(); }
+function EmptyState() { return <div className="mx-auto max-w-lg py-20 text-center"><div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-[#6d8cff]/10 text-[#8fa8ff]"><span className="text-2xl">✦</span></div><h2 className="text-xl font-semibold text-white">Add your first site to get started</h2><p className="mt-2 text-sm leading-6 text-slate-400">Connect one GTM monitor tag and see every fire, failure, duplicate, consent decision, and delivery path in one command center.</p><Link href="/dashboard/settings" className="mt-6 inline-flex rounded-xl bg-[#a8f06a] px-5 py-3 text-sm font-semibold text-[#09100a] transition hover:bg-[#c5ff91]">Add a site</Link></div>; }

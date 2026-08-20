@@ -42,6 +42,11 @@ export default function DashboardShell({
       { href: '/dashboard/meta', label: 'Meta Pixel', badge: 'M', badgeColor: 'bg-blue-600' },
       { href: '/dashboard/tiktok', label: 'TikTok Pixel', badge: 'TT', badgeColor: 'bg-ink-950' },
     ]},
+    { section: 'Insights', items: [
+      { href: '/dashboard/sessions', label: 'Sessions', icon: iconUsers },
+      { href: '/dashboard/revenue', label: 'Revenue impact', icon: iconChart },
+      { href: '/dashboard/vitals', label: 'Web Vitals', icon: iconPulse },
+    ]},
     { section: 'Diagnostics', items: [
       { href: '/dashboard/audit', label: 'Runtime audit', icon: iconShield },
       { href: '/dashboard/health', label: 'Tag health', icon: iconShield },
@@ -61,13 +66,13 @@ export default function DashboardShell({
   ];
 
   return (
-    <div className="min-h-screen bg-[#f7f9fc]">
+    <div className="dashboard-shell min-h-screen">
       <div className="flex">
-        <aside className="w-64 min-h-screen bg-[#07111f] border-r border-white/10 text-white flex flex-col fixed left-0 top-0 shadow-2xl shadow-slate-900/10">
+        <aside className="w-64 min-h-screen bg-[#0b111b] border-r border-white/[.07] text-white flex flex-col fixed left-0 top-0 shadow-2xl shadow-black/20">
           <div className="p-4 border-b border-white/10">
             <Link href="/" className="flex items-center gap-2">
               <div className="w-9 h-9 rounded-xl bg-[#b8f56b] flex items-center justify-center text-[#07111f] font-black text-sm">G</div>
-              <span className="font-semibold tracking-tight text-white">GA4Fix<span className="text-[#b8f56b]">.</span></span>
+              <span><span className="block font-semibold tracking-tight text-white">GA4Fix<span className="text-[#b8f56b]">.</span></span><span className="mt-0.5 block text-[9px] uppercase tracking-[.18em] text-slate-500">Real-user intelligence</span></span>
             </Link>
           </div>
           <div className="p-4">
@@ -75,7 +80,7 @@ export default function DashboardShell({
               <select
                 value={siteId || ''}
                 onChange={(e) => switchSite(Number(e.target.value))}
-                className="w-full border border-white/15 rounded-xl px-3 py-2.5 text-sm bg-white/10 text-white outline-none focus:border-[#b8f56b]"
+                className="w-full border border-white/[.09] rounded-xl px-3 py-2.5 text-sm bg-[#121b29] text-white outline-none focus:border-[#8da3ff]"
               >
                 {sites.map((s) => (
                   <option key={s.id} value={s.id}>{s.domain}</option>
@@ -90,7 +95,7 @@ export default function DashboardShell({
           <nav className="px-2 py-2 space-y-1 flex-1 overflow-y-auto">
             {nav.map((sec) => (
               <div key={sec.section}>
-                <div className="px-3 py-1 mt-4 text-[10px] font-bold text-slate-500 uppercase tracking-[.16em]">{sec.section}</div>
+                <div className="px-3 py-1 mt-5 text-[10px] font-bold text-slate-600 uppercase tracking-[.18em]">{sec.section}</div>
                 {sec.items.map((item: any) => {
                   const active = pathname === item.href;
                   return (
@@ -99,7 +104,7 @@ export default function DashboardShell({
                       href={item.href + (siteId ? `?siteId=${siteId}` : '')}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition ${
                         active
-                          ? 'bg-white/10 text-white font-semibold ring-1 ring-white/10'
+                          ? 'bg-gradient-to-r from-[#5271ff]/30 to-transparent text-white font-semibold ring-1 ring-[#6d8cff]/25 shadow-[inset_3px_0_0_#6d8cff]'
                           : item.highlight
                           ? 'text-[#cfff9d] hover:bg-[#b8f56b]/10 font-semibold'
                           : 'text-slate-300 hover:bg-white/10 hover:text-white'
@@ -115,7 +120,8 @@ export default function DashboardShell({
               </div>
             ))}
           </nav>
-          <div className="p-3 border-t border-white/10 flex items-center gap-2">
+          <div className="m-3 rounded-xl border border-[#a8f06a]/15 bg-[#a8f06a]/[.05] p-3"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#b9f57e]"><span className="dot bg-[#a8f06a]" /> Collector active</div><div className="mt-1 text-[10px] leading-relaxed text-slate-500">Real-user events, delivery paths, and failures are being correlated.</div></div>
+          <div className="p-3 border-t border-white/[.07] flex items-center gap-2">
             <div className="w-9 h-9 rounded-full bg-[#b8f56b] text-[#07111f] font-bold text-sm flex items-center justify-center">
               {email.charAt(0).toUpperCase()}
             </div>
@@ -126,23 +132,23 @@ export default function DashboardShell({
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 ml-64">
-          <div className="h-16 border-b border-slate-200/80 bg-white/90 px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
+        <main className="dashboard-main-grid flex-1 min-h-screen min-w-0 ml-64">
+          <div className="h-[72px] border-b border-white/[.07] bg-[#0b111b]/90 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#769b3e]">GA4Fix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-[#07111f]">{pageTitle(pathname)}</h1></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#8fa8ff]">GA4Fix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
               {currentSite && (
-                <span className="pill bg-[#e9f8d4] text-[#52772b]">
+                <><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> <strong>Live</strong> · 24h evidence window</span><span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">
                   <span className="dot bg-green-500"></span>Live
-                </span>
+                </span></>
               )}
             </div>
             <div className="flex items-center gap-2">
               {currentSite && (
-                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600 mono">{currentSite.domain}</span>
+                <span className="dashboard-top-control"><span className="text-slate-500">Site</span><strong className="mono">{currentSite.domain}</strong></span>
               )}
             </div>
           </div>
-          <div className="p-8">{children}</div>
+          <div className="dashboard-gridline min-h-[calc(100vh-72px)] p-5 lg:p-8">{children}</div>
         </main>
       </div>
     </div>
@@ -156,6 +162,9 @@ function pageTitle(path: string) {
     '/dashboard/ads': 'Google Ads',
     '/dashboard/meta': 'Meta Pixel',
     '/dashboard/tiktok': 'TikTok Pixel',
+    '/dashboard/sessions': 'Sessions',
+    '/dashboard/revenue': 'Revenue impact',
+    '/dashboard/vitals': 'Web Vitals',
     '/dashboard/audit': 'Runtime audit',
     '/dashboard/health': 'Tag health',
     '/dashboard/duplicates': 'Duplicate events',
@@ -179,4 +188,7 @@ function iconShield() { return (<svg width="16" height="16" viewBox="0 0 24 24" 
 function iconLock() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>); }
 function iconCode() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>); }
 function iconLink() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>); }
+function iconUsers() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>); }
+function iconChart() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18"/><path d="m7 16 4-5 3 3 5-7"/></svg>); }
+function iconPulse() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>); }
 function iconGear() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>); }
