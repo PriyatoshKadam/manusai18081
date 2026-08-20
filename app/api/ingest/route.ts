@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     const siteResult = await query('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1 LIMIT 1', [body.apiKey]);
     const site = siteResult.rows[0];
     if (!site) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
-    if (!allowedSiteOrigin(req, site, body.events)) return json({ ok: false, error: 'Telemetry origin is not registered for this site' }, 403);
+    if (process.env.TELEMETRY_STRICT_ORIGIN === 'true' && !allowedSiteOrigin(req, site, body.events)) return json({ ok: false, error: 'Telemetry origin is not registered for this site' }, 403);
 
     let processedCount = 0;
     for (const event of body.events) {
