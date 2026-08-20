@@ -31,8 +31,10 @@ function getPostgresOptions(url) {
   const ca = readCa();
   const configured = process.env.PG_SSL_REJECT_UNAUTHORIZED;
   const explicitInsecureDev = configured === 'false' && process.env.ALLOW_INSECURE_DB_TLS === 'true' && process.env.NODE_ENV !== 'production';
-  const rejectUnauthorized = !explicitInsecureDev;
-  if (!rejectUnauthorized && !ca) console.warn('[Postgres] TLS certificate verification is disabled for development only.');
+  const explicitRenderCompatibility = configured === 'false' && process.env.ALLOW_RENDER_SELF_SIGNED_TLS === 'true' && isRenderHost(url);
+  const rejectUnauthorized = !(explicitInsecureDev || explicitRenderCompatibility);
+  if (explicitInsecureDev && !ca) console.warn('[Postgres] TLS certificate verification is disabled for development only.');
+  if (explicitRenderCompatibility && !ca) console.warn('[Postgres] Render self-signed TLS compatibility is enabled. Prefer PG_CA_CERT when available.');
   return {
     connectionString: withoutSslConnectionOptions(url),
     ssl: { rejectUnauthorized, ...(ca ? { ca } : {}) },

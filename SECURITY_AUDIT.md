@@ -58,9 +58,9 @@ The application’s public telemetry routes are `/monitor.js`, `/api/ingest`, `/
 
 **Impact.** Database credentials, telemetry, user records, OAuth ciphertext, and session-related data could be exposed or modified if the connection were intercepted. Render documents that managed PostgreSQL connections use TLS and recommends using the internal URL where possible; node-postgres documents supplying the provider root certificate for self-signed certificates [3] [4].
 
-**Remediation applied.** The helper now verifies certificates by default, including in production even when `PG_SSL_REJECT_UNAUTHORIZED=false` is present. Insecure verification is allowed only when `ALLOW_INSECURE_DB_TLS=true`, `PG_SSL_REJECT_UNAUTHORIZED=false`, and `NODE_ENV` is not production. `render.yaml` now sets verification to `true`, exposes an optional `PG_CA_CERT` secret, and sets the insecure escape hatch to `false`.
+**Remediation applied.** The helper now verifies certificates by default for arbitrary production databases. A narrowly scoped compatibility exception is available only when `PG_SSL_REJECT_UNAUTHORIZED=false`, `ALLOW_RENDER_SELF_SIGNED_TLS=true`, and the database hostname is a Render host; the generic development escape hatch remains limited to non-production. `render.yaml` uses the Render-only compatibility switch so the managed database can boot, while still exposing `PG_CA_CERT` as the preferred authenticated configuration.
 
-**Deployment requirement.** If Render’s connection requires a provider CA, populate `PG_CA_CERT` before deploying. Do not restore `PG_SSL_REJECT_UNAUTHORIZED=false` in production. The secure behavior intentionally fails closed rather than silently accepting an unauthenticated database certificate.
+**Deployment requirement.** The current Render Blueprint sets `PG_SSL_REJECT_UNAUTHORIZED=false` together with `ALLOW_RENDER_SELF_SIGNED_TLS=true` because the observed Render database presents a self-signed chain. This is intentionally host-scoped and auditable, but it is weaker than certificate-authenticated TLS. Populate `PG_CA_CERT` when the provider CA is available, then set `PG_SSL_REJECT_UNAUTHORIZED=true` and remove the compatibility exception. The application still fails closed for arbitrary non-Render production databases and for Render databases unless this explicit compatibility flag is present.
 
 ## Complete findings table
 
@@ -109,7 +109,7 @@ Render deployment should use the internal database URL where possible and restri
 
 ## What was changed
 
-The hardening changes include tenant-scoped synthetic execution, public-destination checks for outbound requests, redirect disabling for webhooks, correct decryption of webhook signing keys, fail-closed production PostgreSQL TLS, constant-time cron authorization, bounded cron requests, job allowlisting, same-origin checks for unsafe application API calls, a 12-character new-password minimum, telemetry URL and parameter redaction, client-ID pseudonymization, CSV formula neutralization, read-only alert-policy GET behavior, GTM production redirect hardening, and fail-open monitor instrumentation.
+The hardening changes include tenant-scoped synthetic execution, public-destination checks for outbound requests, redirect disabling for webhooks, correct decryption of webhook signing keys, fail-closed TLS by default with an explicit Render-only compatibility gate, constant-time cron authorization, bounded cron requests, job allowlisting, same-origin checks for unsafe application API calls, a 12-character new-password minimum, telemetry URL and parameter redaction, client-ID pseudonymization, CSV formula neutralization, read-only alert-policy GET behavior, GTM production redirect hardening, and fail-open monitor instrumentation.
 
 The browser monitor’s functional contract was preserved. It still observes customer-site analytics and reports telemetry, but every observer path now catches its own failures and invokes the original host API regardless of GA4Fix inspection errors. This avoids blocking or damaging other scripts when the monitor is installed through GTM.
 
@@ -117,7 +117,7 @@ The browser monitor’s functional contract was preserved. It still observes cus
 
 | Priority | Action | Owner | Timing |
 |---|---|---|---|
-| P0 | Set `PG_SSL_REJECT_UNAUTHORIZED=true` in Render, provide `PG_CA_CERT` if required by the managed certificate chain, and keep `ALLOW_INSECURE_DB_TLS=false`. Verify migration and login after deployment. | Deployment operator | Before production deploy |
+| P0 | For the current Render managed database, keep `PG_SSL_REJECT_UNAUTHORIZED=false` only with `ALLOW_RENDER_SELF_SIGNED_TLS=true`; preferably provide `PG_CA_CERT`, switch verification to `true`, remove the compatibility flag, and verify migration and login. | Deployment operator | Before production deploy |
 | P0 | Rotate any `DATABASE_URL`, `SESSION_SECRET`, GTM client secret, Slack webhook, Resend key, or cron secret exposed in screenshots, logs, tickets, or third-party tools. | Deployment operator | Immediately if exposure occurred |
 | P1 | Replace in-memory rate limiting with a shared store or edge limiter, and use the platform-verified client IP rather than trusting the first user-supplied forwarded address. | Engineering | Before multi-instance scale |
 | P1 | Reduce JWT access-session lifetime and introduce server-side session records or token revocation. Add session rotation after password changes and OAuth reconnection. | Engineering | Before broad customer rollout |
@@ -130,7 +130,7 @@ The browser monitor’s functional contract was preserved. It still observes cus
 
 Before remediation, the repository was **not ready to claim strong tenant isolation or secure server-side egress** because of the synthetic IDOR and outbound-request issues. After the applied changes, the application’s principal high-impact authorization and SSRF paths are substantially hardened, the monitor is fail-open for customer-site safety, sensitive telemetry persistence is reduced, and the regression/build/audit gates pass.
 
-The residual risks are operational and architectural rather than an unresolved obvious SQL injection or RCE. The most important release gate is PostgreSQL certificate verification: the application must be deployed with a valid CA configuration rather than reverting to unauthenticated TLS. The next most important improvements are distributed rate limiting, revocable sessions, stronger CSP, and a dedicated egress boundary.
+The residual risks are operational and architectural rather than an unresolved obvious SQL injection or RCE. The most important infrastructure improvement is replacing the temporary, Render-scoped self-signed compatibility exception with a provider CA in `PG_CA_CERT`. The next most important improvements are distributed rate limiting, revocable sessions, stronger CSP, and a dedicated egress boundary.
 
 ## Validation evidence
 

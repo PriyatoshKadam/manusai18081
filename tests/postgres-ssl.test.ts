@@ -7,6 +7,7 @@ describe('PostgreSQL TLS options', () => {
       pgSsl: process.env.PG_SSL,
       reject: process.env.PG_SSL_REJECT_UNAUTHORIZED,
       allow: process.env.ALLOW_INSECURE_DB_TLS,
+      renderAllow: process.env.ALLOW_RENDER_SELF_SIGNED_TLS,
       nodeEnv: process.env.NODE_ENV,
       ca: process.env.PG_CA_CERT,
       caPath: process.env.PG_CA_CERT_PATH,
@@ -18,8 +19,12 @@ describe('PostgreSQL TLS options', () => {
       process.env.NODE_ENV = 'production';
       process.env.PG_SSL_REJECT_UNAUTHORIZED = 'false';
       delete process.env.ALLOW_INSECURE_DB_TLS;
-      const render = getPostgresOptions('postgresql://user:pass@internal-host/db?sslmode=require');
-      expect(render.ssl).toMatchObject({ rejectUnauthorized: true });
+      delete process.env.ALLOW_RENDER_SELF_SIGNED_TLS;
+      const generic = getPostgresOptions('postgresql://user:pass@internal-host/db?sslmode=require');
+      expect(generic.ssl).toMatchObject({ rejectUnauthorized: true });
+      process.env.ALLOW_RENDER_SELF_SIGNED_TLS = 'true';
+      const render = getPostgresOptions('postgresql://user:pass@database.render.com/db?sslmode=require');
+      expect(render.ssl).toMatchObject({ rejectUnauthorized: false });
       expect(render.connectionString).not.toContain('sslmode');
 
       process.env.NODE_ENV = 'development';
@@ -29,6 +34,7 @@ describe('PostgreSQL TLS options', () => {
       if (original.pgSsl === undefined) delete process.env.PG_SSL; else process.env.PG_SSL = original.pgSsl;
       if (original.reject === undefined) delete process.env.PG_SSL_REJECT_UNAUTHORIZED; else process.env.PG_SSL_REJECT_UNAUTHORIZED = original.reject;
       if (original.allow === undefined) delete process.env.ALLOW_INSECURE_DB_TLS; else process.env.ALLOW_INSECURE_DB_TLS = original.allow;
+      if (original.renderAllow === undefined) delete process.env.ALLOW_RENDER_SELF_SIGNED_TLS; else process.env.ALLOW_RENDER_SELF_SIGNED_TLS = original.renderAllow;
       if (original.nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = original.nodeEnv;
       if (original.ca === undefined) delete process.env.PG_CA_CERT; else process.env.PG_CA_CERT = original.ca;
       if (original.caPath === undefined) delete process.env.PG_CA_CERT_PATH; else process.env.PG_CA_CERT_PATH = original.caPath;
