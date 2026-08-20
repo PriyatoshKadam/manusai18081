@@ -4,6 +4,7 @@ import { classifyEvent, ParsedEvent, runDetection } from '../../../lib/detection
 import { assertBodySize, parseIngestBody } from '../../../lib/ingest-validation';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { recordComplianceEvidence } from '../../../lib/compliance';
+import { classifyDeliveryMode } from '../../../lib/delivery';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,19 +60,20 @@ export async function POST(req: NextRequest) {
     let processedCount = 0;
     for (const event of body.events) {
       try {
+        const deliveryMode = classifyDeliveryMode(event.rawUrl, event.pageUrl, { ...site, appOrigin: process.env.NEXT_PUBLIC_APP_URL || null });
         const inserted = await query(
           `INSERT INTO events
              (site_id, vendor, event_name, event_type, page_url, client_id, params, raw_url, dl_push_index, source,
               observation_kind, session_id, occurrence_id, network_occurrence_id, request_signature, transport,
-              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, consent_state, web_vitals, revenue_value, revenue_currency, transaction_id, resource_domain, resource_type, is_synthetic)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'observed',$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
+              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, consent_state, web_vitals, revenue_value, revenue_currency, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'observed',$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
            RETURNING id, received_at`,
           [
             site.id, event.vendor, event.eventName, classifyEvent(event.eventName, event.vendor), event.pageUrl, event.clientId,
             JSON.stringify(event.params), event.rawUrl, event.dlPushIndex, event.source, event.observationKind,
             event.sessionId, event.occurrenceId, event.networkOccurrenceId, event.requestSignature, event.transport,
             event.gtmContainerId, event.navigationId, event.statusCode, event.latencyMs, event.failureReason,
-            JSON.stringify(event.consentState), JSON.stringify(event.webVitals), event.revenueValue, event.revenueCurrency, event.transactionId, event.resourceDomain, event.resourceType, event.isSynthetic,
+            JSON.stringify(event.consentState), JSON.stringify(event.webVitals), event.revenueValue, event.revenueCurrency, event.transactionId, event.resourceDomain, event.resourceType, deliveryMode, event.isSynthetic,
           ],
         );
         const dbEvent = inserted.rows[0];
@@ -81,7 +83,7 @@ export async function POST(req: NextRequest) {
           rawUrl: event.rawUrl || '', dlPushIndex: event.dlPushIndex, source: event.source,
           observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId,
           networkOccurrenceId: event.networkOccurrenceId, requestSignature: event.requestSignature, transport: event.transport,
-          gtmContainerId: event.gtmContainerId, navigationId: event.navigationId, statusCode: event.statusCode, latencyMs: event.latencyMs, failureReason: event.failureReason, consentState: event.consentState, webVitals: event.webVitals, revenueValue: event.revenueValue, revenueCurrency: event.revenueCurrency, transactionId: event.transactionId, resourceDomain: event.resourceDomain, resourceType: event.resourceType,
+          gtmContainerId: event.gtmContainerId, navigationId: event.navigationId, statusCode: event.statusCode, latencyMs: event.latencyMs, failureReason: event.failureReason, consentState: event.consentState, webVitals: event.webVitals, revenueValue: event.revenueValue, revenueCurrency: event.revenueCurrency, transactionId: event.transactionId, resourceDomain: event.resourceDomain, resourceType: event.resourceType, deliveryMode,
         };
         void recordComplianceEvidence(parsed, { domain: site.domain, firstPartyDomain: site.first_party_domain });
         await runDetection(parsed);

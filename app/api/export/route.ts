@@ -4,7 +4,7 @@ import { query } from '../../../lib/db';
 
 export const dynamic = 'force-dynamic';
 const queries: Record<string, string> = {
-  events: `SELECT received_at, vendor, event_name, observation_kind, page_url, status_code, latency_ms, failure_reason, revenue_value, revenue_currency, transaction_id, resource_domain, consent_state, is_synthetic FROM events WHERE site_id=$1 AND received_at > NOW()-INTERVAL '30 days' ORDER BY received_at DESC LIMIT 10000`,
+  events: `SELECT received_at, vendor, event_name, observation_kind, page_url, status_code, latency_ms, failure_reason, revenue_value, revenue_currency, transaction_id, resource_domain, delivery_mode, consent_state, is_synthetic FROM events WHERE site_id=$1 AND received_at > NOW()-INTERVAL '30 days' ORDER BY received_at DESC LIMIT 10000`,
   alerts: `SELECT created_at, severity, category, code, vendor, event_name, message, root_cause, confidence, resolved, page_url FROM alerts WHERE site_id=$1 AND created_at > NOW()-INTERVAL '90 days' ORDER BY created_at DESC LIMIT 5000`,
   revenue: `SELECT last_seen, transaction_id, currency, vendor_values, missing_vendors, delta_value, status FROM revenue_reconciliations WHERE site_id=$1 ORDER BY last_seen DESC LIMIT 5000`,
   synthetic: `SELECT started_at, finished_at, status, duration_ms, error, evidence FROM synthetic_runs WHERE site_id=$1 ORDER BY started_at DESC LIMIT 5000`,

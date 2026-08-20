@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import FlowSummaryGraph from './dashboard/flow-summary';
 
 const stream = [
   ['09:42:18', 'GA4', 'purchase', '200', '312 ms', 'ok'],
@@ -19,6 +20,7 @@ export default function LandingPage() {
           </Link>
           <div className="hidden items-center gap-8 text-sm text-slate-300 md:flex">
             <a href="#product" className="transition hover:text-white">Product</a>
+            <a href="#delivery" className="transition hover:text-white">Delivery flow</a>
             <a href="#evidence" className="transition hover:text-white">Evidence</a>
             <a href="#workflow" className="transition hover:text-white">Workflow</a>
             <a href="#security" className="transition hover:text-white">Security</a>
@@ -57,6 +59,8 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      <section id="delivery" className="border-b border-slate-200 bg-[#f0f5f8]"><div className="mx-auto max-w-7xl px-6 py-20 lg:px-8 lg:py-28"><div className="mb-10 grid gap-8 lg:grid-cols-[.75fr_1.25fr] lg:items-end"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-[#5d7f30]">Make the invisible route visible</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">One event. Two possible paths.</h2></div><p className="max-w-xl text-lg leading-8 text-slate-600">See whether a purchase, login, or lead went directly to a vendor platform—or reached your first-party/server-side endpoint first. GA4Fix keeps those paths separate when explaining browser-blocker impact.</p></div><FlowSummaryGraph sample /></div></section>
 
       <section id="product" className="mx-auto max-w-7xl px-6 py-20 lg:px-8 lg:py-28"><div className="grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:items-end"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-[#5d7f30]">The signal layer for your growth stack</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">A monitoring product your analyst can act on.</h2></div><p className="max-w-xl text-lg leading-8 text-slate-600">A beautiful dashboard is not enough. Every finding needs evidence, a probable cause, an owner-friendly next step, and a clear answer to the question: did this affect real users?</p></div><div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4"><Feature n="01" title="Every fire" text="Status, latency, request signature, consent state, revenue, and browser context attached to each observation." /><Feature n="02" title="Root cause" text="Separate a duplicate dataLayer push, GTM tag fan-out, direct-code collision, transport failure, and consent behavior." /><Feature n="03" title="Right urgency" text="Critical purchase and duplicate incidents in real time. Lower-severity evidence grouped into an operational digest." /><Feature n="04" title="No guesswork" text="Health, anomaly, synthetic, compliance, and integration views share one evidence model instead of competing dashboards." /></div></section>
 

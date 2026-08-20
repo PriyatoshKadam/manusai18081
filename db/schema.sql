@@ -210,6 +210,7 @@ ALTER TABLE adblock_events
   ADD COLUMN IF NOT EXISTS blocked_url TEXT,
   ADD COLUMN IF NOT EXISTS event_name TEXT,
   ADD COLUMN IF NOT EXISTS signal TEXT,
+  ADD COLUMN IF NOT EXISTS delivery_mode TEXT NOT NULL DEFAULT 'unknown',
   ADD COLUMN IF NOT EXISTS detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_adblock_site_session
@@ -217,6 +218,9 @@ CREATE INDEX IF NOT EXISTS idx_adblock_site_session
 
 CREATE INDEX IF NOT EXISTS idx_adblock_site_signal
   ON adblock_events(site_id, signal, detected_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_adblock_site_delivery
+  ON adblock_events(site_id, delivery_mode, detected_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_adblock_site_time
   ON adblock_events(site_id, detected_at DESC);
@@ -325,6 +329,7 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS transaction_id TEXT,
   ADD COLUMN IF NOT EXISTS resource_domain TEXT,
   ADD COLUMN IF NOT EXISTS resource_type TEXT,
+  ADD COLUMN IF NOT EXISTS delivery_mode TEXT NOT NULL DEFAULT 'unknown',
   ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE;
 
 ALTER TABLE alerts
@@ -338,6 +343,9 @@ CREATE INDEX IF NOT EXISTS idx_events_site_revenue
 
 CREATE INDEX IF NOT EXISTS idx_events_site_resource
   ON events(site_id, resource_domain, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_delivery
+  ON events(site_id, delivery_mode, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_alerts_site_dedupe
   ON alerts(site_id, dedupe_key, created_at DESC);

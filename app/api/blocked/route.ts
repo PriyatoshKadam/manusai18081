@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { query } from '../../../lib/db';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
+import { classifyDeliveryMode } from '../../../lib/delivery';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,14 +65,15 @@ async function recordBlocked(req: NextRequest, values: { apiKey: string; method:
   const blockedVendors = vendorsForSignal(method, blockedUrl || '');
   const signal = text(values.signal, 80) || method;
   const confidence = signalConfidence(method, signal);
+  const deliveryMode = classifyDeliveryMode(blockedUrl, pageUrl, { ...site, appOrigin: process.env.NEXT_PUBLIC_APP_URL || null });
   const sessionId = text(values.sessionId, 128) || null;
   const dedupeKey = `${site.id}:${sessionId || clientIpHash(req)}:${method}:${eventName || ''}:${blockedUrl || ''}`;
   const limited = rateLimit(`blocked:${dedupeKey}`, 4, 60_000);
   if (!limited.allowed) return json({ ok: true, deduped: true });
   await query(
-    `INSERT INTO adblock_events (site_id, detection_method, page_url, user_agent, ip_hash, blocked_vendors, confidence, session_id, blocked_url, event_name, signal)
-     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11)`,
-    [site.id, method, pageUrl, text(req.headers.get('user-agent'), 500), clientIpHash(req), JSON.stringify(blockedVendors), confidence, sessionId, blockedUrl, eventName, signal],
+    `INSERT INTO adblock_events (site_id, detection_method, page_url, user_agent, ip_hash, blocked_vendors, confidence, session_id, blocked_url, event_name, signal, delivery_mode)
+     VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12)`,
+    [site.id, method, pageUrl, text(req.headers.get('user-agent'), 500), clientIpHash(req), JSON.stringify(blockedVendors), confidence, sessionId, blockedUrl, eventName, signal, deliveryMode],
   );
   return json({ ok: true, deduped: false });
 }

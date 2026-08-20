@@ -62,6 +62,7 @@ export type NormalizedTelemetryEvent = {
   transactionId: string | null;
   resourceDomain: string | null;
   resourceType: string | null;
+  deliveryMode: 'client_side' | 'server_side' | 'unknown';
   isSynthetic: boolean;
 };
 
@@ -117,6 +118,7 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     transactionId: rawTransaction,
     resourceDomain,
     resourceType: boundedString(event.resourceType ?? event.resource_type, 80)?.trim() || null,
+    deliveryMode: event.deliveryMode === 'client_side' || event.deliveryMode === 'server_side' ? event.deliveryMode : 'unknown',
     isSynthetic: event.isSynthetic === true || event.is_synthetic === true,
   };
 }

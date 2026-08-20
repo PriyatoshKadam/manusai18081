@@ -33,6 +33,7 @@ export interface ParsedEvent {
   revenueCurrency?: string | null;
   resourceDomain?: string | null;
   resourceType?: string | null;
+  deliveryMode?: 'client_side' | 'server_side' | 'unknown';
   isSynthetic?: boolean;
 }
 

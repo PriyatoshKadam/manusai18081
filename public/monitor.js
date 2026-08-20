@@ -115,7 +115,7 @@
     var measurement = params.tid || params.measurement_id;
     if (/googletagmanager\.com\/(?:gtm|gtag\/js)|google-analytics\.com\/analytics\.js|analytics\.google\.com\/analytics\.js/i.test(value)) return 'gtm';
     var ga4Path = u && /\/(?:metrics\/|analytics\/)?(?:g|mp)\/collect$/i.test(u.pathname);
-    if ((ga4Path || /(^|\.)google-analytics\.com$|(^|\.)analytics\.google\.com$/i.test(host)) && (eventName || /^G-[A-Z0-9]+$/i.test(String(measurement || '')))) return 'ga4';
+    if ((ga4Path || /(^|\.)google-analytics\.com$|(^|\.)analytics\.google\.com$/i.test(host) || measurement) && (eventName || /^G-[A-Z0-9]+$/i.test(String(measurement || '')))) return 'ga4';
     if (/googleadservices\.com|googlesyndication\.com/.test(value) || params.gclid || params.google_conversion_id) return 'gads';
     if (/facebook\.com\/tr|facebook\.net\/tr/.test(value)) return 'meta';
     if (/analytics\.tiktok\.com|business-api\.tiktok\.com|tiktok\.com\/api/.test(value)) return 'tiktok';

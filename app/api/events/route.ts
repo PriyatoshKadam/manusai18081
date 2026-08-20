@@ -46,6 +46,26 @@ export async function GET(req: NextRequest) {
        FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
   const eventsRes = vendor ? await query(eventsQ, [siteId, vendor]) : await query(eventsQ, [siteId]);
+  const flow = await query(
+    `SELECT COALESCE(NULLIF(delivery_mode, ''), 'unknown') AS delivery_mode,
+            COUNT(DISTINCT ${occurrenceKey})::int AS events,
+            COUNT(DISTINCT session_id)::int AS sessions,
+            COUNT(*) FILTER (WHERE (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL)::int AS failures,
+            COUNT(DISTINCT resource_domain)::int AS destinations,
+            ARRAY_REMOVE(ARRAY_AGG(DISTINCT resource_domain), NULL) AS domains
+       FROM events
+      WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
+      GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')
+      ORDER BY events DESC`,
+    [siteId],
+  );
+  const blockedFlow = await query(
+    `SELECT COALESCE(NULLIF(delivery_mode, ''), 'unknown') AS delivery_mode, COUNT(*)::int AS blocked
+       FROM adblock_events
+      WHERE site_id = $1 AND detected_at > NOW() - INTERVAL '24 hours'
+      GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')`,
+    [siteId],
+  );
   const alerts = await query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]);
-  return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows });
+  return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows, flow: flow.rows, blockedFlow: blockedFlow.rows });
 }
