@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyDuplicateRootCause, classifyEvent, getEventIdentity, normalizePageUrl } from '../lib/detection';
+import { classifyDuplicateRootCause, classifyEvent, decodeGcs, getEventIdentity, isGtmFanoutEvidence, normalizePageUrl } from '../lib/detection';
 import { normalizeHostname, normalizeSiteInput } from '../lib/site-validation';
 import { normalizeTelemetryEvent, parseIngestBody } from '../lib/ingest-validation';
 import { buildGtmAuthorizationUrl, decryptSecret, encryptSecret, monitorTagHtml, monitorTagPayload } from '../lib/gtm';
@@ -48,6 +48,17 @@ describe('event identity and classification', () => {
     expect(classifyEvent(null)).toBe('unknown');
   });
 
+  it('decodes Consent Mode gcs values without treating G111 as denied', () => {
+    expect(decodeGcs('G111')).toMatchObject({ ad_storage: 'granted', analytics_storage: 'granted' });
+    expect(decodeGcs('G110')).toMatchObject({ ad_storage: 'granted', analytics_storage: 'denied' });
+    expect(decodeGcs('G100')).toMatchObject({ ad_storage: 'denied', analytics_storage: 'denied' });
+  });
+
+  it('recognizes same-occurrence GTM fan-out as duplicate evidence', () => {
+    expect(isGtmFanoutEvidence({ ...base, vendor: 'ga4', gtmContainerId: 'GTM-TEST123', occurrenceId: 'event-1' }, { vendor: 'ga4', gtmContainerId: 'GTM-TEST123', dlPushIndex: 4 })).toBe(true);
+    expect(isGtmFanoutEvidence({ ...base, vendor: 'ga4', gtmContainerId: null, dlPushIndex: null }, { vendor: 'ga4', gtmContainerId: null, dlPushIndex: null })).toBe(false);
+  });
+
   it('explains duplicate root cause from dataLayer and transport evidence', () => {
     expect(classifyDuplicateRootCause(base, { id: 1, dlPushIndex: 3, source: 'gtm', rawUrl: null })).toContain('dataLayer');
     expect(classifyDuplicateRootCause({ ...base, dlPushIndex: 4, source: 'fetch' }, { id: 1, dlPushIndex: 4, source: 'gtm', rawUrl: null })).toContain('transport');
@@ -88,7 +99,7 @@ describe('GTM Connect helpers', () => {
     const tag = monitorTagPayload({ id: 1, api_key: 'a'.repeat(48) }, 'trigger-1');
     expect(tag.type).toBe('html');
     expect(tag.firingTriggerId).toEqual(['trigger-1']);
-    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?apiKey=');
+    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?v=12.1&apiKey=');
     delete process.env.NEXT_PUBLIC_MONITOR_ORIGIN;
   });
 });

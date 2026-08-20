@@ -12,6 +12,8 @@ const schema = fs.readFileSync('db/schema.sql', 'utf8');
     expect(monitor).toContain("document.visibilityState === 'hidden'");
     expect(monitor).toContain("reportBlocked('ga4_event_unmatched'");
     expect(monitor).toContain('text/plain;charset=UTF-8');
+    expect(monitor).toContain('consentFromParams');
+    expect(monitor).toContain('recentNetworkEvents');
   });
 
   it('emits the runtime audit action as a monitorable dataLayer event', () => {
@@ -20,6 +22,7 @@ const schema = fs.readFileSync('db/schema.sql', 'utf8');
 
   it('keeps network duplicate alerts visible in the dashboard API', () => {
     expect(duplicateRoute).toContain("'duplicate_network_request'");
+    expect(duplicateRoute).toContain('derivedFanout');
   });
 
   it('stores ad-block confidence separately from correlation gaps', () => {

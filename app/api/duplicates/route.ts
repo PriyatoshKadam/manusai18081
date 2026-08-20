@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const [alertRows, networkRows, repeatRows] = await Promise.all([
+  const [alertRows, networkRows, repeatRows, fanoutRows] = await Promise.all([
     query(
       `SELECT id, event_name, vendor, category, code, message, root_cause, fix_steps, raw, occurrence_count, distinct_pushes, page_url, created_at
          FROM alerts WHERE site_id = $1 AND category IN ('analytics','gtm') AND resolved = false
@@ -36,6 +36,23 @@ export async function GET(req: NextRequest) {
           AND session_id IS NOT NULL
           AND received_at > NOW() - INTERVAL '24 hours'
         GROUP BY event_name, vendor, page_url, session_id, request_signature
+       HAVING COUNT(*) > 1
+        ORDER BY last_seen DESC
+        LIMIT 100`,
+      [siteId],
+    ),
+    query(
+      `SELECT event_name, vendor, page_url, session_id, occurrence_id,
+              COUNT(*)::int AS network_count,
+              COUNT(DISTINCT request_signature)::int AS signature_count,
+              MIN(received_at) AS first_seen,
+              MAX(received_at) AS last_seen,
+              ARRAY_AGG(id ORDER BY received_at DESC) AS event_ids
+         FROM events
+        WHERE site_id = $1 AND vendor = 'ga4' AND observation_kind = 'network'
+          AND session_id IS NOT NULL AND occurrence_id IS NOT NULL
+          AND received_at > NOW() - INTERVAL '24 hours'
+        GROUP BY event_name, vendor, page_url, session_id, occurrence_id
        HAVING COUNT(*) > 1
         ORDER BY last_seen DESC
         LIMIT 100`,
@@ -121,7 +138,25 @@ export async function GET(req: NextRequest) {
     duplicateKey: `repeat:${row.session_id}:${row.event_name}:${row.page_url || ''}`,
   }));
 
-  const merged = [...alerts, ...derivedNetwork, ...derivedRepeats];
+  const derivedFanout = fanoutRows.rows.map((row: any) => ({
+    id: `fanout-${row.event_ids?.[0] || row.last_seen}`,
+    event_name: row.event_name,
+    vendor: row.vendor,
+    category: 'gtm',
+    code: 'gtm_multiple_tags_or_triggers',
+    message: `${row.event_name || 'GA4 event'} produced ${row.network_count} network calls from one dataLayer occurrence.`,
+    root_cause: 'Multiple GTM tags or triggers appear to have responded to the same dataLayer event. This is the strongest browser-side evidence of tag fan-out.',
+    fix_steps: ['Open GTM Preview and inspect the exact dataLayer event.', 'Check whether two GA4 Event tags fire from that one trigger.', 'Disable duplicate tags or narrow their trigger conditions.', 'Verify the network request count falls to one after publishing.'],
+    raw: { sessionId: row.session_id, occurrenceId: row.occurrence_id, eventIds: row.event_ids, networkCount: row.network_count, signatureCount: row.signature_count, firstSeen: row.first_seen, lastSeen: row.last_seen },
+    occurrence_count: row.network_count,
+    distinct_pushes: 1,
+    page_url: row.page_url,
+    created_at: row.last_seen,
+    sourceType: 'derived_gtm_fanout',
+    duplicateKey: `fanout:${row.session_id}:${row.event_name}:${row.occurrence_id}`,
+  }));
+
+  const merged = [...alerts, ...derivedFanout, ...derivedNetwork, ...derivedRepeats];
   const seen = new Set<string>();
   const duplicates = merged.filter((item) => {
     const raw = typeof item.raw === 'string' ? (() => { try { return JSON.parse(item.raw); } catch { return {}; } })() : item.raw || {};

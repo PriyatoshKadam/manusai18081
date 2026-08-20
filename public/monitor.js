@@ -31,10 +31,11 @@
   var flushTimer = null;
   var seenResources = Object.create(null);
   var networkHistory = Object.create(null);
+  var recentNetworkEvents = Object.create(null);
   var sentBlocked = Object.create(null);
   var counts = Object.create(null);
   var processedGtagObjects = [];
-  var consentState = { gpc: !!navigator.globalPrivacyControl, do_not_track: navigator.doNotTrack || null };
+  var consentState = { gpc: !!navigator.globalPrivacyControl, do_not_track: navigator.doNotTrack || null, consent_source: 'browser' };
   var webVitals = {};
   var MAX_QUEUE = 250;
   var MAX_PENDING = 300;
@@ -94,7 +95,8 @@
     return output;
   }
   function safeParams(value) { return safeValue(value || {}, 0, []); }
-  function captureConsent(value) { consentState = merge(consentState, safeParams(value || {})); }
+  function captureConsent(value, source) { consentState = merge(consentState, safeParams(value || {})); if (source) consentState.consent_source = source; }
+  function consentFromParams(params) { var gcs = String((params && params.gcs) || ''); if (!/^G1[01]{2}$/.test(gcs)) return {}; var bits = gcs.slice(2); return { ad_storage: bits.charAt(0) === '1' ? 'granted' : 'denied', analytics_storage: bits.charAt(1) === '1' ? 'granted' : 'denied', consent_gcs: gcs, consent_source: 'network_gcs' }; }
   function captureVital(name, value) { if (name && Number.isFinite(Number(value))) webVitals[name] = Math.round(Number(value) * 100) / 100; }
   function diagnostic(name, params) { send({ type: 'diagnostic', vendor: 'browser', eventName: name, params: safeParams(params || {}), pageUrl: pageUrl(), source: 'browser', observationKind: 'diagnostic', sessionId: sessionId, occurrenceId: token('diagnostic'), navigationId: navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() }); }
   function stable(value) {
@@ -218,7 +220,7 @@
     if (Array.isArray(item) || typeof item.length === 'number') {
       if (item[0] === 'event') { name = item[1]; params = item[2] || {}; source = 'gtag'; }
       if (item[0] === 'config' || item[0] === 'set') return null;
-      if (item[0] === 'consent') { captureConsent(item[2] || item[1] || {}); return null; }
+      if (item[0] === 'consent') { captureConsent(item[2] || item[1] || {}, 'datalayer'); return null; }
     } else if (typeof item === 'object') { name = item.event || item.event_name || item.eventName || null; }
     if (name && /^(consent_update|consent)$/i.test(String(name))) { captureConsent(params); return null; }
     if (!name) return null;
@@ -238,6 +240,7 @@
   function network(url, body, transport, failed, deferSend) {
     if (!url || ownUrl(url)) return null;
     var params = merge(paramsFromUrl(url), parseBody(body));
+    var networkConsent = consentFromParams(params); if (Object.keys(networkConsent).length) captureConsent(networkConsent, 'network_gcs');
     var vendor = vendorFor(url, params);
     if (!vendor) return null;
     var name = eventNameFor(vendor, params);
@@ -249,7 +252,11 @@
     if (transport === 'performance' && previousNetwork && previousNetwork.transport !== 'performance' && Date.now() - previousNetwork.timestamp < 5000) return null;
     networkHistory[historyKey] = { transport: transport, timestamp: Date.now() };
     var match = vendor === 'ga4' ? matchPending(name, normalizedParams, Date.now(), requestSig) : null;
-    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
+    var recentKey = vendor + '|' + String(name || '') + '|' + navigationId;
+    var recent = recentNetworkEvents[recentKey];
+    var rapidFanout = !match && vendor === 'ga4' && recent && Date.now() - recent.timestamp <= 750;
+    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : rapidFanout ? recent.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : rapidFanout ? recent.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : rapidFanout ? recent.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
+    recentNetworkEvents[recentKey] = { timestamp: event.timestamp, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, source: event.source };
     if (!deferSend) send(event);
     if (failed) reportBlocked(vendor + '_transport_blocked', { eventName: name, blockedUrl: url, sessionId: sessionId, signal: vendor + '_transport' });
     return event;
@@ -260,7 +267,7 @@
     dataLayer.push = function () { for (var j = 0; j < arguments.length; j += 1) { pushIndex += 1; if (!wasProcessed(arguments[j])) dataLayerEvent(arguments[j]); } return original.apply(this, arguments); };
     if (typeof window.gtag === 'function') {
       var originalGtag = window.gtag;
-      window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}); } } catch (_) {} return originalGtag.apply(this, arguments); };
+      window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}, 'datalayer'); } } catch (_) {} return originalGtag.apply(this, arguments); };
     }
   }
   function recordVendorFunction(vendor, method, args) {

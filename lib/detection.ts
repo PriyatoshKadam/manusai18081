@@ -143,6 +143,29 @@ function sameSession(current: ParsedEvent, previous: ParsedEvent) {
   return !!current.sessionId && current.sessionId === previous.sessionId;
 }
 
+export function decodeGcs(value: string | null | undefined) {
+  const gcs = String(value || '').trim().toUpperCase();
+  if (!/^G1[01]{2}$/.test(gcs)) return null;
+  const bits = gcs.slice(2);
+  return { value: gcs, ad_storage: bits.charAt(0) === '1' ? 'granted' : 'denied', analytics_storage: bits.charAt(1) === '1' ? 'granted' : 'denied' };
+}
+
+function networkGcs(event: ParsedEvent): string | null {
+  const direct = firstValue(event.params?.gcs, event.params?.['gcs']);
+  if (direct) return decodeGcs(String(direct))?.value || String(direct).trim().toUpperCase();
+  try { return new URL(event.rawUrl || '').searchParams.get('gcs')?.trim().toUpperCase() || null; } catch { return null; }
+}
+
+function analyticsStorageDenied(event: ParsedEvent): boolean {
+  if (event.observationKind !== 'network') return false;
+  const gcs = networkGcs(event);
+  return decodeGcs(gcs)?.analytics_storage === 'denied';
+}
+
+export function isGtmFanoutEvidence(event: ParsedEvent, previous: Pick<DuplicateMatch, 'vendor' | 'gtmContainerId' | 'dlPushIndex'>) {
+  return event.vendor === 'gtm' || previous.vendor === 'gtm' || Boolean(event.gtmContainerId || previous.gtmContainerId || event.dlPushIndex !== null || previous.dlPushIndex !== null);
+}
+
 export function classifyDuplicateRootCause(current: ParsedEvent, previous: Pick<DuplicateMatch, 'id' | 'dlPushIndex' | 'source' | 'rawUrl'>): string {
   if (current.dlPushIndex !== null && previous.dlPushIndex !== null && current.dlPushIndex !== previous.dlPushIndex) {
     return 'Multiple dataLayer pushes contain the same event. Check whether GTM is pushing the event twice or two triggers respond to the same site action.';
@@ -159,7 +182,7 @@ async function findRecentCandidates(event: ParsedEvent, windowSeconds: number) {
   const pageUrl = normalizePageUrl(event.pageUrl || '');
   const crossNavigation = REPEAT_SENSITIVE_EVENTS.has((event.eventName || '').trim().toLowerCase());
   const result = await query(
-    `SELECT id, dl_push_index, source, raw_url, page_url, client_id, params, received_at,
+    `SELECT id, vendor, dl_push_index, source, raw_url, page_url, client_id, params, received_at,
             observation_kind, session_id, occurrence_id, network_occurrence_id,
             request_signature, transport, gtm_container_id, navigation_id
        FROM events
@@ -184,7 +207,7 @@ function asEvent(row: DuplicateMatch, current: ParsedEvent): DuplicateMatch {
     siteId: current.siteId,
     eventId: Number(row.id),
     receivedAt: row.receivedAt,
-    vendor: current.vendor,
+    vendor: row.vendor || current.vendor,
     eventName: row.eventName || current.eventName,
     pageUrl: row.pageUrl || '',
     clientId: row.clientId || null,
@@ -213,7 +236,10 @@ export async function checkDuplicateEvent(event: ParsedEvent): Promise<Duplicate
     const previous = asEvent(raw, event);
     if (sameOccurrence(event, previous)) {
       if (event.observationKind !== previous.observationKind) return null;
-      if (event.observationKind === 'network' && event.networkOccurrenceId && event.networkOccurrenceId === previous.networkOccurrenceId) return null;
+      if (event.observationKind === 'network') {
+        if (event.networkOccurrenceId && event.networkOccurrenceId === previous.networkOccurrenceId) return null;
+        return previous;
+      }
     }
     if (event.observationKind === 'datalayer' && previous.observationKind === 'datalayer' && sameSession(event, previous)) {
       if (!REPEAT_SENSITIVE_EVENTS.has(eventName) && event.navigationId && previous.navigationId && event.navigationId !== previous.navigationId) continue;
@@ -290,9 +316,9 @@ async function checkTransportAndConsent(event: ParsedEvent) {
     const reason = event.failureReason || `http_${event.statusCode}`;
     await createAlert({ siteId: event.siteId, severity: event.eventName?.trim().toLowerCase() === 'purchase' ? 'critical' : 'warning', code, category: 'transport', vendor: event.vendor, eventName: event.eventName, message: `${event.vendor} ${event.eventName || 'tag'} failed to deliver (${reason}).`, rootCause: 'The browser observed a failed analytics transport or an HTTP error response.', fixSteps: ['Check the request URL and response status in the browser Network panel.', 'Check CSP, consent rules, ad blockers, and vendor endpoint configuration.', 'Compare the dataLayer push with the network request in GTM Preview or Tag Assistant.'], pageUrl: event.pageUrl || '', raw: { eventId: event.eventId, statusCode: event.statusCode || null, latencyMs: event.latencyMs || null, failureReason: reason, rawUrl: event.rawUrl || null }, dedupeMinutes: 10 });
   }
-  const analyticsStorage = String(event.consentState?.analytics_storage || '').toLowerCase();
-  if (event.vendor === 'ga4' && analyticsStorage === 'denied') {
-    await createAlert({ siteId: event.siteId, severity: 'critical', code: 'tag_fired_after_consent_denied', category: 'consent', vendor: event.vendor, eventName: event.eventName, message: `GA4 ${event.eventName || 'event'} fired while analytics_storage was denied.`, rootCause: 'The event was observed after the browser reported denied analytics storage consent.', fixSteps: ['Verify Consent Mode v2 defaults and update signals.', 'Gate non-essential tags behind the CMP consent callback.', 'Check whether cookieless pings are intentional and documented.'], pageUrl: event.pageUrl || '', raw: { eventId: event.eventId, consentState: event.consentState || {}, params: event.params }, dedupeMinutes: 10 });
+  if (event.vendor === 'ga4' && analyticsStorageDenied(event)) {
+    const gcs = networkGcs(event);
+    await createAlert({ siteId: event.siteId, severity: 'critical', code: 'tag_fired_after_consent_denied', category: 'consent', vendor: event.vendor, eventName: event.eventName, message: `GA4 ${event.eventName || 'event'} was sent with analytics_storage denied (${gcs}).`, rootCause: 'The GA4 network request encoded analytics_storage=denied in gcs. A dataLayer default alone is not treated as proof because Advanced Consent Mode may send cookieless measurement while consent is denied.', fixSteps: ['Verify the CMP default and update sequence in Tag Assistant.', 'Check whether the request is an allowed cookieless ping or an event that should be gated.', 'Compare the gcs value before and after the consent update.'], pageUrl: event.pageUrl || '', raw: { eventId: event.eventId, gcs, consentState: event.consentState || {}, params: event.params }, dedupeMinutes: 10 });
   }
 }
 
@@ -349,7 +375,7 @@ export async function runDetection(event: ParsedEvent) {
     await checkTransportAndConsent(event);
     const duplicate = await checkDuplicateEvent(event);
     if (duplicate) {
-      if (event.vendor === 'gtm' || duplicate.vendor === 'gtm') {
+      if (isGtmFanoutEvidence(event, duplicate)) {
         await createGtmAlert(event, duplicate);
       } else {
         const normalizedName = event.eventName?.trim().toLowerCase() || '';
