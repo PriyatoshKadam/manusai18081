@@ -9,7 +9,7 @@ const queries: Record<string, string> = {
   revenue: `SELECT last_seen, transaction_id, currency, vendor_values, missing_vendors, delta_value, status FROM revenue_reconciliations WHERE site_id=$1 ORDER BY last_seen DESC LIMIT 5000`,
   synthetic: `SELECT started_at, finished_at, status, duration_ms, error, evidence FROM synthetic_runs WHERE site_id=$1 ORDER BY started_at DESC LIMIT 5000`,
 };
-function csv(rows: any[]) { if (!rows.length) return ''; const keys = Object.keys(rows[0]); const quote = (value: unknown) => `"${String(typeof value === 'object' && value !== null ? JSON.stringify(value) : value ?? '').replace(/"/g, '""')}"`; return [keys.join(','), ...rows.map((row) => keys.map((key) => quote(row[key])).join(','))].join('\n'); }
+function csv(rows: any[]) { if (!rows.length) return ''; const keys = Object.keys(rows[0]); const quote = (value: unknown) => { const text = String(typeof value === 'object' && value !== null ? JSON.stringify(value) : value ?? ''); const safe = /^[-=+@]/.test(text) ? `'${text}` : text; return `"${safe.replace(/"/g, '""')}"`; }; return [keys.join(','), ...rows.map((row) => keys.map((key) => quote(row[key])).join(','))].join('\n'); }
 export async function GET(req: NextRequest) {
   const session = await getSession(); if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const params = new URL(req.url).searchParams; const siteId = Number(params.get('siteId')); const kind = params.get('kind') || 'events'; const format = params.get('format') || 'json';

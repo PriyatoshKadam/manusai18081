@@ -1,9 +1,11 @@
+import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../lib/db';
 import { processDailyDigests, processPendingDeliveries } from '../../../lib/notifications';
 import { refreshBaselines, runAnomalySweep } from '../../../lib/anomaly';
 import { reconcileRevenue } from '../../../lib/revenue';
 import { runEnabledSyntheticJourneys } from '../../../lib/synthetic';
+import { rateLimit, requestKey } from '../../../lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -11,13 +13,21 @@ export const dynamic = 'force-dynamic';
 function authorized(req: NextRequest) {
   const expected = process.env.CRON_SECRET?.trim();
   const received = req.headers.get('authorization')?.replace(/^Bearer\s+/i, '').trim() || req.headers.get('x-cron-secret')?.trim();
-  return Boolean(expected && received && received === expected);
+  if (!expected || !received) return false;
+  const expectedBytes = Buffer.from(expected);
+  const receivedBytes = Buffer.from(received);
+  return expectedBytes.length === receivedBytes.length && crypto.timingSafeEqual(expectedBytes, receivedBytes);
 }
 
 export async function POST(req: NextRequest) {
+  const limited = rateLimit(requestKey(req, 'jobs'), 10, 60_000);
+  if (!limited.allowed) return NextResponse.json({ error: 'Too many job requests' }, { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } });
   if (!authorized(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const contentLength = Number(req.headers.get('content-length') || 0);
+  if (contentLength > 4096) return NextResponse.json({ error: 'Request body too large' }, { status: 413 });
   const body = await req.json().catch(() => ({}));
   const job = String(body?.job || 'all');
+  if (!['all', 'deliveries', 'anomaly', 'synthetic', 'revenue', 'digest'].includes(job)) return NextResponse.json({ error: 'Unsupported job' }, { status: 400 });
   if (job === 'deliveries') {
     await processPendingDeliveries(100);
     return NextResponse.json({ ok: true, job });

@@ -46,6 +46,14 @@ export async function proxy(req: NextRequest) {
     return securityHeaders(NextResponse.next(), true);
   }
 
+  const unsafeMethod = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method);
+  if (unsafeMethod && req.nextUrl.pathname.startsWith('/api/') && configuredHost) {
+    const origin = req.headers.get('origin');
+    const referer = req.headers.get('referer');
+    const suppliedOrigin = origin || (referer ? (() => { try { return new URL(referer).origin; } catch { return ''; } })() : '');
+    if (suppliedOrigin && hostname(suppliedOrigin.replace(/^https?:\/\//, '')) !== configuredHost) return securityHeaders(new NextResponse('Cross-site request blocked', { status: 403 }));
+  }
+
   if (req.nextUrl.pathname.startsWith('/dashboard')) {
     const session = req.cookies.get('g4f_session')?.value;
     if (!(await validSession(session))) {

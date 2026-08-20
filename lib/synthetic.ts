@@ -1,5 +1,6 @@
 import { query } from './db';
 import { enqueueAlertDeliveries } from './notifications';
+import { isSafeOutboundUrl } from './outbound';
 
 function safeUrl(value: string, base?: string) {
   try { return new URL(value, base); } catch { return null; }
@@ -10,8 +11,8 @@ function allowed(url: URL, domain: string, firstParty: string | null) {
   return candidates.some((candidate) => host === candidate || host.endsWith(`.${candidate}`));
 }
 
-export async function runSyntheticJourney(journeyId: number) {
-  const result = await query(`SELECT j.*, s.domain, s.first_party_domain FROM synthetic_journeys j JOIN sites s ON s.id = j.site_id WHERE j.id = $1 AND j.enabled = true`, [journeyId]);
+export async function runSyntheticJourney(journeyId: number, scope: { siteId?: number; userId?: number } = {}) {
+  const result = await query(`SELECT j.*, s.domain, s.first_party_domain FROM synthetic_journeys j JOIN sites s ON s.id = j.site_id WHERE j.id = $1 AND j.enabled = true AND ($2::bigint IS NULL OR j.site_id = $2) AND ($3::bigint IS NULL OR s.user_id = $3)`, [journeyId, scope.siteId ?? null, scope.userId ?? null]);
   const journey = result.rows[0];
   if (!journey) return null;
   const started = Date.now();
@@ -19,12 +20,12 @@ export async function runSyntheticJourney(journeyId: number) {
   let status = 'passed';
   let error: string | null = null;
   let current = safeUrl(journey.start_url);
-  if (!current || !allowed(current, journey.domain, journey.first_party_domain)) { status = 'failed'; error = 'Journey URL is outside the monitored site allowlist'; }
+  if (!current || !allowed(current, journey.domain, journey.first_party_domain) || !(await isSafeOutboundUrl(current.toString(), { allowHttp: true }))) { status = 'failed'; error = 'Journey URL is outside the monitored public-site allowlist'; }
   const steps = Array.isArray(journey.steps) ? journey.steps : [];
   if (status === 'passed') {
     for (const step of steps.slice(0, 30)) {
       const target = safeUrl(String(step?.url || step?.path || ''), current?.toString());
-      if (!target || !allowed(target, journey.domain, journey.first_party_domain)) { status = 'failed'; error = 'Journey step is outside the monitored site allowlist'; break; }
+      if (!target || !allowed(target, journey.domain, journey.first_party_domain) || !(await isSafeOutboundUrl(target.toString(), { allowHttp: true }))) { status = 'failed'; error = 'Journey step is outside the monitored public-site allowlist'; break; }
       const startedStep = Date.now();
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 10000);

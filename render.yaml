@@ -18,6 +18,10 @@ services:
       - key: PG_SSL
         value: "true"
       - key: PG_SSL_REJECT_UNAUTHORIZED
+        value: "true"
+      - key: PG_CA_CERT
+        sync: false
+      - key: ALLOW_INSECURE_DB_TLS
         value: "false"
       - key: ALLOW_INSECURE_DEV_AUTH
         value: "false"

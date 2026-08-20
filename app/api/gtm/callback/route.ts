@@ -9,7 +9,8 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function redirect(req: NextRequest, status: string) {
-  const url = new URL('/dashboard/gtm-connect', req.url);
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || req.url;
+  const url = new URL('/dashboard/gtm-connect', base);
   url.searchParams.set('gtm', status);
   return NextResponse.redirect(url);
 }

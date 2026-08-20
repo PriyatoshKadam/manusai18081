@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const password = typeof body?.password === 'string' ? body.password : '';
     const name = typeof body?.name === 'string' ? body.name.trim().slice(0, 120) : '';
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 320) return errorResponse('Enter a valid email address');
-    if (password.length < 8 || password.length > 128) return errorResponse('Password must be between 8 and 128 characters');
+    if (password.length < 12 || password.length > 128) return errorResponse('Password must be between 12 and 128 characters');
     const limited = rateLimit(requestKey(req, 'signup', email), 3, 60 * 60_000);
     if (!limited.allowed) return NextResponse.json({ error: 'Too many signup attempts. Try again later.' }, { status: 429, headers: { 'Retry-After': String(limited.retryAfterSeconds) } });
     if (await findUserByEmail(email)) return errorResponse('Unable to create account with these details', 400);

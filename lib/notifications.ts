@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import { query } from './db';
+import { decryptSecret } from './gtm';
+import { isSafeOutboundUrl } from './outbound';
 
 type AlertNotification = {
   alertId?: number;
@@ -32,8 +34,9 @@ export async function notifyEmail(to: string | null | undefined, alert: AlertNot
 }
 
 export async function notifyWebhook(url: string, secret: string | null | undefined, alert: AlertNotification) {
-  if (!/^https?:\/\//i.test(url)) return false; const body = JSON.stringify({ type: 'tag_incident', createdAt: new Date().toISOString(), alert: payload(alert) }); const signature = secret ? crypto.createHmac('sha256', secret).update(body).digest('hex') : ''; const { controller, timer } = controllerWithTimeout(5000);
-  try { const response = await fetch(url, { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', ...(signature ? { 'X-GA4Fix-Signature': signature } : {}) }, body }); return response.ok; } catch { return false; } finally { clearTimeout(timer); }
+  if (!(await isSafeOutboundUrl(url))) return false;
+  const body = JSON.stringify({ type: 'tag_incident', createdAt: new Date().toISOString(), alert: payload(alert) }); const signature = secret ? crypto.createHmac('sha256', secret).update(body).digest('hex') : ''; const { controller, timer } = controllerWithTimeout(5000);
+  try { const response = await fetch(url, { method: 'POST', signal: controller.signal, redirect: 'manual', headers: { 'Content-Type': 'application/json', ...(signature ? { 'X-GA4Fix-Signature': signature } : {}) }, body }); return response.ok; } catch { return false; } finally { clearTimeout(timer); }
 }
 
 export async function enqueueAlertDeliveries(alert: AlertNotification) {
@@ -50,7 +53,7 @@ export async function enqueueAlertDeliveries(alert: AlertNotification) {
 
 export async function processPendingDeliveries(limit = 20) {
   const due = await query(`SELECT d.id, d.channel, d.destination, d.attempt_count, a.id AS alert_id, a.site_id, a.severity, a.category, a.vendor, a.event_name, a.message, a.root_cause, a.page_url, a.fix_steps, w.secret_encrypted FROM alert_deliveries d JOIN alerts a ON a.id = d.alert_id LEFT JOIN site_webhooks w ON w.site_id = d.site_id AND w.url = d.destination WHERE d.status IN ('pending','retry') AND d.next_attempt_at <= NOW() AND d.attempt_count < 5 ORDER BY d.next_attempt_at ASC LIMIT $1`, [limit]);
-  for (const row of due.rows) { const alert: AlertNotification = { alertId: Number(row.alert_id), siteId: Number(row.site_id), severity: row.severity, category: row.category, vendor: row.vendor, eventName: row.event_name, message: row.message, rootCause: row.root_cause, pageUrl: row.page_url, fixSteps: Array.isArray(row.fix_steps) ? row.fix_steps : [] }; const ok = row.channel === 'slack' ? await notifySlack(row.destination, alert) : row.channel === 'email' ? await notifyEmail(row.destination, alert) : await notifyWebhook(row.destination, row.secret_encrypted || null, alert); if (ok) await query(`UPDATE alert_deliveries SET status = 'delivered', delivered_at = NOW(), attempt_count = attempt_count + 1, last_error = NULL WHERE id = $1`, [row.id]); else await query(`UPDATE alert_deliveries SET status = CASE WHEN attempt_count + 1 >= 5 THEN 'failed' ELSE 'retry' END, attempt_count = attempt_count + 1, next_attempt_at = NOW() + (POWER(2, attempt_count + 1) * INTERVAL '1 minute'), last_error = 'Delivery failed or timed out' WHERE id = $1`, [row.id]); }
+  for (const row of due.rows) { const alert: AlertNotification = { alertId: Number(row.alert_id), siteId: Number(row.site_id), severity: row.severity, category: row.category, vendor: row.vendor, eventName: row.event_name, message: row.message, rootCause: row.root_cause, pageUrl: row.page_url, fixSteps: Array.isArray(row.fix_steps) ? row.fix_steps : [] }; let secret: string | null = null; if (row.channel === 'webhook' && row.secret_encrypted) { try { secret = decryptSecret(row.secret_encrypted); } catch { secret = null; } } const ok = row.channel === 'slack' ? await notifySlack(row.destination, alert) : row.channel === 'email' ? await notifyEmail(row.destination, alert) : await notifyWebhook(row.destination, secret, alert); if (ok) await query(`UPDATE alert_deliveries SET status = 'delivered', delivered_at = NOW(), attempt_count = attempt_count + 1, last_error = NULL WHERE id = $1`, [row.id]); else await query(`UPDATE alert_deliveries SET status = CASE WHEN attempt_count + 1 >= 5 THEN 'failed' ELSE 'retry' END, attempt_count = attempt_count + 1, next_attempt_at = NOW() + (POWER(2, attempt_count + 1) * INTERVAL '1 minute'), last_error = 'Delivery failed or timed out' WHERE id = $1`, [row.id]); }
 }
 
 async function digestForSite(siteId: number, destination: string | null, email: string | null, slackEnabled: boolean, emailEnabled: boolean) {

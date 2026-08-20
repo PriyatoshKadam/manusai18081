@@ -31,7 +31,7 @@ export function decryptSecret(value: string) {
 
 export function gtmRedirectUri(requestUrl?: string) {
   const configured = process.env.GTM_REDIRECT_URI?.trim();
-  const requestFallback = requestUrl ? (() => {
+  const requestFallback = process.env.NODE_ENV !== 'production' && requestUrl ? (() => {
     try { return new URL('/api/gtm/callback', requestUrl).toString(); } catch { return ''; }
   })() : '';
   const fallback = process.env.NEXT_PUBLIC_APP_URL?.trim() ? `${process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, '')}/api/gtm/callback` : '';
@@ -39,7 +39,8 @@ export function gtmRedirectUri(requestUrl?: string) {
   if (!value) return '';
   try {
     const url = new URL(value);
-    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) return '';
+    const allowedProtocols = process.env.NODE_ENV === 'production' ? ['https:'] : ['https:', 'http:'];
+    if (!allowedProtocols.includes(url.protocol) || url.username || url.password || url.hash) return '';
     return url.toString();
   } catch {
     return '';

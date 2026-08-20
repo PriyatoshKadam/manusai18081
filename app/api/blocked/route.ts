@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { query } from '../../../lib/db';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { classifyDeliveryMode } from '../../../lib/delivery';
+import { redactTelemetryUrl } from '../../../lib/ingest-validation';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,8 +61,8 @@ async function recordBlocked(req: NextRequest, values: { apiKey: string; method:
   if (!allowedOrigin(req, site)) return json({ ok: false, error: 'Telemetry origin is not registered for this site' }, 403);
   const method = text(values.method, 80).toLowerCase() || 'unknown';
   const eventName = text(values.eventName, 120) || null;
-  const pageUrl = text(values.pageUrl || req.headers.get('referer'), MAX_TEXT) || null;
-  const blockedUrl = text(values.blockedUrl, MAX_TEXT) || null;
+  const pageUrl = redactTelemetryUrl(text(values.pageUrl || req.headers.get('referer'), MAX_TEXT)) || null;
+  const blockedUrl = redactTelemetryUrl(text(values.blockedUrl, MAX_TEXT)) || null;
   const blockedVendors = vendorsForSignal(method, blockedUrl || '');
   const signal = text(values.signal, 80) || method;
   const confidence = signalConfidence(method, signal);

@@ -262,9 +262,9 @@
     return event;
   }
   function patchDataLayer() {
-    for (var i = 0; i < dataLayer.length; i += 1) dataLayerEvent(dataLayer[i]);
+    for (var i = 0; i < dataLayer.length; i += 1) { try { dataLayerEvent(dataLayer[i]); } catch (_) {} }
     var original = dataLayer.push;
-    dataLayer.push = function () { for (var j = 0; j < arguments.length; j += 1) { pushIndex += 1; if (!wasProcessed(arguments[j])) dataLayerEvent(arguments[j]); } return original.apply(this, arguments); };
+    dataLayer.push = function () { for (var j = 0; j < arguments.length; j += 1) { try { pushIndex += 1; if (!wasProcessed(arguments[j])) dataLayerEvent(arguments[j]); } catch (_) {} } return original.apply(this, arguments); };
     if (typeof window.gtag === 'function') {
       var originalGtag = window.gtag;
       window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}, 'datalayer'); } } catch (_) {} return originalGtag.apply(this, arguments); };
@@ -306,7 +306,7 @@
       var fetch = window.fetch;
       window.fetch = function (input, init) {
         var url = typeof input === 'string' ? input : input && input.url; var body = init && init.body;
-        var parsed = network(url, body, 'fetch', false, true);
+        var parsed = null; try { parsed = network(url, body, 'fetch', false, true); } catch (_) {}
         var result;
         try { result = fetch.apply(this, arguments); } catch (error) { if (parsed) { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } throw error; }
         if (result && result.then && parsed) result.then(function (response) { parsed.statusCode = Number(response.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (!response.ok) { parsed.failureReason = 'http_' + parsed.statusCode; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }).catch(function () { if (parsed) { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } });
@@ -316,11 +316,11 @@
     try {
       var open = XMLHttpRequest.prototype.open, sendXhr = XMLHttpRequest.prototype.send;
       XMLHttpRequest.prototype.open = function (method, url) { this.__g4f = { method: method, url: url }; return open.apply(this, arguments); };
-      XMLHttpRequest.prototype.send = function (body) { var item = this.__g4f; var parsed = item && network(item.url, body, 'xhr', false, true); if (parsed) { this.addEventListener('load', function () { parsed.statusCode = Number(this.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (this.status >= 400) { parsed.failureReason = 'http_' + this.status; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }); this.addEventListener('error', function () { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); this.addEventListener('abort', function () { parsed.failureReason = 'aborted'; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); } return sendXhr.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function (body) { var item = this.__g4f; var parsed = null; try { parsed = item && network(item.url, body, 'xhr', false, true); } catch (_) {} if (parsed) { this.addEventListener('load', function () { parsed.statusCode = Number(this.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (this.status >= 400) { parsed.failureReason = 'http_' + this.status; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }); this.addEventListener('error', function () { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); this.addEventListener('abort', function () { parsed.failureReason = 'aborted'; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); } return sendXhr.apply(this, arguments); };
     } catch (_) {}
     try {
       var beacon = navigator.sendBeacon;
-      if (beacon) navigator.sendBeacon = function (url, body) { var parsed = network(url, body, 'sendBeacon', false); var ok = beacon.call(navigator, url, body); if (parsed && !ok) reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); return ok; };
+      if (beacon) navigator.sendBeacon = function (url, body) { var parsed = null; try { parsed = network(url, body, 'sendBeacon', false); } catch (_) {} var ok = false; try { ok = beacon.call(navigator, url, body); } catch (_) {} if (parsed && !ok) { try { reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } catch (_) {} } return ok; };
     } catch (_) {}
   }
   function patchHistory() {
@@ -328,13 +328,13 @@
     window.addEventListener('popstate', function () { navigationId = token('nav'); });
   }
   function scanPerformance() {
-    try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false); }); } catch (_) {}
+    try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false); } catch (_) {} }); } catch (_) {}
   }
   patchDataLayer(); patchVendorFunctions(); patchNetwork(); patchHistory();
   try { setInterval(patchVendorFunctions, 1000); } catch (_) {}
   try { window.addEventListener('pagehide', flushOnPageExit); } catch (_) {}
   try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushOnPageExit(); }); } catch (_) {}
-  try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false); } }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false); } } catch (_) {} }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
   try { setInterval(scanPerformance, 1000); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.name === 'first-paint') captureVital('fcp', entry.startTime); }); }).observe({ type: 'paint', buffered: true }); } } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('lcp', entry.startTime); }); }).observe({ type: 'largest-contentful-paint', buffered: true }); } } catch (_) {}

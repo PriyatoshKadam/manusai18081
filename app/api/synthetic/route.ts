@@ -28,7 +28,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const siteId = Number(body?.siteId);
     if (!Number.isSafeInteger(siteId) || siteId <= 0 || !(await owned(siteId, session.uid))) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (body?.runNow && Number.isSafeInteger(Number(body?.journeyId))) return NextResponse.json({ run: await runSyntheticJourney(Number(body.journeyId)) });
+    if (body?.runNow && Number.isSafeInteger(Number(body?.journeyId))) {
+      const run = await runSyntheticJourney(Number(body.journeyId), { siteId, userId: Number(session.uid) });
+      if (!run) return NextResponse.json({ error: 'Synthetic journey not found' }, { status: 404 });
+      return NextResponse.json({ run });
+    }
     const name = String(body?.name || '').trim().slice(0, 120);
     const startUrl = String(body?.startUrl || '').trim().slice(0, 2048);
     const steps = Array.isArray(body?.steps) ? body.steps.slice(0, 30) : [];
