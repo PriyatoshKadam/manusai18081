@@ -92,7 +92,7 @@ export default function AuditPage() {
         </div>
       </div>
 
-      <div className="mt-5 text-xs text-ink-400">This runtime evidence audit is not a synthetic crawler scan. It reports what GA4Fix has observed in real browser sessions and should be paired with a consent-denied audit workflow before making compliance conclusions.</div>
+      <div className="mt-5 text-xs text-ink-400">This runtime evidence audit is not a synthetic crawler scan. It reports what GAfix has observed in real browser sessions and should be paired with a consent-denied audit workflow before making compliance conclusions.</div>
     </div>
   );
 }

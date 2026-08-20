@@ -2,9 +2,14 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'GA4Fix — Real-user tag and event monitoring',
+  title: 'GAfix — Real-user tag and event monitoring',
   description:
     'Catch broken analytics tags before your CEO does. Real-user monitoring for GA4, Google Ads, Meta, TikTok and 15+ vendors.',
+  icons: {
+    icon: '/gafix-logo.png',
+    shortcut: '/gafix-logo.png',
+    apple: '/gafix-logo.png',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

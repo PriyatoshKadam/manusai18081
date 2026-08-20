@@ -83,7 +83,7 @@ export default function GtmConnectPage() {
 
   async function publishContainer() {
     if (!installation) return;
-    const confirmed = window.confirm('Publish the GA4Fix monitor workspace to this GTM container? This changes the live container and will make the monitor tag active on the selected site.');
+    const confirmed = window.confirm('Publish the GAfix monitor workspace to this GTM container? This changes the live container and will make the monitor tag active on the selected site.');
     if (!confirmed) return;
     setLoading(true); setError(null); setNotice(null);
     try {
@@ -100,7 +100,7 @@ export default function GtmConnectPage() {
       <div>
         <div className="text-xs font-semibold uppercase tracking-wider text-brand-600">Setup</div>
         <h2 className="text-2xl font-semibold text-ink-950 mt-1">Connect Google Tag Manager</h2>
-        <p className="text-sm text-ink-500 mt-2 max-w-3xl">Authorize GA4Fix to add one monitor tag and one page-view trigger to a reviewable GTM workspace. Publishing is a separate, explicit action.</p>
+        <p className="text-sm text-ink-500 mt-2 max-w-3xl">Authorize GAfix to add one monitor tag and one page-view trigger to a reviewable GTM workspace. Publishing is a separate, explicit action.</p>
       </div>
 
       {error && <div className="rounded-lg border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">{error}</div>}
@@ -108,7 +108,7 @@ export default function GtmConnectPage() {
 
       <section className="card p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
-          <div><h3 className="font-semibold text-ink-950">1. Authorize Google Tag Manager</h3><p className="text-sm text-ink-500 mt-1">GA4Fix requests container read, edit, version, and publish permissions. Refresh tokens are encrypted on the server and never sent to the browser.</p></div>
+          <div><h3 className="font-semibold text-ink-950">1. Authorize Google Tag Manager</h3><p className="text-sm text-ink-500 mt-1">GAfix requests container read, edit, version, and publish permissions. Refresh tokens are encrypted on the server and never sent to the browser.</p></div>
           <a href="/api/gtm/connect" className="shrink-0 rounded-lg bg-ink-950 px-4 py-2 text-sm font-medium text-white hover:bg-ink-800">{connected ? 'Reconnect Google' : 'Connect Google account'}</a>
         </div>
         {connected && <div className="text-sm text-green-700">Connected as <strong>{googleEmail || 'Google account'}</strong>.</div>}
@@ -125,7 +125,7 @@ export default function GtmConnectPage() {
       </section>
 
       <section className="card p-5 space-y-4">
-        <div><h3 className="font-semibold text-ink-950">3. Review the monitor tag</h3><p className="text-sm text-ink-500 mt-1">GA4Fix creates a compact Custom HTML tag with an All Pages trigger. The tag observes real-user network, dataLayer, consent, performance, console, and ad-block evidence.</p></div>
+        <div><h3 className="font-semibold text-ink-950">3. Review the monitor tag</h3><p className="text-sm text-ink-500 mt-1">GAfix creates a compact Custom HTML tag with an All Pages trigger. The tag observes real-user network, dataLayer, consent, performance, console, and ad-block evidence.</p></div>
         <pre className="overflow-x-auto rounded-lg bg-ink-950 p-4 text-xs text-green-200">{preview}</pre>
         <button onClick={installTag} disabled={!site || !connected || !accountId || !containerId || loading} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-ink-300">{loading && !installation ? 'Creating workspace…' : 'Add monitor tag to GTM'}</button>
         <p className="text-xs text-ink-400">This action creates a new workspace and does not change the live container.</p>
@@ -133,7 +133,7 @@ export default function GtmConnectPage() {
 
       {installation && <section className="card border-brand-200 p-5 space-y-4">
         <div><h3 className="font-semibold text-ink-950">4. Publish when ready</h3><p className="text-sm text-ink-500 mt-1">Review the workspace in GTM before publishing. The publish action creates a version and submits it to the live container.</p></div>
-        <div className="grid gap-3 sm:grid-cols-3 text-sm"><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Workspace</div><div className="font-medium text-ink-800 mt-1">{installation.workspace?.name || installation.workspace?.workspaceId}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Tag</div><div className="font-medium text-ink-800 mt-1">{installation.tag?.name || 'GA4Fix monitor'}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Status</div><div className="font-medium text-ink-800 mt-1">{installation.status === 'published' ? 'Published' : 'Ready to publish'}</div></div></div>
+        <div className="grid gap-3 sm:grid-cols-3 text-sm"><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Workspace</div><div className="font-medium text-ink-800 mt-1">{installation.workspace?.name || installation.workspace?.workspaceId}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Tag</div><div className="font-medium text-ink-800 mt-1">{installation.tag?.name || 'GAfix monitor'}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Status</div><div className="font-medium text-ink-800 mt-1">{installation.status === 'published' ? 'Published' : 'Ready to publish'}</div></div></div>
         {installation.workspace?.url && <a href={installation.workspace.url} target="_blank" rel="noreferrer" className="inline-block text-sm text-brand-600 hover:text-brand-800">Open this workspace in Google Tag Manager</a>}
         {installation.status !== 'published' && <button onClick={publishContainer} disabled={loading} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-ink-300">{loading ? 'Publishing…' : 'Publish container'}</button>}
         <p className="text-xs text-ink-400">Publishing is irreversible from this screen. Use GTM’s version history to roll back if needed.</p>

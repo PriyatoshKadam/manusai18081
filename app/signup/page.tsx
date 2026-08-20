@@ -39,8 +39,8 @@ export default function SignupPage() {
     <main className="min-h-screen bg-ink-50 flex flex-col">
       <nav className="p-6">
         <Link href="/" className="flex items-center gap-2 w-fit">
-          <div className="w-8 h-8 rounded-lg bg-ink-950 flex items-center justify-center text-white font-bold text-sm">G4</div>
-          <span className="font-semibold text-ink-950">GA4Fix</span>
+          <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 shadow-sm"><img src="/gafix-logo.png" alt="GAfix" className="h-full w-full object-contain" /></span>
+          <span className="font-semibold text-ink-950">GAfix</span>
         </Link>
       </nav>
       <div className="flex-1 flex items-center justify-center p-6">

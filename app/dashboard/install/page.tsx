@@ -137,7 +137,7 @@ function getMonitorOrigin(
     );
 
   /*
-   * 4. Current GA4Fix application origin
+   * 4. Current GAfix application origin
    *
    * Used as the final fallback.
    */
@@ -350,7 +350,7 @@ export default function InstallPage() {
           </h3>
 
           <p className="text-sm text-red-700 leading-relaxed">
-            GA4Fix could not determine where
+            GAfix could not determine where
             monitor.js should be loaded from.
             Configure NEXT_PUBLIC_MONITOR_ORIGIN
             in your deployment environment.
@@ -480,7 +480,7 @@ export default function InstallPage() {
           Recommended: Connect GTM
         </div>
         <p className="text-sm text-amber-900 leading-relaxed">
-          Use <b>Connect GTM</b> to authorize GA4Fix, create the monitor tag in a reviewable workspace, and publish it safely. If you cannot authorize GTM, use the manual Custom HTML option below. Both options install the same single monitor script; never use both.
+          Use <b>Connect GTM</b> to authorize GAfix, create the monitor tag in a reviewable workspace, and publish it safely. If you cannot authorize GTM, use the manual Custom HTML option below. Both options install the same single monitor script; never use both.
         </p>
         <a href={`/dashboard/gtm-connect?siteId=${encodeURIComponent(String(site.id))}`} className="mt-3 inline-block rounded-lg bg-ink-950 px-4 py-2 text-sm font-semibold text-white hover:bg-ink-800">Connect GTM (recommended)</a>
       </div>
@@ -590,7 +590,7 @@ export default function InstallPage() {
             <>
               Name the tag{' '}
               <span className="mono">
-                GA4Fix Monitor
+                GAfix Monitor
               </span>
               , click <b>Save</b>, then use GTM Preview to verify it once before{' '}
               <b>Submit</b> → <b>Publish</b>.
@@ -707,7 +707,7 @@ export default function InstallPage() {
           </div>
         ) : (
           <div className="mt-4 text-sm text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-            Not configured — using the GA4Fix
+            Not configured — using the GAfix
             monitoring deployment.
           </div>
         )}

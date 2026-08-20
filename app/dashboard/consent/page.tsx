@@ -15,7 +15,7 @@ export default function ConsentPage() {
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-ink-950">Consent Mode v2</h2>
         <p className="text-sm text-ink-500 mt-0.5">
-          GA4Fix reads your CMP&apos;s state on every tag fire and validates that consent-gated tags respect it.
+          GAfix reads your CMP&apos;s state on every tag fire and validates that consent-gated tags respect it.
         </p>
       </div>
 

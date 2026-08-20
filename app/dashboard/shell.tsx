@@ -71,8 +71,8 @@ export default function DashboardShell({
         <aside className="w-64 min-h-screen bg-[#0b111b] border-r border-white/[.07] text-white flex flex-col fixed left-0 top-0 shadow-2xl shadow-black/20">
           <div className="p-4 border-b border-white/10">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-[#b8f56b] flex items-center justify-center text-[#07111f] font-black text-sm">G</div>
-              <span><span className="block font-semibold tracking-tight text-white">GA4Fix<span className="text-[#b8f56b]">.</span></span><span className="mt-0.5 block text-[9px] uppercase tracking-[.18em] text-slate-500">Real-user intelligence</span></span>
+              <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-sm shadow-black/20"><img src="/gafix-logo.png" alt="GAfix" className="h-full w-full object-contain" /></span>
+              <span><span className="block font-semibold tracking-tight text-white">GAfix<span className="text-[#b8f56b]">.</span></span><span className="mt-0.5 block text-[9px] uppercase tracking-[.18em] text-slate-500">Real-user intelligence</span></span>
             </Link>
           </div>
           <div className="p-4">
@@ -135,7 +135,7 @@ export default function DashboardShell({
         <main className="dashboard-main-grid flex-1 min-h-screen min-w-0 ml-64">
           <div className="h-[72px] border-b border-white/[.07] bg-[#0b111b]/90 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#8fa8ff]">GA4Fix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#8fa8ff]">GAfix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
               {currentSite && (
                 <><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> <strong>Live</strong> · 24h evidence window</span><span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">
                   <span className="dot bg-green-500"></span>Live

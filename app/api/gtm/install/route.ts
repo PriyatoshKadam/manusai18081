@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const workspace = await gtmRequest<{ workspaceId?: string; path?: string; name?: string; tagManagerUrl?: string }>(
       `accounts/${encodeURIComponent(accountId)}/containers/${encodeURIComponent(containerId)}/workspaces`,
       token,
-      { method: 'POST', body: JSON.stringify({ name: `GA4Fix – ${site.domain} – ${new Date().toISOString().slice(0, 10)}`, description: 'Workspace created by GA4Fix. Review the monitor tag before publishing.' }) },
+      { method: 'POST', body: JSON.stringify({ name: `GAfix – ${site.domain} – ${new Date().toISOString().slice(0, 10)}`, description: 'Workspace created by GAfix. Review the monitor tag before publishing.' }) },
     );
     const workspaceId = String(workspace.workspaceId || '').trim();
     if (!workspaceId) throw new Error('GTM did not return a workspace ID');
@@ -60,6 +60,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, installationId: inserted.rows[0].id, status: 'tag_added', workspace: { accountId, containerId, workspaceId, name: workspace.name || null, url: workspace.tagManagerUrl || null }, tag: { tagId, name: tag.name || null }, trigger: { triggerId, name: trigger.name || null }, publishRequired: true }, { status: 201 });
   } catch (error) {
     console.error('GTM install error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to add the GA4Fix monitor to GTM' }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to add the GAfix monitor to GTM' }, { status: 502 });
   }
 }

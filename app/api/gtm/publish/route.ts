@@ -7,7 +7,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function versionName(domain: string) {
-  return `GA4Fix monitor – ${domain} – ${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC`;
+  return `GAfix monitor – ${domain} – ${new Date().toISOString().replace('T', ' ').slice(0, 16)} UTC`;
 }
 
 export async function POST(req: NextRequest) {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
       versionResponse = await gtmRequest<typeof versionResponse>(
         `${workspacePath}:create_version`,
         token,
-        { method: 'POST', body: JSON.stringify({ name: versionName(installation.domain), notes: 'Created and published by GA4Fix after the user confirmed the monitor installation.' }) },
+        { method: 'POST', body: JSON.stringify({ name: versionName(installation.domain), notes: 'Created and published by GAfix after the user confirmed the monitor installation.' }) },
       );
     }
     const containerVersion = versionResponse.containerVersion;
@@ -56,6 +56,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, status: 'published', installationId, version: published.containerVersion || containerVersion, workspaceClosed: true });
   } catch (error) {
     console.error('GTM publish error:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to publish the GA4Fix monitor container version' }, { status: 502 });
+    return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to publish the GAfix monitor container version' }, { status: 502 });
   }
 }

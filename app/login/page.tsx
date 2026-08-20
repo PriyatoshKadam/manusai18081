@@ -41,7 +41,7 @@ function LoginForm() {
     <div className="w-full max-w-md">
       <div className="bg-white rounded-2xl border border-ink-200 p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-ink-950 mb-2">Welcome back</h1>
-        <p className="text-sm text-ink-500 mb-6">Log in to your GA4Fix dashboard.</p>
+        <p className="text-sm text-ink-500 mb-6">Log in to your GAfix dashboard.</p>
 
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-sm text-red-800">
@@ -95,8 +95,8 @@ export default function LoginPage() {
     <main className="min-h-screen bg-ink-50 flex flex-col">
       <nav className="p-6">
         <Link href="/" className="flex items-center gap-2 w-fit">
-          <div className="w-8 h-8 rounded-lg bg-ink-950 flex items-center justify-center text-white font-bold text-sm">G4</div>
-          <span className="font-semibold text-ink-950">GA4Fix</span>
+          <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 shadow-sm"><img src="/gafix-logo.png" alt="GAfix" className="h-full w-full object-contain" /></span>
+          <span className="font-semibold text-ink-950">GAfix</span>
         </Link>
       </nav>
       <div className="flex-1 flex items-center justify-center p-6">

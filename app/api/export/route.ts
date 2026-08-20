@@ -16,6 +16,6 @@ export async function GET(req: NextRequest) {
   if (!Number.isSafeInteger(siteId) || siteId <= 0 || !queries[kind]) return NextResponse.json({ error: 'Valid siteId and export kind required' }, { status: 400 });
   const owner = await query('SELECT id FROM sites WHERE id=$1 AND user_id=$2', [siteId, session.uid]); if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const result = await query(queries[kind], [siteId]);
-  if (format === 'csv') return new NextResponse(csv(result.rows), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="ga4fix-${kind}-${siteId}.csv"`, 'Cache-Control': 'no-store' } });
+  if (format === 'csv') return new NextResponse(csv(result.rows), { headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="gafix-${kind}-${siteId}.csv"`, 'Cache-Control': 'no-store' } });
   return NextResponse.json({ kind, rows: result.rows });
 }
