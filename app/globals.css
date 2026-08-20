@@ -168,3 +168,28 @@ html, body {
 .dashboard-light .hover\:bg-white\/\[\.03\]:hover { background: rgba(73,102,165,.05) !important; }
 .dashboard-light .mono { color: #344660; }
 .dashboard-light .dashboard-eyebrow { color: #6076d8; }
+
+
+/* Hybrid mode: dark product chrome with light analytical surfaces */
+.dashboard-light { background: #080c14; color: #162238; }
+.dashboard-light .dashboard-main-grid { background: radial-gradient(circle at 85% 0%, rgba(103,133,255,.11), transparent 32rem), #080c14; }
+.dashboard-light .dashboard-gridline { background-image: linear-gradient(rgba(122,145,188,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(122,145,188,.06) 1px, transparent 1px); }
+.dashboard-light aside { background: #0b111b !important; border-color: rgba(255,255,255,.07) !important; color: #fff; box-shadow: 12px 0 32px rgba(0,0,0,.16); }
+.dashboard-light aside .text-white { color: #fff !important; }
+.dashboard-light aside .text-slate-300 { color: #cbd5e1 !important; }
+.dashboard-light aside .text-slate-500, .dashboard-light aside .text-slate-600 { color: #64748b !important; }
+.dashboard-light aside .bg-\[\#121b29\] { background: #121b29 !important; color: #fff !important; border-color: rgba(255,255,255,.09) !important; }
+.dashboard-light aside .border-white\/10, .dashboard-light aside .border-white\/\[\.07\] { border-color: rgba(255,255,255,.07) !important; }
+.dashboard-light aside .hover\:bg-white\/10:hover { background: rgba(255,255,255,.1) !important; }
+.dashboard-light main > div:first-child { background: rgba(11,17,27,.9); border-color: rgba(255,255,255,.07); }
+.dashboard-light main > div:first-child .text-white { color: #fff !important; }
+.dashboard-light .dashboard-top-control { color: #b7c2d2; border-color: rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+.dashboard-light .dashboard-top-control strong { color: #f4f7fb; }
+.dashboard-light .dashboard-top-control .text-slate-500 { color: #94a3b8 !important; }
+.dashboard-light .dashboard-theme-toggle { color: #b7c2d2; border-color: rgba(255,255,255,.1); background: rgba(255,255,255,.04); }
+.dashboard-light .dashboard-theme-toggle:hover { color: #fff; background: rgba(168,240,106,.08); }
+.dashboard-light .dashboard-section-head h2 { color: #162238; }
+.dashboard-light .dashboard-section-head p { color: #718096; }
+.dashboard-light .dashboard-eyebrow { color: #8fa8ff; }
+.dashboard-light .bg-\[\#111a28\] { background: linear-gradient(135deg, #111a28, #0d1521) !important; }
+.dashboard-light .bg-\[\#111a28\] .text-white, .dashboard-light .bg-\[\#111a28\] .text-slate-100 { color: #fff !important; }
