@@ -5,6 +5,7 @@ const monitor = fs.readFileSync('public/monitor.js', 'utf8');
 const auditPage = fs.readFileSync('app/dashboard/audit/page.tsx', 'utf8');
 const duplicateRoute = fs.readFileSync('app/api/duplicates/route.ts', 'utf8');
 const schema = fs.readFileSync('db/schema.sql', 'utf8');
+const nextConfig = fs.readFileSync('next.config.js', 'utf8');
 
  describe('HAR regression protections', () => {
   it('flushes queued telemetry during page exit and uses correlation-gap signals', () => {
@@ -14,6 +15,9 @@ const schema = fs.readFileSync('db/schema.sql', 'utf8');
     expect(monitor).toContain('text/plain;charset=UTF-8');
     expect(monitor).toContain('consentFromParams');
     expect(monitor).toContain('recentNetworkEvents');
+    expect(monitor).toContain("mode: 'no-cors'");
+    expect(monitor).toContain("text/plain;charset=UTF-8");
+    expect(nextConfig).toContain('no-store, max-age=0, must-revalidate');
   });
 
   it('emits the runtime audit action as a monitorable dataLayer event', () => {

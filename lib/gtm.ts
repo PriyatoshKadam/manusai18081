@@ -109,7 +109,7 @@ export function monitorTagHtml(site: { id: number | string; api_key: string }, g
   const origin = (process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
   if (!origin) throw new Error('NEXT_PUBLIC_MONITOR_ORIGIN or NEXT_PUBLIC_APP_URL must be configured');
   const url = new URL('/monitor.js', origin);
-  url.searchParams.set('v', '12.1');
+  url.searchParams.set('v', '12.2');
   url.searchParams.set('apiKey', String(site.api_key));
   if (gtmContainerId) url.searchParams.set('gtmContainerId', String(gtmContainerId));
   return `<script src="${url.toString()}" async></script>`;

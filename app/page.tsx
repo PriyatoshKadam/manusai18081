@@ -1,210 +1,82 @@
 import Link from 'next/link';
 
+const stream = [
+  ['09:42:18', 'GA4', 'purchase', '200', '312 ms', 'ok'],
+  ['09:42:17', 'Meta', 'Purchase', '204', '428 ms', 'ok'],
+  ['09:42:15', 'GA4', 'login', '204', '188 ms', 'ok'],
+  ['09:42:11', 'Google Ads', 'AW-4821 / lead', '—', '—', 'warn'],
+  ['09:42:08', 'GA4', 'purchase', '500', '1.2 s', 'fail'],
+];
+
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-white">
-      {/* Nav */}
-      <nav className="border-b border-ink-200 bg-white/80 backdrop-blur sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-ink-950 flex items-center justify-center text-white font-bold text-sm">G4</div>
-            <span className="font-semibold text-ink-950">GA4Fix</span>
+    <main className="min-h-screen overflow-hidden bg-[#f7f9fc] text-[#07111f]">
+      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#07111f]/95 text-white backdrop-blur-xl">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-6 lg:px-8">
+          <Link href="/" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#b8f56b] text-sm font-black text-[#07111f]">G</span>
+            <span className="text-lg font-semibold tracking-tight">GA4Fix<span className="text-[#b8f56b]">.</span></span>
           </Link>
-          <div className="hidden md:flex items-center gap-8 text-sm text-ink-600">
-            <a href="#features" className="hover:text-ink-950">Features</a>
-            <a href="#how" className="hover:text-ink-950">How it works</a>
-            <a href="#usecases" className="hover:text-ink-950">Use cases</a>
-            <a href="#pricing" className="hover:text-ink-950">Pricing</a>
+          <div className="hidden items-center gap-8 text-sm text-slate-300 md:flex">
+            <a href="#product" className="transition hover:text-white">Product</a>
+            <a href="#evidence" className="transition hover:text-white">Evidence</a>
+            <a href="#workflow" className="transition hover:text-white">Workflow</a>
+            <a href="#security" className="transition hover:text-white">Security</a>
           </div>
-          <div className="flex items-center gap-3">
-            <Link href="/login" className="text-sm text-ink-600 hover:text-ink-950">Log in</Link>
-            <Link href="/signup" className="text-sm bg-ink-950 text-white px-4 py-2 rounded-lg hover:bg-ink-800">Start free</Link>
+          <div className="flex items-center gap-4">
+            <Link href="/login" className="hidden text-sm text-slate-300 transition hover:text-white sm:block">Sign in</Link>
+            <Link href="/signup" className="rounded-full bg-[#b8f56b] px-5 py-2.5 text-sm font-bold text-[#07111f] transition hover:bg-[#ccff8d] active:scale-[.98]">Start monitoring</Link>
           </div>
         </div>
       </nav>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 grid-bg opacity-60"></div>
-        <div className="relative max-w-6xl mx-auto px-6 pt-20 pb-24 text-center">
-          <div className="inline-flex items-center gap-2 pill bg-brand-500/10 text-brand-700 mb-6">
-            <span className="dot bg-brand-600"></span>
-            Now with root-cause analysis for duplicate events
-          </div>
-          <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-ink-950 leading-[1.05] mb-6">
-            Catch broken tags<br/>before your CEO does.
-          </h1>
-          <p className="text-lg md:text-xl text-ink-500 max-w-2xl mx-auto mb-10 leading-relaxed">
-            Real-user monitoring for GA4, Google Ads, Meta, TikTok and 15+ other pixels. Paste one line of code and know within seconds when a tag misfires, an event duplicates, or an ad blocker eats your revenue.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-3 justify-center mb-6">
-            <Link href="/signup" className="bg-ink-950 text-white px-6 py-3 rounded-lg hover:bg-ink-800 font-medium">Start monitoring free</Link>
-            <a href="#how" className="border border-ink-200 px-6 py-3 rounded-lg hover:bg-ink-50 font-medium text-ink-800">See how it works →</a>
-          </div>
-          <p className="text-xs text-ink-400">Free forever for 1 site · No credit card · Setup in 60 seconds</p>
-        </div>
-
-        {/* Product preview */}
-        <div className="relative max-w-5xl mx-auto px-6 pb-24">
-          <div className="rounded-2xl border border-ink-200 bg-white shadow-[0_20px_60px_-20px_rgba(10,11,13,0.15)] overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-ink-100 bg-ink-50">
-              <div className="w-3 h-3 rounded-full bg-red-400"></div>
-              <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
-              <div className="w-3 h-3 rounded-full bg-green-400"></div>
-              <div className="ml-3 text-xs text-ink-400 mono">app.ga4fix.com/dashboard</div>
+      <section className="relative bg-[#07111f] text-white">
+        <div className="absolute inset-0 opacity-40 [background-image:radial-gradient(circle_at_15%_20%,rgba(184,245,107,.18),transparent_28%),radial-gradient(circle_at_85%_10%,rgba(98,132,255,.2),transparent_34%)]" />
+        <div className="relative mx-auto grid max-w-7xl gap-14 px-6 pb-20 pt-20 lg:grid-cols-[1.05fr_.95fr] lg:items-center lg:px-8 lg:pb-28 lg:pt-28">
+          <div>
+            <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#b8f56b]/25 bg-[#b8f56b]/10 px-3 py-1.5 text-xs font-semibold text-[#d8ffad]">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-[#b8f56b]" /> Real-user tag observability
             </div>
-            <div className="p-6 bg-white">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <StatCard label="Events / min" value="1,247" delta="+12% vs avg" deltaClass="text-green-600" />
-                <StatCard label="Missing param" value="3" delta="purchase.currency" deltaClass="text-red-600" valueClass="text-red-600" />
-                <StatCard label="Duplicate events" value="12" delta="page_view" deltaClass="text-amber-600" valueClass="text-amber-600" />
-                <StatCard label="Ad-blocker rate" value="18%" delta="of sessions" deltaClass="text-ink-500" />
-              </div>
-              <div className="space-y-2">
-                <AlertRow severity="Critical" color="red" msg={<><b>Purchase</b> event fired without <span className="mono text-xs bg-white px-1 rounded">currency</span> parameter</>} time="2m ago" />
-                <AlertRow severity="Warning" color="amber" msg={<><b>page_view</b> fired 3× per pageload — dataLayer pushed twice</>} time="5m ago" />
-              </div>
+            <h1 className="max-w-3xl text-5xl font-semibold leading-[.98] tracking-[-.055em] sm:text-6xl lg:text-[76px]">Know when tracking breaks<span className="text-[#b8f56b]">.</span></h1>
+            <p className="mt-7 max-w-xl text-lg leading-8 text-slate-300">GA4Fix watches every meaningful tag fire from real browsers, explains what happened, and routes the incidents that matter before reporting teams discover missing data.</p>
+            <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+              <Link href="/signup" className="rounded-full bg-[#b8f56b] px-6 py-3.5 text-center text-sm font-bold text-[#07111f] transition hover:bg-[#d2ff9b] active:scale-[.98]">Start with one site <span className="ml-1">→</span></Link>
+              <a href="#workflow" className="rounded-full border border-white/20 px-6 py-3.5 text-center text-sm font-semibold text-white transition hover:border-white/40 hover:bg-white/5">See the workflow</a>
+            </div>
+            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-400"><span>✓ No credit card</span><span>✓ GTM Connect or manual GTM fallback</span><span>✓ First evidence in seconds</span></div>
+          </div>
+
+          <div className="relative lg:pl-8">
+            <div className="absolute -inset-8 rounded-[40px] bg-[#b8f56b]/10 blur-3xl" />
+            <div className="relative overflow-hidden rounded-[26px] border border-white/15 bg-[#0d1c2f] shadow-2xl shadow-black/40">
+              <div className="flex items-center justify-between border-b border-white/10 px-5 py-4"><div><p className="text-xs font-semibold text-slate-400">LIVE EVIDENCE</p><p className="mt-1 text-sm font-medium">storefront.acme.com</p></div><span className="rounded-full bg-[#b8f56b]/15 px-2.5 py-1 text-[11px] font-semibold text-[#cfff9d]">● collecting</span></div>
+              <div className="grid grid-cols-3 gap-3 p-5"><Metric label="Health" value="94" suffix="/100" tone="lime" /><Metric label="Fires / min" value="1,247" tone="blue" /><Metric label="At risk" value="₹18.4k" tone="red" /></div>
+              <div className="px-5 pb-5"><div className="mb-3 flex items-center justify-between"><p className="text-xs font-semibold uppercase tracking-[.16em] text-slate-500">Last observations</p><span className="text-[11px] text-slate-500">updates live</span></div><div className="space-y-2">{stream.map(([time, vendor, event, status, latency, state]) => <StreamRow key={`${time}-${vendor}-${event}`} time={time} vendor={vendor} event={event} status={status} latency={latency} state={state} />)}</div></div>
+              <div className="border-t border-white/10 bg-[#091626] px-5 py-4"><div className="flex items-start gap-3"><span className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-400/15 text-red-300">!</span><div><p className="text-sm font-semibold">Purchase delivery degraded</p><p className="mt-1 text-xs leading-5 text-slate-400">HTTP 500 · missing transaction_id · critical Slack route</p></div><span className="ml-auto text-[11px] text-slate-500">2s ago</span></div></div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Benefits */}
-      <section id="features" className="max-w-6xl mx-auto px-6 py-20">
-        <div className="text-center mb-14">
-          <div className="text-sm font-medium text-brand-600 mb-2">Why GA4Fix</div>
-          <h2 className="text-3xl md:text-4xl font-bold text-ink-950">Stop losing revenue to silent tag failures</h2>
-          <p className="text-ink-500 mt-3 max-w-2xl mx-auto">Google won&apos;t tell you when a tag breaks. Your analyst finds out three weeks later during month-end. GA4Fix tells you in under 2 seconds.</p>
-        </div>
+      <section id="product" className="mx-auto max-w-7xl px-6 py-20 lg:px-8 lg:py-28"><div className="grid gap-12 lg:grid-cols-[.75fr_1.25fr] lg:items-end"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-[#5d7f30]">The signal layer for your growth stack</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">A monitoring product your analyst can act on.</h2></div><p className="max-w-xl text-lg leading-8 text-slate-600">A beautiful dashboard is not enough. Every finding needs evidence, a probable cause, an owner-friendly next step, and a clear answer to the question: did this affect real users?</p></div><div className="mt-14 grid gap-5 md:grid-cols-2 lg:grid-cols-4"><Feature n="01" title="Every fire" text="Status, latency, request signature, consent state, revenue, and browser context attached to each observation." /><Feature n="02" title="Root cause" text="Separate a duplicate dataLayer push, GTM tag fan-out, direct-code collision, transport failure, and consent behavior." /><Feature n="03" title="Right urgency" text="Critical purchase and duplicate incidents in real time. Lower-severity evidence grouped into an operational digest." /><Feature n="04" title="No guesswork" text="Health, anomaly, synthetic, compliance, and integration views share one evidence model instead of competing dashboards." /></div></section>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          <Feature title="Real-user detection" desc="Catches issues in actual visitor sessions — not synthetic checks that miss consent-gated tags." bg="bg-red-50" fg="text-red-600" iconD="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-          <Feature title="Root-cause hints" desc={`Doesn\u2019t just say "duplicate event" — tells you the dataLayer was pushed twice, or the tag has no trigger filter.`} bg="bg-amber-50" fg="text-amber-600" iconD="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-          <Feature title="Ad-blocker aware" desc="Fallback beacon on your own first-party domain still reports even when the ad blocker eats the main script." bg="bg-green-50" fg="text-green-600" iconD="M9 12l2 2 4-4" />
-          <Feature title="5-line install" desc="One custom HTML tag in GTM. No Node, no CDN config, no dependencies. Paste and done." bg="bg-blue-50" fg="text-blue-600" iconD="M12 2v4M12 18v4M4.93 4.93l2.83 2.83" />
-          <Feature title="Per-destination view" desc="Separate tabs for GA4, Google Ads, Meta, TikTok — each with vendor-specific validations." bg="bg-purple-50" fg="text-purple-600" iconD="M3 3v18h18" />
-          <Feature title="Plain-English alerts" desc="&quot;Your purchase event is missing currency. This will break Google Ads ROAS reporting.&quot; Not &quot;MISSING_PARAM_ERR_403&quot;." bg="bg-pink-50" fg="text-pink-600" iconD="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-        </div>
-      </section>
+      <section id="evidence" className="border-y border-slate-200 bg-white"><div className="mx-auto grid max-w-7xl gap-12 px-6 py-20 lg:grid-cols-[.9fr_1.1fr] lg:px-8 lg:py-28"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-[#5d7f30]">Evidence, not assumptions</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em]">The timeline behind every alert.</h2><p className="mt-5 max-w-lg text-base leading-7 text-slate-600">When a conversion looks wrong, GA4Fix shows the browser event, the network call, the response, the consent signal, the session correlation, and the fix path in one place.</p><div className="mt-8 space-y-4"><Bullet title="Vendor-aware" text="GA4, Ads, Meta, TikTok, and the broader vendor layer are labeled consistently." /><Bullet title="Consent-aware" text="GCS/GCD network evidence is interpreted separately from defaults and cookieless measurement." /><Bullet title="Session-safe" text="Repeated actions are correlated within a browser session without confusing separate visitors." /></div></div><div className="rounded-[26px] bg-[#07111f] p-5 text-white shadow-xl sm:p-7"><div className="flex items-center justify-between border-b border-white/10 pb-5"><div><p className="text-xs uppercase tracking-[.16em] text-slate-500">Incident evidence</p><p className="mt-2 text-lg font-semibold">login · GTM fan-out</p></div><span className="rounded-full bg-red-400/15 px-3 py-1 text-xs font-semibold text-red-200">critical</span></div><div className="space-y-0 py-5"><EvidenceRow label="dataLayer occurrence" value="event-1787210911" /><EvidenceRow label="network observations" value="2 calls" /><EvidenceRow label="request status" value="204 / 204" /><EvidenceRow label="consent signal" value="gcs G111 · granted" /><EvidenceRow label="probable cause" value="2 tags / 1 trigger" /></div><div className="rounded-xl border border-[#b8f56b]/20 bg-[#b8f56b]/10 p-4"><p className="text-xs font-semibold uppercase tracking-[.15em] text-[#cfff9d]">Recommended fix</p><p className="mt-2 text-sm leading-6 text-slate-200">Open GTM Preview, inspect the login trigger, and keep only one GA4 Event tag on that firing path.</p></div></div></div></section>
 
-      {/* How it works */}
-      <section id="how" className="bg-ink-50 border-y border-ink-100">
-        <div className="max-w-6xl mx-auto px-6 py-20">
-          <div className="text-center mb-14">
-            <div className="text-sm font-medium text-brand-600 mb-2">How it works</div>
-            <h2 className="text-3xl md:text-4xl font-bold text-ink-950">From install to first alert in 60 seconds</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            <Step n={1} title="Add your site" desc="Sign up, add your domain, and paste your GTM container ID and GA4 measurement ID so we can validate against them.">
-              <div className="rounded-lg bg-ink-50 p-3 mono text-xs text-ink-600">shop.acme.com<br/>GTM-KWDMK2K9<br/>G-XXXXXXXXXX</div>
-            </Step>
-            <Step n={2} title="Paste one snippet" desc="Copy 5 lines of code into a Custom HTML tag in GTM. Fires on All Pages. Done.">
-              <div className="rounded-lg bg-ink-950 p-3 mono text-[10px] text-green-300 leading-relaxed overflow-hidden">&lt;script&gt;(function(k,c){'{'}...{'}'})...&lt;/script&gt;</div>
-            </Step>
-            <Step n={3} title="Watch it live" desc="Events start streaming into your dashboard within seconds. Slack + email alerts fire when anything looks off.">
-              <div className="flex items-center gap-2 text-sm">
-                <span className="dot bg-green-500"></span>
-                <span className="text-ink-800">Live · 47 events streaming</span>
-              </div>
-            </Step>
-          </div>
-        </div>
-      </section>
+      <section id="workflow" className="mx-auto max-w-7xl px-6 py-20 lg:px-8 lg:py-28"><div className="max-w-2xl"><p className="text-sm font-bold uppercase tracking-[.18em] text-[#5d7f30]">A calm setup experience</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">From first install to confident alerting.</h2></div><div className="mt-12 grid gap-5 md:grid-cols-3"><Step n="01" title="Create a site" text="Add your domain and measurement IDs. GA4Fix creates a private evidence boundary for that site." /><Step n="02" title="Connect GTM" text="Use the recommended OAuth flow to create one monitor tag, review the workspace, and publish deliberately." /><Step n="03" title="Operate by evidence" text="Watch the live pulse, tune alert policy, verify Slack, and use the 24-hour report for the quieter signals." /></div><div className="mt-6 rounded-2xl border border-[#d8e7bc] bg-[#f4fbe9] p-5 text-sm text-[#456020]"><strong>One installation rule:</strong> use Connect GTM, or the matching Manual GTM fallback. Never publish both monitor tags.</div></section>
 
-      {/* Use cases */}
-      <section id="usecases" className="max-w-6xl mx-auto px-6 py-20">
-        <div className="text-center mb-14">
-          <div className="text-sm font-medium text-brand-600 mb-2">Who uses it</div>
-          <h2 className="text-3xl md:text-4xl font-bold text-ink-950">Built for the people who own the tags</h2>
-        </div>
-        <div className="grid md:grid-cols-2 gap-6">
-          <UseCase title="For analytics teams" desc="Know within 2 seconds when a developer's release breaks tracking. Correlate every alert with the GTM version that shipped." bullets={['GTM change → alert timeline', 'Consent Mode v2 verification', 'Missing-param validation per event']} />
-          <UseCase title="For paid media teams" desc="Stop discovering broken conversions during Monday morning ROAS reviews. Get pinged the moment Google Ads or Meta stops firing." bullets={['Revenue-at-risk calculation per alert', 'Enhanced conversions parameter checks', 'Ad blocker impact by destination']} />
-        </div>
-      </section>
+      <section id="security" className="bg-[#eaf3ff]"><div className="mx-auto grid max-w-7xl gap-10 px-6 py-20 lg:grid-cols-[1fr_1fr] lg:px-8"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-[#426aa8]">Built for accountable teams</p><h2 className="mt-4 text-4xl font-semibold tracking-[-.04em]">Fast enough for incidents. Clear enough for audits.</h2></div><div className="grid gap-4 sm:grid-cols-2"><Mini title="Consent Mode v2" text="GCS/GCD evidence, GPC and DNT context, and no false denied-consent claims from a stale default." /><Mini title="Supply-chain signals" text="CSP violations, missing SRI on sensitive paths, unknown resource domains, and allowlist evidence." /><Mini title="Delivery health" text="Slack, email, signed webhooks, retries, and daily digest states visible from Integrations." /><Mini title="Operator exports" text="CSV and JSON evidence exports for events, alerts, revenue, and synthetic runs." /></div></div></section>
 
-      {/* CTA */}
-      <section id="pricing" className="max-w-4xl mx-auto px-6 py-20 text-center">
-        <h2 className="text-3xl md:text-4xl font-bold text-ink-950 mb-4">Ready to see what&apos;s actually firing?</h2>
-        <p className="text-ink-500 mb-8">Free for your first site. No credit card. 60 seconds to install.</p>
-        <Link href="/signup" className="inline-block bg-ink-950 text-white px-8 py-3.5 rounded-lg hover:bg-ink-800 font-medium">Start monitoring free →</Link>
-      </section>
+      <section className="bg-[#07111f] px-6 py-20 text-white lg:py-28"><div className="mx-auto flex max-w-5xl flex-col items-start justify-between gap-8 rounded-[28px] border border-white/10 bg-white/5 p-8 sm:p-12 lg:flex-row lg:items-center"><div><p className="text-sm font-bold uppercase tracking-[.18em] text-[#b8f56b]">The next broken tag is already happening</p><h2 className="mt-4 max-w-2xl text-4xl font-semibold tracking-[-.04em] sm:text-5xl">Stop finding out from the report.</h2><p className="mt-4 max-w-xl text-slate-300">Start with one site, one monitor tag, and an evidence timeline your team can trust.</p></div><Link href="/signup" className="shrink-0 rounded-full bg-[#b8f56b] px-7 py-3.5 text-sm font-bold text-[#07111f] transition hover:bg-[#d2ff9b] active:scale-[.98]">Start monitoring →</Link></div></section>
 
-      {/* Footer */}
-      <footer className="border-t border-ink-200 py-10">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded bg-ink-950 flex items-center justify-center text-white font-bold text-xs">G4</div>
-            <span className="text-sm text-ink-500">© 2026 GA4Fix</span>
-          </div>
-          <div className="flex items-center gap-6 text-sm text-ink-500">
-            <a href="#" className="hover:text-ink-950">Docs</a>
-            <a href="#" className="hover:text-ink-950">Privacy</a>
-            <a href="#" className="hover:text-ink-950">Terms</a>
-            <a href="#" className="hover:text-ink-950">Status</a>
-          </div>
-        </div>
-      </footer>
+      <footer className="bg-[#07111f] px-6 pb-10 text-sm text-slate-500"><div className="mx-auto flex max-w-7xl flex-col justify-between gap-5 border-t border-white/10 pt-7 sm:flex-row sm:items-center lg:px-2"><span>© 2026 GA4Fix · Real-user tag observability</span><div className="flex gap-5"><Link href="/login" className="hover:text-white">Sign in</Link><Link href="/signup" className="hover:text-white">Start free</Link><a href="https://github.com/PriyatoshKadam/manusai18081" className="hover:text-white">Source</a></div></div></footer>
     </main>
   );
 }
 
-function StatCard({ label, value, delta, deltaClass = '', valueClass = '' }: any) {
-  return (
-    <div className="p-4 rounded-lg bg-ink-50">
-      <div className="text-xs text-ink-400 uppercase tracking-wide">{label}</div>
-      <div className={`text-2xl font-semibold mt-1 ${valueClass}`}>{value}</div>
-      <div className={`text-xs mt-1 ${deltaClass}`}>{delta}</div>
-    </div>
-  );
-}
-
-function AlertRow({ severity, color, msg, time }: any) {
-  const bg = color === 'red' ? 'border-red-100 bg-red-50' : 'border-amber-100 bg-amber-50';
-  const chip = color === 'red' ? 'bg-red-200 text-red-900' : 'bg-amber-200 text-amber-900';
-  const dotColor = color === 'red' ? 'bg-red-600' : 'bg-amber-600';
-  return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border ${bg}`}>
-      <span className={`pill ${chip}`}><span className={`dot ${dotColor}`}></span>{severity}</span>
-      <span className="text-sm text-ink-800">{msg}</span>
-      <span className="ml-auto text-xs text-ink-400">{time}</span>
-    </div>
-  );
-}
-
-function Feature({ title, desc, bg, fg, iconD }: any) {
-  return (
-    <div className="p-6 rounded-xl border border-ink-200 hover:border-ink-300 transition">
-      <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center ${fg} mb-4`}>
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d={iconD} /></svg>
-      </div>
-      <h3 className="font-semibold text-ink-950 mb-2">{title}</h3>
-      <p className="text-sm text-ink-500">{desc}</p>
-    </div>
-  );
-}
-
-function Step({ n, title, desc, children }: any) {
-  return (
-    <div className="bg-white rounded-xl border border-ink-200 p-6">
-      <div className="w-8 h-8 rounded-full bg-ink-950 text-white flex items-center justify-center font-semibold text-sm mb-4">{n}</div>
-      <h3 className="font-semibold text-ink-950 mb-2">{title}</h3>
-      <p className="text-sm text-ink-500 mb-4">{desc}</p>
-      {children}
-    </div>
-  );
-}
-
-function UseCase({ title, desc, bullets }: any) {
-  return (
-    <div className="p-8 rounded-xl border border-ink-200">
-      <h3 className="font-semibold text-lg text-ink-950 mb-2">{title}</h3>
-      <p className="text-sm text-ink-500 mb-4">{desc}</p>
-      <ul className="space-y-2 text-sm text-ink-700">
-        {bullets.map((b: string) => (
-          <li key={b} className="flex gap-2"><span className="text-green-600">✓</span> {b}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
+function Metric({ label, value, suffix, tone }: { label: string; value: string; suffix?: string; tone: string }) { const color = tone === 'lime' ? 'text-[#cfff9d]' : tone === 'red' ? 'text-red-300' : 'text-sky-300'; return <div className="rounded-xl border border-white/10 bg-white/5 p-3"><p className="text-[10px] uppercase tracking-[.12em] text-slate-500">{label}</p><p className={`mt-2 text-xl font-semibold ${color}`}>{value}<span className="text-xs text-slate-500">{suffix}</span></p></div>; }
+function StreamRow({ time, vendor, event, status, latency, state }: { time: string; vendor: string; event: string; status: string; latency: string; state: string }) { const tone = state === 'fail' ? 'text-red-300' : state === 'warn' ? 'text-amber-300' : 'text-[#cfff9d]'; return <div className="grid grid-cols-[54px_72px_1fr_40px_48px] items-center gap-2 rounded-lg px-2 py-2 text-xs hover:bg-white/5"><span className="font-mono text-[10px] text-slate-600">{time}</span><span className="text-slate-400">{vendor}</span><span className="truncate text-slate-200">{event}</span><span className={tone}>{state === 'fail' ? 'fail' : status}</span><span className="text-right text-[10px] text-slate-500">{latency}</span></div>; }
+function Feature({ n, title, text }: { n: string; title: string; text: string }) { return <div className="group rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-1 hover:border-[#b7d887] hover:shadow-xl hover:shadow-slate-200/60"><span className="font-mono text-xs text-[#769b3e]">{n}</span><h3 className="mt-10 text-lg font-semibold">{title}</h3><p className="mt-3 text-sm leading-6 text-slate-600">{text}</p></div>; }
+function Bullet({ title, text }: { title: string; text: string }) { return <div className="flex gap-3"><span className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#e6f4ca] text-xs font-bold text-[#5d7f30]">✓</span><div><p className="font-semibold">{title}</p><p className="mt-1 text-sm leading-6 text-slate-600">{text}</p></div></div>; }
+function EvidenceRow({ label, value }: { label: string; value: string }) { return <div className="flex items-center justify-between border-b border-white/5 py-3 text-sm"><span className="text-slate-500">{label}</span><span className="font-mono text-xs text-slate-200">{value}</span></div>; }
+function Step({ n, title, text }: { n: string; title: string; text: string }) { return <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"><span className="font-mono text-xs font-bold text-[#769b3e]">{n}</span><h3 className="mt-10 text-xl font-semibold">{title}</h3><p className="mt-3 text-sm leading-7 text-slate-600">{text}</p></div>; }
+function Mini({ title, text }: { title: string; text: string }) { return <div className="rounded-2xl border border-[#cfe0f4] bg-white/70 p-5"><h3 className="font-semibold text-[#112a4a]">{title}</h3><p className="mt-2 text-sm leading-6 text-slate-600">{text}</p></div>; }

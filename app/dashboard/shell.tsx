@@ -61,13 +61,13 @@ export default function DashboardShell({
   ];
 
   return (
-    <div className="min-h-screen bg-ink-50">
+    <div className="min-h-screen bg-[#f7f9fc]">
       <div className="flex">
-        <aside className="w-60 min-h-screen bg-white border-r border-ink-200 flex flex-col fixed left-0 top-0">
-          <div className="p-4 border-b border-ink-100">
+        <aside className="w-64 min-h-screen bg-[#07111f] border-r border-white/10 text-white flex flex-col fixed left-0 top-0 shadow-2xl shadow-slate-900/10">
+          <div className="p-4 border-b border-white/10">
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-ink-950 flex items-center justify-center text-white font-bold text-sm">G4</div>
-              <span className="font-semibold text-ink-950">GA4Fix</span>
+              <div className="w-9 h-9 rounded-xl bg-[#b8f56b] flex items-center justify-center text-[#07111f] font-black text-sm">G</div>
+              <span className="font-semibold tracking-tight text-white">GA4Fix<span className="text-[#b8f56b]">.</span></span>
             </Link>
           </div>
           <div className="p-4">
@@ -75,14 +75,14 @@ export default function DashboardShell({
               <select
                 value={siteId || ''}
                 onChange={(e) => switchSite(Number(e.target.value))}
-                className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm bg-white"
+                className="w-full border border-white/15 rounded-xl px-3 py-2.5 text-sm bg-white/10 text-white outline-none focus:border-[#b8f56b]"
               >
                 {sites.map((s) => (
                   <option key={s.id} value={s.id}>{s.domain}</option>
                 ))}
               </select>
             ) : (
-              <Link href="/dashboard/settings" className="block w-full text-center border border-dashed border-ink-300 rounded-lg px-3 py-2 text-sm text-ink-500 hover:border-brand-500 hover:text-brand-600">
+              <Link href="/dashboard/settings" className="block w-full text-center border border-dashed border-white/20 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:border-[#b8f56b] hover:text-[#d8ffad]">
                 + Add your first site
               </Link>
             )}
@@ -90,7 +90,7 @@ export default function DashboardShell({
           <nav className="px-2 py-2 space-y-1 flex-1 overflow-y-auto">
             {nav.map((sec) => (
               <div key={sec.section}>
-                <div className="px-3 py-1 mt-3 text-[11px] font-semibold text-ink-400 uppercase tracking-wider">{sec.section}</div>
+                <div className="px-3 py-1 mt-4 text-[10px] font-bold text-slate-500 uppercase tracking-[.16em]">{sec.section}</div>
                 {sec.items.map((item: any) => {
                   const active = pathname === item.href;
                   return (
@@ -99,10 +99,10 @@ export default function DashboardShell({
                       href={item.href + (siteId ? `?siteId=${siteId}` : '')}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition ${
                         active
-                          ? 'bg-ink-100 text-ink-950 font-medium'
+                          ? 'bg-white/10 text-white font-semibold ring-1 ring-white/10'
                           : item.highlight
-                          ? 'text-brand-600 hover:bg-brand-500/10 font-medium'
-                          : 'text-ink-700 hover:bg-ink-100'
+                          ? 'text-[#cfff9d] hover:bg-[#b8f56b]/10 font-semibold'
+                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
                       }`}
                     >
                       {item.icon ? item.icon() : (
@@ -115,34 +115,34 @@ export default function DashboardShell({
               </div>
             ))}
           </nav>
-          <div className="p-3 border-t border-ink-100 flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-brand-500 text-white font-semibold text-sm flex items-center justify-center">
+          <div className="p-3 border-t border-white/10 flex items-center gap-2">
+            <div className="w-9 h-9 rounded-full bg-[#b8f56b] text-[#07111f] font-bold text-sm flex items-center justify-center">
               {email.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">{email}</div>
-              <button onClick={logout} className="text-xs text-ink-400 hover:text-ink-800">Sign out</button>
+              <div className="text-sm font-medium truncate text-white">{email}</div>
+              <button onClick={logout} className="text-xs text-slate-500 hover:text-white">Sign out</button>
             </div>
           </div>
         </aside>
 
-        <main className="flex-1 min-w-0 ml-60">
-          <div className="h-14 border-b border-ink-200 bg-white px-6 flex items-center justify-between sticky top-0 z-30">
+        <main className="flex-1 min-w-0 ml-64">
+          <div className="h-16 border-b border-slate-200/80 bg-white/90 px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <h1 className="font-semibold text-ink-950">{pageTitle(pathname)}</h1>
+              <div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#769b3e]">GA4Fix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-[#07111f]">{pageTitle(pathname)}</h1></div>
               {currentSite && (
-                <span className="pill bg-green-100 text-green-800">
+                <span className="pill bg-[#e9f8d4] text-[#52772b]">
                   <span className="dot bg-green-500"></span>Live
                 </span>
               )}
             </div>
             <div className="flex items-center gap-2">
               {currentSite && (
-                <span className="text-xs text-ink-500 mono">{currentSite.domain}</span>
+                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs text-slate-600 mono">{currentSite.domain}</span>
               )}
             </div>
           </div>
-          <div className="p-6">{children}</div>
+          <div className="p-8">{children}</div>
         </main>
       </div>
     </div>

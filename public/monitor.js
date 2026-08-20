@@ -14,7 +14,7 @@
   var g = window.__g4f = window.__g4f || {};
   if (g.__monitorInstalled) return;
   g.__monitorInstalled = true;
-  g.version = '12.0';
+  g.version = '12.2';
   g.k = apiKey;
   g.c = gtmContainerId;
   g.q = g.q || [];
@@ -165,7 +165,7 @@
     if (!queue.length) return;
     var body = JSON.stringify({ apiKey: apiKey, gtmContainerId: gtmContainerId, events: queue.splice(0, queue.length) });
     try {
-      var request = fetch(ingestUrl, { method: 'POST', body: body, keepalive: true, credentials: 'omit', headers: { 'Content-Type': 'application/json' } });
+      var request = fetch(ingestUrl, { method: 'POST', body: body, keepalive: true, mode: 'no-cors', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=UTF-8' } });
       if (request && request.catch) request.catch(function () { reportBlocked('ingest_transport_blocked', { blockedUrl: ingestUrl, signal: 'ingest_transport' }); });
       return;
     } catch (_) {}
@@ -178,7 +178,7 @@
     try {
       if (navigator.sendBeacon && navigator.sendBeacon(ingestUrl, new Blob([body], { type: 'text/plain;charset=UTF-8' }))) return;
     } catch (_) {}
-    try { fetch(ingestUrl, { method: 'POST', body: body, keepalive: true, credentials: 'omit', headers: { 'Content-Type': 'application/json' } }); } catch (_) {}
+    try { fetch(ingestUrl, { method: 'POST', body: body, keepalive: true, mode: 'no-cors', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=UTF-8' } }).catch(function () {}); } catch (_) {}
   }
   function reportBlocked(method, details) {
     details = details || {};
