@@ -5,7 +5,6 @@ import { assertBodySize, parseIngestBody } from '../../../lib/ingest-validation'
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { recordComplianceEvidence } from '../../../lib/compliance';
 import { classifyDeliveryMode } from '../../../lib/delivery';
-import { hostnameMatches } from '../../../lib/origin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -25,31 +24,6 @@ function json(data: unknown, status = 200, extra: Record<string, string> = {}) {
   return NextResponse.json(data, { status, headers: { ...corsHeaders(), ...extra } });
 }
 
-function originHost(req: NextRequest) {
-  const origin = req.headers.get('origin');
-  const referer = req.headers.get('referer');
-  try { return origin ? new URL(origin).hostname.toLowerCase() : referer ? new URL(referer).hostname.toLowerCase() : null; } catch { return null; }
-}
-
-function configuredServiceOrigin(host: string | null) {
-  if (!host) return false;
-  return [process.env.NEXT_PUBLIC_APP_URL, process.env.NEXT_PUBLIC_MONITOR_ORIGIN].some((value) => {
-    try { return hostnameMatches(host, new URL(String(value)).hostname); } catch { return false; }
-  });
-}
-
-function allowedSiteOrigin(req: NextRequest, site: { domain: string; first_party_domain: string | null }, events: Array<{ pageUrl?: string | null }>) {
-  const host = originHost(req);
-  if (!host) return true; // sendBeacon and privacy browsers may omit both headers.
-  if (hostnameMatches(host, site.domain) || hostnameMatches(host, site.first_party_domain)) return true;
-  if (!configuredServiceOrigin(host)) return false;
-  return events.some((event) => hostnameMatches(originHostFromPageUrl(event.pageUrl), site.domain) || hostnameMatches(originHostFromPageUrl(event.pageUrl), site.first_party_domain));
-}
-
-function originHostFromPageUrl(value: string | null | undefined) {
-  try { return value ? new URL(value).hostname.toLowerCase() : null; } catch { return null; }
-}
-
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders() });
 }
@@ -63,7 +37,6 @@ export async function POST(req: NextRequest) {
     const siteResult = await query('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1 LIMIT 1', [body.apiKey]);
     const site = siteResult.rows[0];
     if (!site) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
-    if (process.env.TELEMETRY_STRICT_ORIGIN === 'true' && !allowedSiteOrigin(req, site, body.events)) return json({ ok: false, error: 'Telemetry origin is not registered for this site' }, 403);
 
     let processedCount = 0;
     for (const event of body.events) {

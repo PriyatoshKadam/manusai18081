@@ -54,10 +54,10 @@ describe('security hardening', () => {
     expect(read('app/api/jobs/route.ts')).toContain("Unsupported job");
   });
 
-  it('keeps telemetry authentication key-based with opt-in origin enforcement', () => {
+  it('keeps telemetry authentication key-based without origin-header rejection', () => {
     const ingest = read('app/api/ingest/route.ts');
     expect(ingest).toContain('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1');
-    expect(ingest).toContain("TELEMETRY_STRICT_ORIGIN === 'true'");
+    expect(ingest).not.toContain('Telemetry origin is not registered for this site');
   });
 
   it('keeps read endpoints side-effect free and neutralizes CSV formulas', () => {
