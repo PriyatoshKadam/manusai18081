@@ -162,5 +162,9 @@ export function parseIngestBody(raw: string) {
   if (!/^[a-f0-9]{48,64}$/i.test(apiKey)) throw new Error('Invalid API key');
   if (!Array.isArray(value.events) || value.events.length === 0) throw new Error('Events must be a non-empty array');
   if (value.events.length > MAX_EVENTS_PER_REQUEST) throw new Error(`A maximum of ${MAX_EVENTS_PER_REQUEST} events may be sent at once`);
-  return { apiKey, events: value.events.map(normalizeTelemetryEvent) };
+  const events = value.events.map((item) => {
+    try { return normalizeTelemetryEvent(item); } catch { return null; }
+  }).filter((event): event is NormalizedTelemetryEvent => Boolean(event));
+  if (!events.length) throw new Error('Events must include at least one valid event');
+  return { apiKey, events };
 }

@@ -116,6 +116,15 @@ describe('ingest validation', () => {
     expect(() => parseIngestBody(JSON.stringify({ apiKey: 'a'.repeat(48), events: new Array(101).fill({ vendor: 'ga4' }) }))).toThrow('maximum');
   });
 
+  it('keeps valid events when one vendor observation is malformed', () => {
+    const result = parseIngestBody(JSON.stringify({ apiKey: 'a'.repeat(48), events: [
+      { vendor: 'ga4', eventName: 'page_view' },
+      { vendor: 'linkedin', eventName: '[object Object]' },
+    ] }));
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].eventName).toBe('page_view');
+  });
+
   it('preserves custom event observations and occurrence metadata', () => {
     expect(normalizeTelemetryEvent({ vendor: 'GA4', eventName: 'run_audit', observationKind: 'datalayer', sessionId: 'session-1', occurrenceId: 'event-1', navigationId: 'nav-1', gtmContainerId: 'GTM-ABC123', params: { audit_type: 'full' } })).toMatchObject({ vendor: 'ga4', eventName: 'run_audit', observationKind: 'datalayer', sessionId: 'session-1', occurrenceId: 'event-1', navigationId: 'nav-1' });
   });

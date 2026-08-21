@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 const monitor = fs.readFileSync('public/monitor.js', 'utf8');
 const auditPage = fs.readFileSync('app/dashboard/audit/page.tsx', 'utf8');
@@ -12,6 +13,8 @@ const nextConfig = fs.readFileSync('next.config.js', 'utf8');
     expect(monitor).toContain("window.addEventListener('pagehide', flushOnPageExit)");
     expect(monitor).toContain("document.visibilityState === 'hidden'");
     expect(monitor).toContain("reportBlocked('ga4_event_unmatched'");
+    expect(monitor).toContain("if (event.vendor !== 'ga4') return event;");
+    expect(monitor).toContain('function eventNameValue');
     expect(monitor).toContain('text/plain;charset=UTF-8');
     expect(monitor).toContain('consentFromParams');
     expect(monitor).toContain('recentNetworkEvents');
@@ -22,6 +25,11 @@ const nextConfig = fs.readFileSync('next.config.js', 'utf8');
 
   it('emits the runtime audit action as a monitorable dataLayer event', () => {
     expect(auditPage).toContain("event: 'run_audit'");
+  });
+
+  it('keeps malformed vendor observations from invalidating the entire ingest batch', () => {
+    expect(readFileSync('lib/ingest-validation.ts', 'utf8')).toContain('Events must include at least one valid event');
+    expect(readFileSync('lib/ingest-validation.ts', 'utf8')).toContain('filter((event): event is NormalizedTelemetryEvent');
   });
 
   it('keeps network duplicate alerts visible in the dashboard API', () => {

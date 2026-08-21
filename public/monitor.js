@@ -56,6 +56,7 @@
   function pageUrl() { try { return location.href; } catch (_) { return ''; } }
   function normalize(value) { return value === null || value === undefined ? null : String(value).trim().toLowerCase() || null; }
   function text(value, max) { return value === null || value === undefined ? null : String(value).slice(0, max || 2048); }
+  function eventNameValue(value, fallback) { if (value === null || value === undefined || typeof value === 'object' || typeof value === 'function') return fallback || null; var normalized = String(value).trim().slice(0, 120); return /^[\w.:-]+$/.test(normalized) ? normalized : (fallback || null); }
   function safeUrl(value) { try { return new URL(value, location.href); } catch (_) { return null; } }
   function ownUrl(value) { var u = safeUrl(value); return !!u && (u.href.indexOf(ingestUrl) === 0 || u.href.indexOf(blockedUrl) === 0); }
   function merge(a, b) { var out = {}; Object.keys(a || {}).forEach(function (k) { out[k] = a[k]; }); Object.keys(b || {}).forEach(function (k) { out[k] = b[k]; }); return out; }
@@ -198,12 +199,14 @@
     try { if (navigator.sendBeacon) navigator.sendBeacon(u.href); } catch (_) {}
   }
   function currentEvent(eventName, params, source, kind, index, vendor) {
+    var normalizedName = eventNameValue(eventName, null); if (!normalizedName) return null;
     occurrence += 1;
     var safe = safeParams(params);
-    var event = { vendor: vendor || 'ga4', eventName: text(eventName, 120), params: safe, source: source || 'dataLayer', observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() };
-    pending.push(event); if (pending.length > MAX_PENDING) pending.shift();
-    var name = normalize(eventName); counts[name] = (counts[name] || 0) + 1;
+    var event = { vendor: vendor || 'ga4', eventName: normalizedName, params: safe, source: source || 'dataLayer', observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() };
+    var name = normalize(normalizedName); counts[name] = (counts[name] || 0) + 1;
     send({ type: kind || 'datalayer', vendor: event.vendor, eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: event.navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: event.timestamp });
+    if (event.vendor !== 'ga4') return event;
+    pending.push(event); if (pending.length > MAX_PENDING) pending.shift();
     setTimeout(function () {
       if (pending.indexOf(event) === -1 || event.networkMatched) return;
       pending.splice(pending.indexOf(event), 1);
@@ -243,7 +246,7 @@
     var networkConsent = consentFromParams(params); if (Object.keys(networkConsent).length) captureConsent(networkConsent, 'network_gcs');
     var vendor = vendorFor(url, params);
     if (!vendor) return null;
-    var name = eventNameFor(vendor, params);
+    var name = eventNameValue(eventNameFor(vendor, params), null);
     if (vendor === 'ga4' && !name) return null;
     var normalizedParams = vendor === 'ga4' ? safeParams(ga4Params(params)) : safeParams(params);
     var requestSig = signature(normalizedParams, name);
@@ -273,7 +276,7 @@
   function recordVendorFunction(vendor, method, args) {
     var values = Array.prototype.slice.call(args || []);
     var objectArg = values[1] && typeof values[1] === 'object' ? values[1] : null;
-    var eventName = text(objectArg && (objectArg.event || objectArg.event_name || objectArg.action) || values[1] || values[0] || method || 'call', 120);
+    var eventName = eventNameValue(objectArg && (objectArg.event || objectArg.event_name || objectArg.action) || values[1] || values[0] || method || 'call', method || 'call');
     var candidate = values[2] && typeof values[2] === 'object' ? values[2] : objectArg || {};
     var params = safeParams(candidate);
     send({ type: 'function', vendor: vendor, eventName: eventName, params: params, clientId: text(params.cid || params.client_id, 160), transactionId: transactionId(params), pageUrl: pageUrl(), source: method, observationKind: 'function', transport: 'function', sessionId: sessionId, occurrenceId: token('function'), networkOccurrenceId: null, requestSignature: signature(params, eventName), dlPushIndex: null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() });
