@@ -72,7 +72,7 @@ export default function DashboardShell({
           <div className="p-4 border-b border-white/10">
             <Link href="/" className="flex items-center gap-2">
               <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-sm shadow-black/20"><img src="/gafix-logo.png" alt="GAfix" className="h-full w-full object-contain" /></span>
-              <span><span className="block font-semibold tracking-tight text-white">GAfix<span className="text-[#b8f56b]">.</span></span><span className="mt-0.5 block text-[9px] uppercase tracking-[.18em] text-slate-500">Real-user intelligence</span></span>
+              <span><span className="block font-semibold tracking-tight text-white">GAfix<span className="text-[#ff9d18]">.</span></span><span className="mt-0.5 block text-[9px] uppercase tracking-[.18em] text-slate-500">Real-user intelligence</span></span>
             </Link>
           </div>
           <div className="p-4">
@@ -80,14 +80,14 @@ export default function DashboardShell({
               <select
                 value={siteId || ''}
                 onChange={(e) => switchSite(Number(e.target.value))}
-                className="w-full border border-white/[.09] rounded-xl px-3 py-2.5 text-sm bg-[#121b29] text-white outline-none focus:border-[#8da3ff]"
+                className="w-full border border-white/[.09] rounded-xl px-3 py-2.5 text-sm bg-[#121b29] text-white outline-none focus:border-[#86a8ff]"
               >
                 {sites.map((s) => (
                   <option key={s.id} value={s.id}>{s.domain}</option>
                 ))}
               </select>
             ) : (
-              <Link href="/dashboard/settings" className="block w-full text-center border border-dashed border-white/20 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:border-[#b8f56b] hover:text-[#d8ffad]">
+              <Link href="/dashboard/settings" className="block w-full text-center border border-dashed border-white/20 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:border-[#2f6bff] hover:text-[#86a8ff]">
                 + Add your first site
               </Link>
             )}
@@ -104,9 +104,9 @@ export default function DashboardShell({
                       href={item.href + (siteId ? `?siteId=${siteId}` : '')}
                       className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition ${
                         active
-                          ? 'bg-gradient-to-r from-[#5271ff]/30 to-transparent text-white font-semibold ring-1 ring-[#6d8cff]/25 shadow-[inset_3px_0_0_#6d8cff]'
+                          ? 'bg-gradient-to-r from-[#2f6bff]/30 to-transparent text-white font-semibold ring-1 ring-[#86a8ff]/25 shadow-[inset_3px_0_0_#2f6bff]'
                           : item.highlight
-                          ? 'text-[#cfff9d] hover:bg-[#b8f56b]/10 font-semibold'
+                          ? 'text-[#86a8ff] hover:bg-[#2f6bff]/10 font-semibold'
                           : 'text-slate-300 hover:bg-white/10 hover:text-white'
                       }`}
                     >
@@ -122,7 +122,7 @@ export default function DashboardShell({
           </nav>
           <div className="m-3 rounded-xl border border-[#a8f06a]/15 bg-[#a8f06a]/[.05] p-3"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#b9f57e]"><span className="dot bg-[#a8f06a]" /> Collector active</div><div className="mt-1 text-[10px] leading-relaxed text-slate-500">Real-user events, delivery paths, and failures are being correlated.</div></div>
           <div className="p-3 border-t border-white/[.07] flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-[#b8f56b] text-[#07111f] font-bold text-sm flex items-center justify-center">
+            <div className="w-9 h-9 rounded-full bg-[#2f6bff] text-white font-bold text-sm flex items-center justify-center">
               {email.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
@@ -135,7 +135,7 @@ export default function DashboardShell({
         <main className="dashboard-main-grid flex-1 min-h-screen min-w-0 ml-64">
           <div className="h-[72px] border-b border-white/[.07] bg-[#0b111b]/90 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#8fa8ff]">GAfix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
+              <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#86a8ff]">GAfix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
               {currentSite && (
                 <><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> <strong>Live</strong> · 24h evidence window</span><span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">
                   <span className="dot bg-green-500"></span>Live

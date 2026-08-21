@@ -5,6 +5,16 @@
 :root {
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
+  --gafix-blue: #2f6bff;
+  --gafix-blue-strong: #1d4ed8;
+  --gafix-blue-soft: #86a8ff;
+  --gafix-violet: #8b5cf6;
+  --gafix-orange: #ff9d18;
+  --gafix-lime: #b8f56b;
+  --gafix-ink: #070b12;
+  --gafix-surface: #111722;
+  --gafix-surface-raised: #172235;
+  --gafix-line: rgba(255,255,255,.09);
 }
 
 html, body {
@@ -70,6 +80,8 @@ html, body {
   --dash-bg: #080c14;
   --dash-panel: #111722;
   --dash-panel-2: #151d2a;
+  --dash-accent: var(--gafix-blue);
+  --dash-accent-soft: var(--gafix-blue-soft);
   --dash-border: rgba(255,255,255,.08);
   --dash-muted: #8290a7;
   --dash-text: #f3f7fb;
@@ -81,7 +93,7 @@ html, body {
 .dashboard-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
 .dashboard-section-head h2 { color: var(--dash-text); font-size: 1.08rem; font-weight: 650; letter-spacing: -.02em; margin-top: .2rem; }
 .dashboard-section-head p { color: var(--dash-muted); font-size: .78rem; margin-top: .35rem; }
-.dashboard-eyebrow { color: #8fa8ff; font-size: .62rem; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; }
+.dashboard-eyebrow { color: var(--gafix-blue-soft); font-size: .62rem; font-weight: 750; letter-spacing: .18em; text-transform: uppercase; }
 .command-kpi { position: relative; overflow: hidden; min-height: 142px; padding: 1.05rem 1.1rem .8rem; border: 1px solid var(--dash-border); border-radius: 1rem; background: linear-gradient(145deg, rgba(23,31,45,.98), rgba(13,18,27,.98)); box-shadow: 0 16px 40px rgba(0,0,0,.16); }
 .command-kpi::after { content: ''; position: absolute; width: 8rem; height: 8rem; right: -3.5rem; top: -3.5rem; border-radius: 999px; filter: blur(20px); opacity: .16; background: var(--kpi-color); }
 .command-kpi-top { position: relative; display: flex; align-items: center; justify-content: space-between; color: #96a2b7; font-size: .64rem; font-weight: 750; letter-spacing: .14em; text-transform: uppercase; }
@@ -89,7 +101,7 @@ html, body {
 .command-kpi-value { position: relative; margin-top: .55rem; color: var(--kpi-color); font-size: 2rem; font-weight: 700; letter-spacing: -.06em; }
 .command-kpi-note { position: relative; color: #718096; font-size: .71rem; }
 .command-kpi-line { height: 2px; margin-top: .85rem; border-radius: 9px; background: linear-gradient(90deg, var(--kpi-color), transparent); opacity: .4; }
-.kpi-blue { --kpi-color: #6d8cff; } .kpi-lime { --kpi-color: #a8f06a; } .kpi-amber { --kpi-color: #f6b94c; } .kpi-rose { --kpi-color: #ff718d; } .kpi-violet { --kpi-color: #b18cff; }
+.kpi-blue { --kpi-color: var(--gafix-blue); } .kpi-lime { --kpi-color: #a8f06a; } .kpi-amber { --kpi-color: #f6b94c; } .kpi-rose { --kpi-color: #ff718d; } .kpi-violet { --kpi-color: #b18cff; }
 .mini-trend { display: block; width: 100%; height: 34px; margin-top: .65rem; opacity: .9; }
 .score-ring-card { min-height: 180px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px solid var(--dash-border); border-radius: 1rem; background: linear-gradient(145deg, rgba(22,30,43,.98), rgba(12,17,25,.98)); }
 .score-ring { position: relative; width: 92px; height: 92px; }
@@ -119,6 +131,12 @@ html, body {
 .dashboard-top-control strong { color: #f4f7fb; font-weight: 650; }
 @media (max-width: 900px) { .event-heat-row { grid-template-columns: minmax(110px, 1fr) minmax(90px, 1.5fr) 54px; } .event-heat-sessions { display: none; } .dashboard-section-head { align-items: flex-start; flex-direction: column; } }
 @media (prefers-reduced-motion: reduce) { .score-ring-value { transition: none; } .fade-in { animation: none; } }
+
+/* GAfix brand alignment: official blue actions, operational lime, warning orange, and critical rose. */
+:where(a, button, input, select, textarea):focus-visible { outline: 2px solid var(--gafix-blue-soft); outline-offset: 3px; }
+.dashboard-shell .dashboard-eyebrow { color: var(--gafix-blue-soft); }
+.dashboard-shell .dashboard-top-control { border-color: color-mix(in srgb, var(--gafix-blue) 24%, transparent); }
+
 
 
 /* Diagnostics compatibility: legacy pages inherit the Overview dark command-center theme */

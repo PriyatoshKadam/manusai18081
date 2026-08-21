@@ -2,11 +2,11 @@
 
 export function SeverityChip({ severity }: { severity: string }) {
   const cls = severity === 'critical'
-    ? 'bg-red-200 text-red-900'
+    ? 'bg-[#ff718d]/10 text-[#ff9aae] border border-[#ff718d]/20'
     : severity === 'warning'
-    ? 'bg-amber-200 text-amber-900'
-    : 'bg-blue-200 text-blue-900';
-  const dot = severity === 'critical' ? 'bg-red-600' : severity === 'warning' ? 'bg-amber-500' : 'bg-blue-600';
+    ? 'bg-[#f6b94c]/10 text-[#ffd27a] border border-[#f6b94c]/20'
+    : 'bg-[#2f6bff]/10 text-[#86a8ff] border border-[#2f6bff]/20';
+  const dot = severity === 'critical' ? 'bg-[#ff718d]' : severity === 'warning' ? 'bg-[#f6b94c]' : 'bg-[#2f6bff]';
   return (
     <span className={`pill ${cls}`}>
       <span className={`dot ${dot}`}></span>
