@@ -13,6 +13,22 @@ export default function DashboardShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [siteId, setSiteId] = useState<number | null>(null);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [themeReady, setThemeReady] = useState(false);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem('gafix-theme');
+    const next = saved === 'light' ? 'light' : 'dark';
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    setThemeReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!themeReady) return;
+    document.documentElement.dataset.theme = theme;
+    window.localStorage.setItem('gafix-theme', theme);
+  }, [theme, themeReady]);
 
   useEffect(() => {
     const qId = Number(searchParams.get('siteId') || 0);
@@ -66,7 +82,7 @@ export default function DashboardShell({
   ];
 
   return (
-    <div className="dashboard-shell dashboard-dark min-h-screen" data-theme="dark">
+    <div className={`dashboard-shell ${theme === 'dark' ? 'dashboard-dark' : 'dashboard-light'} min-h-screen`} data-theme={theme}>
       <div className="flex">
         <aside className="w-64 min-h-screen bg-[#0b111b] border-r border-white/[.07] text-white flex flex-col fixed left-0 top-0 shadow-2xl shadow-black/20">
           <div className="p-4 border-b border-white/10">
@@ -143,6 +159,9 @@ export default function DashboardShell({
               )}
             </div>
             <div className="flex items-center gap-2">
+              <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} aria-pressed={theme === 'light'} className="dashboard-top-control theme-toggle">
+                <span aria-hidden="true">{theme === 'dark' ? '☼' : '◐'}</span><strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
+              </button>
               {currentSite && (
                 <span className="dashboard-top-control"><span className="text-slate-500">Site</span><strong className="mono">{currentSite.domain}</strong></span>
               )}

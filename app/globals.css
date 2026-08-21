@@ -321,3 +321,86 @@ html { scroll-behavior: smooth; }
 @media (max-width: 1023px) { .gafix-feature-navigator { grid-template-columns: 1fr; } .gafix-feature-tabs { display: grid; grid-template-columns: repeat(4, 1fr); } .gafix-feature-tab { min-height: 82px; grid-template-columns: 1fr 20px; gap: 7px; } .gafix-feature-tab-number { display: none; } .gafix-feature-tab-arrow { grid-column: 2; grid-row: 1; } .gafix-feature-tab-copy { grid-column: 1 / -1; grid-row: 1; } }
 @media (max-width: 639px) { .gafix-feature-tabs { grid-template-columns: repeat(2, 1fr); } .gafix-feature-tab { min-height: 68px; padding: 10px; } .gafix-feature-tab-copy strong { font-size: 10px; } .gafix-feature-tab-copy small { font-size: 9px; } .gafix-feature-stage { min-height: 492px; padding: 17px; } .gafix-feature-scene { height: 218px; } .gafix-feature-stage-bottom { grid-template-columns: 1fr; gap: 12px; } .gafix-scene-node { max-width: 83px; font-size: 8px; } .node-5, .node-6 { display: none; } }
 @media (prefers-reduced-motion: reduce) { .gafix-feature-tab:hover { transform: none; } .gafix-scene-live span, .gafix-scene-ring, .gafix-scene-route, .gafix-scene-packet { animation: none !important; } }
+
+
+/* GAfix design-system theme option: dark remains the default; light uses the same blue/orange/lime status vocabulary. */
+html[data-theme='dark'] { color-scheme: dark; }
+html[data-theme='light'] { color-scheme: light; }
+.dashboard-light {
+  --dash-bg: #f5f7fb;
+  --dash-panel: #ffffff;
+  --dash-panel-2: #f8faff;
+  --dash-border: rgba(21, 42, 78, .12);
+  --dash-muted: #667085;
+  --dash-text: #172033;
+  background: var(--dash-bg) !important;
+  color: var(--dash-text) !important;
+}
+.dashboard-light .dashboard-main-grid { background: radial-gradient(circle at 85% 0%, rgba(47,107,255,.10), transparent 32rem), var(--dash-bg); }
+.dashboard-light .dashboard-gridline { background-image: linear-gradient(rgba(35,66,119,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(35,66,119,.055) 1px, transparent 1px); }
+.dashboard-light aside { background: #ffffff !important; border-color: #e3e8f1 !important; color: #172033 !important; box-shadow: 0 18px 40px rgba(31,55,96,.08) !important; }
+.dashboard-light aside .border-white\/10,
+.dashboard-light aside .border-white\/\[\.07\] { border-color: #e7ebf3 !important; }
+.dashboard-light aside [class*="text-white"],
+.dashboard-light aside [class*="text-slate-300"] { color: #26344d !important; }
+.dashboard-light aside [class*="text-slate-500"] { color: #7b879b !important; }
+.dashboard-light aside [class*="text-slate-600"] { color: #8994a6 !important; }
+.dashboard-light aside a[class*="from-[#2f6bff]"] { background: linear-gradient(90deg, #e8efff, transparent) !important; color: #1d4ed8 !important; box-shadow: inset 3px 0 0 #2f6bff !important; }
+.dashboard-light aside select { background: #f8faff !important; color: #172033 !important; border-color: #d8e0ee !important; }
+.dashboard-light aside .bg-\[\#0b111b\] { background: #ffffff !important; }
+.dashboard-light .dashboard-main-grid > div:first-child { background: rgba(255,255,255,.90) !important; border-color: #e3e8f1 !important; }
+.dashboard-light .dashboard-main-grid > div:first-child [class*="text-white"],
+.dashboard-light .dashboard-main-grid > div:first-child h1 { color: #172033 !important; }
+.dashboard-light .dashboard-top-control { background: #ffffff !important; border-color: #d8e0ee !important; color: #667085 !important; box-shadow: 0 5px 16px rgba(31,55,96,.05); }
+.dashboard-light .dashboard-top-control strong { color: #172033 !important; }
+.dashboard-light .command-kpi,
+.dashboard-light .score-ring-card,
+.dashboard-light [class*="bg-[#111722]"],
+.dashboard-light [class*="bg-[#0c121c]"],
+.dashboard-light [class*="bg-[#0d1522]"],
+.dashboard-light [class*="bg-[#151d2a]"] { background: #ffffff !important; border-color: #dfe6f0 !important; color: #172033 !important; box-shadow: 0 12px 30px rgba(31,55,96,.07); }
+.dashboard-light [class*="bg-[#080c14]"],
+.dashboard-light [class*="bg-[#080d16]"],
+.dashboard-light [class*="bg-[#070b12]"],
+.dashboard-light [class*="bg-[#0b111b]"] { background: #f5f7fb !important; }
+.dashboard-light [class*="text-slate-100"],
+.dashboard-light [class*="text-slate-200"],
+.dashboard-light [class*="text-slate-300"] { color: #26344d !important; }
+.dashboard-light [class*="text-slate-400"],
+.dashboard-light [class*="text-slate-500"] { color: #667085 !important; }
+.dashboard-light [class*="text-slate-600"] { color: #8a95a7 !important; }
+.dashboard-light [class*="text-white"] { color: #172033 !important; }
+.dashboard-light [class*="bg-[#2f6bff]"][class*="text-white"],
+.dashboard-light [class*="bg-[#2457ff]"][class*="text-white"],
+.dashboard-light button[class*="bg-blue"] { color: #ffffff !important; }
+.dashboard-light [class*="border-white"] { border-color: #dfe6f0 !important; }
+.dashboard-light [class*="divide-white"] > :not([hidden]) ~ :not([hidden]) { border-color: #e8edf4 !important; }
+.dashboard-light [class*="bg-white/[.03]"],
+.dashboard-light [class*="bg-white/[.035]"],
+.dashboard-light [class*="bg-white/[.04]"],
+.dashboard-light [class*="bg-white/[.05]"] { background: #f7f9fd !important; }
+.dashboard-light [class*="hover:bg-white"]:hover { background: #eef4ff !important; }
+.dashboard-light input,
+.dashboard-light textarea,
+.dashboard-light select { background: #ffffff !important; color: #172033 !important; border-color: #d8e0ee !important; }
+.dashboard-light input::placeholder,
+.dashboard-light textarea::placeholder { color: #98a2b3 !important; }
+.dashboard-light .command-kpi-top,
+.dashboard-light .command-kpi-note,
+.dashboard-light .event-heat-sessions,
+.dashboard-light .evidence-rail-copy { color: #667085 !important; }
+.dashboard-light .command-kpi-value { color: var(--kpi-color) !important; }
+.dashboard-light .score-ring-track { stroke: #dfe6f0; }
+.dashboard-light .score-ring-number,
+.dashboard-light .score-ring-label { color: #172033; }
+.dashboard-light .score-ring-detail { color: #667085; }
+.dashboard-light .event-heat-track { background: #e4eaf3; }
+.dashboard-light .event-heat-session { border-color: #ffffff; }
+.dashboard-light .empty-visual { border-color: #d8e0ee; color: #7b879b; }
+.dashboard-light .theme-toggle { color: #2457ff !important; }
+.dashboard-light .theme-toggle strong { color: #2457ff !important; }
+.dashboard-light .dashboard-dark .card,
+.dashboard-light .dashboard-dark .bg-white { background: #ffffff !important; color: #172033 !important; border-color: #dfe6f0 !important; }
+.dashboard-light .dashboard-dark input,
+.dashboard-light .dashboard-dark textarea,
+.dashboard-light .dashboard-dark select { background: #ffffff !important; color: #172033 !important; border-color: #d8e0ee !important; }
