@@ -16,17 +16,17 @@ export async function GET(req: NextRequest) {
     query(`SELECT
       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'confirmed' AND detected_at > NOW() - INTERVAL '24 hours')::int AS blocked_events_24h,
       (SELECT COUNT(DISTINCT COALESCE(NULLIF(session_id,''), NULLIF(ip_hash,''))) FROM adblock_events WHERE site_id = $1 AND confidence = 'confirmed' AND detected_at > NOW() - INTERVAL '24 hours')::int AS blocked_sessions_24h,
-      (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'correlation_gap' AND detected_at > NOW() - INTERVAL '24 hours')::int AS correlation_gaps_24h,
+      (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'correlation_gap' AND NOT (detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) AND detected_at > NOW() - INTERVAL '24 hours')::int AS correlation_gaps_24h,
       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'telemetry_gap' AND detected_at > NOW() - INTERVAL '24 hours')::int AS telemetry_gaps_24h,
       (SELECT COUNT(DISTINCT COALESCE(NULLIF(session_id,''), NULLIF(client_id,''))) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours')::int AS total_sessions_24h,
       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'confirmed' AND event_name IS NOT NULL AND detected_at > NOW() - INTERVAL '24 hours')::int AS blocked_event_reports_24h`, [siteId]),
     query(`SELECT detection_method, signal, confidence, COUNT(*)::int AS cnt, COUNT(DISTINCT COALESCE(NULLIF(session_id,''), NULLIF(ip_hash,'')))::int AS sessions
-           FROM adblock_events WHERE site_id = $1 AND detected_at > NOW() - INTERVAL '24 hours'
+           FROM adblock_events WHERE site_id = $1 AND NOT (confidence = 'correlation_gap' AND detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) AND detected_at > NOW() - INTERVAL '24 hours'
            GROUP BY detection_method, signal, confidence ORDER BY cnt DESC LIMIT 50`, [siteId]),
     query(`SELECT vendor, COUNT(*)::int AS cnt FROM adblock_events a CROSS JOIN LATERAL jsonb_array_elements_text(COALESCE(a.blocked_vendors, '[]'::jsonb)) vendor
            WHERE a.site_id = $1 AND a.confidence = 'confirmed' AND a.detected_at > NOW() - INTERVAL '24 hours' GROUP BY vendor ORDER BY cnt DESC`, [siteId]),
     query(`SELECT detection_method, signal, confidence, event_name, blocked_url, page_url, session_id, detected_at
-           FROM adblock_events WHERE site_id = $1 ORDER BY detected_at DESC LIMIT 75`, [siteId]),
+           FROM adblock_events WHERE site_id = $1 AND NOT (confidence = 'correlation_gap' AND detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) ORDER BY detected_at DESC LIMIT 75`, [siteId]),
   ]);
   return NextResponse.json({ totals: totals.rows[0], byMethod: byMethod.rows, byVendor: byVendor.rows, recent: recent.rows });
 }

@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '1 hour') AS events_hour,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false) AS active_alerts,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false AND severity = 'critical') AS critical_alerts,
-       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
+       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND NOT (confidence = 'correlation_gap' AND detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS events_24h`,
     [siteId],
   );
@@ -62,7 +62,7 @@ export async function GET(req: NextRequest) {
   const blockedFlow = await query(
     `SELECT COALESCE(NULLIF(delivery_mode, ''), 'unknown') AS delivery_mode, COUNT(*)::int AS blocked
        FROM adblock_events
-      WHERE site_id = $1 AND detected_at > NOW() - INTERVAL '24 hours'
+      WHERE site_id = $1 AND NOT (confidence = 'correlation_gap' AND detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) AND detected_at > NOW() - INTERVAL '24 hours'
       GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')`,
     [siteId],
   );

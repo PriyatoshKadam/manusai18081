@@ -14,7 +14,7 @@
   var g = window.__g4f = window.__g4f || {};
   if (g.__monitorInstalled) return;
   g.__monitorInstalled = true;
-  g.version = '12.3';
+  g.version = '12.5';
   g.k = apiKey;
   g.c = gtmContainerId;
   g.q = g.q || [];
@@ -115,6 +115,9 @@
     var eventName = params.en || params.event_name || params.event;
     var measurement = params.tid || params.measurement_id;
     if (/googletagmanager\.com\/(?:gtm|gtag\/js)|google-analytics\.com\/analytics\.js|analytics\.google\.com\/analytics\.js/i.test(value)) return 'gtm';
+    var gadsRequest = u && /\/(?:rmkt|ccm)\/collect(?:\/|$)/i.test(u.pathname);
+    var gadsMeasurement = /^AW-/i.test(String(measurement || '')) || params.conversion_id || params.google_conversion_id || params.conversion_label || params.google_conversion_label || params.send_to;
+    if (gadsRequest || gadsMeasurement || /googleadservices\.com|googlesyndication\.com/.test(value)) return 'gads';
     var ga4Path = u && /\/(?:metrics\/|analytics\/)?(?:g|mp)\/collect$/i.test(u.pathname);
     if ((ga4Path || /(^|\.)google-analytics\.com$|(^|\.)analytics\.google\.com$/i.test(host) || measurement) && (eventName || /^G-[A-Z0-9]+$/i.test(String(measurement || '')))) return 'ga4';
     if (/googleadservices\.com|googlesyndication\.com/.test(value) || params.gclid || params.google_conversion_id) return 'gads';
@@ -141,8 +144,20 @@
     if (/intercom/.test(value)) return 'intercom';
     return null;
   }
+  function gadsEventName(params) {
+    if (!params) return null;
+    var label = params.conversion_label || params.google_conversion_label || params.label;
+    if (typeof label === 'string' && label.trim()) return label;
+    var sendTo = params.send_to;
+    if (typeof sendTo === 'string' && sendTo.trim()) {
+      var parts = sendTo.split('/');
+      return (parts[1] || parts[0]).trim() || null;
+    }
+    return params.conversion_id || params.google_conversion_id || params.tids || params.tid || params.ev || params.event || params.event_name || params.eventName || params.action || params.en || null;
+  }
   function eventNameFor(vendor, params) {
     if (!params) return null;
+    if (vendor === 'gads') return gadsEventName(params);
     return vendor === 'ga4' ? (params.en || params.event_name || params.event || null) : (params.ev || params.event || params.event_name || params.eventName || params.action || null);
   }
   function ga4Params(params) {

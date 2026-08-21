@@ -7,6 +7,7 @@ const auditPage = fs.readFileSync('app/dashboard/audit/page.tsx', 'utf8');
 const duplicateRoute = fs.readFileSync('app/api/duplicates/route.ts', 'utf8');
 const schema = fs.readFileSync('db/schema.sql', 'utf8');
 const nextConfig = fs.readFileSync('next.config.js', 'utf8');
+const adblockRoute = fs.readFileSync('app/api/adblock/route.ts', 'utf8');
 
  describe('HAR regression protections', () => {
   it('flushes queued telemetry during page exit and uses correlation-gap signals', () => {
@@ -15,6 +16,8 @@ const nextConfig = fs.readFileSync('next.config.js', 'utf8');
     expect(monitor).toContain("reportBlocked('ga4_event_unmatched'");
     expect(monitor).toContain("if (event.vendor !== 'ga4') return event;");
     expect(monitor).toContain('function eventNameValue');
+    expect(monitor).toContain('function gadsEventName');
+    expect(monitor).toContain("params.conversion_label || params.google_conversion_label || params.label");
     expect(monitor).toContain('text/plain;charset=UTF-8');
     expect(monitor).toContain('consentFromParams');
     expect(monitor).toContain('recentNetworkEvents');
@@ -25,6 +28,12 @@ const nextConfig = fs.readFileSync('next.config.js', 'utf8');
 
   it('emits the runtime audit action as a monitorable dataLayer event', () => {
     expect(auditPage).toContain("event: 'run_audit'");
+  });
+
+  it('does not surface GTM and consent lifecycle noise as ad-blocker detections', () => {
+    expect(adblockRoute).toContain("event_name ILIKE 'gtm.%'");
+    expect(adblockRoute).toContain("event_name ILIKE 'termly.%'");
+    expect(adblockRoute).toContain("event_name = 'userPrefUpdate'");
   });
 
   it('keeps malformed vendor observations from invalidating the entire ingest batch', () => {
