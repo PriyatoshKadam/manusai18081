@@ -96,8 +96,10 @@ export async function GET(req: NextRequest) {
 
   const alerts = alertRows.rows.map((row: any) => ({
     ...row,
+    first_seen: row.created_at,
+    last_seen: row.last_seen || row.created_at,
     sourceType: 'alert',
-    duplicateKey: `${row.code}:${row.id}`,
+    duplicateKey: `${row.code}:${row.vendor || ''}:${row.event_name || ''}:${row.message || ''}`,
   }));
   const derivedNetwork = networkRows.rows.map((row: any) => ({
     id: `network-${row.event_ids?.[0] || row.last_seen}`,
@@ -112,17 +114,20 @@ export async function GET(req: NextRequest) {
     occurrence_count: row.occurrence_count,
     distinct_pushes: row.distinct_pushes,
     page_url: row.page_url,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
     created_at: row.last_seen,
     sourceType: 'derived_network_evidence',
     duplicateKey: `network:${row.session_id}:${row.event_name}:${row.request_signature}`,
   }));
-  const derivedRepeats = repeatRows.rows.map((row: any) => ({
+  const fanoutEvidenceKeys = new Set(fanoutRows.rows.map((row: any) => `${row.session_id}:${row.event_name}:${row.occurrence_id}`));
+  const derivedRepeats = repeatRows.rows.filter((row: any) => !fanoutEvidenceKeys.has(`${row.session_id}:${row.event_name}:${row.occurrence_id}`)).map((row: any) => ({
     id: `repeat-${row.event_ids?.[0] || row.last_seen}`,
     event_name: row.event_name,
     vendor: row.vendor,
     category: 'analytics',
     code: 'duplicate_event',
-    message: `${row.event_name || 'GA4 event'} occurred ${row.occurrence_count} times within 120 seconds in one browser session.`,
+    message: `${row.event_name || 'GA4 event'} occurred ${Math.max(2, Number(row.occurrence_count) || 0)} times within 120 seconds in one browser session.`,
     root_cause: Number(row.signature_count) === 1
       ? 'The same event and normalized request evidence repeated in one browser session.'
       : 'The same event repeated in one browser session, but request parameters differed. Verify whether two GTM tags, triggers, or implementation paths fired.',
@@ -131,6 +136,8 @@ export async function GET(req: NextRequest) {
     occurrence_count: row.occurrence_count,
     distinct_pushes: row.occurrence_id ? 1 : null,
     page_url: row.page_url,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
     created_at: row.last_seen,
     sourceType: 'derived_repeat_evidence',
     duplicateKey: `repeat:${row.session_id}:${row.event_name}:${row.occurrence_id || row.page_url || ''}`,
@@ -149,6 +156,8 @@ export async function GET(req: NextRequest) {
     occurrence_count: row.occurrence_count,
     distinct_pushes: 1,
     page_url: row.page_url,
+    first_seen: row.first_seen,
+    last_seen: row.last_seen,
     created_at: row.last_seen,
     sourceType: 'derived_gtm_fanout',
     duplicateKey: `fanout:${row.session_id}:${row.event_name}:${row.occurrence_id}`,

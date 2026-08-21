@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AlertModal from './alert-modal';
-import { SeverityChip, timeAgo } from './ui';
+import { SeverityChip, formatDateTime, timeAgo } from './ui';
 import { CommandKpi, DashboardSection, EvidenceRail, EventHeatmap, ScoreRing } from './command-visuals';
 
 export default function OverviewPage() {
@@ -62,7 +62,7 @@ export default function OverviewPage() {
   const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0);
   const deliveryFailures = deliveries.filter((item: any) => item.status === 'failed').length;
   const repeated = duplicates.filter((item: any) => ['login', 'run_audit'].includes(String(item.event_name || '').toLowerCase()));
-  const actions = [...repeated.slice(0, 4), ...alerts.filter((item: any) => !repeated.some((dup: any) => dup.event_name === item.event_name)).slice(0, 4)];
+  const actions = collapseActionItems([...duplicates.slice(0, 12), ...alerts.slice(0, 12)]).slice(0, 4);
   const totalSessions = events.reduce((sum: number, row: any) => sum + Number(row.sessions || 0), 0);
   const totalFires = events.reduce((sum: number, row: any) => sum + Number(row.cnt || 0), 0);
   const avgEventsPerSession = totalSessions ? (totalFires / totalSessions).toFixed(1) : '—';
@@ -94,7 +94,7 @@ export default function OverviewPage() {
 
 
     <section className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
-      <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Operator queue" title="Action center" description="Open evidence, not vague health scores." action={<Link href={`/dashboard/health?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Deep health view →</Link>} />{actions.length ? <div className="divide-y divide-white/[.06]">{actions.map((item: any, index: number) => <button key={`${item.id}-${index}`} onClick={() => setSelectedAlert(item.sourceType === 'alert' ? item : { ...item, severity: 'warning' })} className="flex w-full items-start gap-3 py-3 text-left transition hover:bg-white/[.03]"><SeverityChip severity={item.severity || 'warning'} /><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-100">{item.message}</div><div className="mt-1 text-xs text-slate-500">{item.event_name || item.vendor || 'tag'} · {item.occurrence_count || 0} observed fires</div></div><span className="whitespace-nowrap text-xs text-slate-500">{timeAgo(item.created_at || item.last_seen)}</span></button>)}</div> : <div className="empty-visual">No prioritized action. Monitoring is collecting evidence.</div>}</div>
+      <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Operator queue" title="Action center" description="Open evidence, not vague health scores." action={<Link href={`/dashboard/health?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Deep health view →</Link>} />{actions.length ? <div className="divide-y divide-white/[.06]">{actions.map((item: any, index: number) => <button key={`${item.id}-${index}`} onClick={() => setSelectedAlert(item.sourceType === 'alert' ? item : { ...item, severity: 'warning' })} className="flex w-full items-start gap-3 py-3 text-left transition hover:bg-white/[.03]"><SeverityChip severity={item.severity || 'warning'} /><div className="min-w-0 flex-1"><div className="text-sm font-medium text-slate-100">{item.message}</div><div className="mt-1 text-xs text-slate-500">{item.event_name || item.vendor || 'tag'} · {item.occurrence_count || 0} observed fires{item.incidentCount > 1 ? ` · ${item.incidentCount} grouped incidents` : ''}</div><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500"><span>Triggered {formatDateTime(item.created_at || item.first_seen || item.last_seen)}</span>{item.last_seen && item.last_seen !== (item.created_at || item.first_seen) ? <span>Last seen {formatDateTime(item.last_seen)}</span> : null}</div></div><span className="whitespace-nowrap text-xs text-slate-500">{timeAgo(item.last_seen || item.created_at)}</span></button>)}</div> : <div className="empty-visual">No prioritized action. Monitoring is collecting evidence.</div>}</div>
       <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Outbound reliability" title="Delivery health" description="Alert channels should be observable end to end." action={<Link href={`/dashboard/integrations?siteId=${siteId}`} className="text-xs font-semibold text-[#8fa8ff]">Manage →</Link>} /><div className="space-y-2">{['slack', 'email', 'webhook'].map((channel) => { const last = deliveries.find((item: any) => item.channel === channel); return <div key={channel} className="flex items-center justify-between border-b border-white/[.06] py-3 last:border-0"><span className="text-sm capitalize text-slate-300">{channel}</span>{last ? <span className={`pill ${last.status === 'delivered' ? 'bg-[#a8f06a]/10 text-[#b9f57e]' : last.status === 'failed' ? 'bg-[#ff718d]/10 text-[#ff9aae]' : 'bg-[#f6b94c]/10 text-[#ffd27a]'}`}>{last.status}</span> : <span className="text-xs text-slate-500">No delivery yet</span>}</div>; })}</div><div className="mt-5 rounded-xl border border-[#6d8cff]/15 bg-[#6d8cff]/[.06] p-3 text-xs leading-5 text-slate-400">Failed deliveries retry with backoff and remain visible here. High-priority tag incidents route in real time; lower-priority evidence rolls into the digest.</div></div>
     </section>
 
@@ -104,5 +104,30 @@ export default function OverviewPage() {
   </div>;
 }
 
+function collapseActionItems(items: any[]) {
+  const grouped = new Map<string, any>();
+  for (const item of items) {
+    const key = `${String(item.event_name || item.vendor || 'signal').trim().toLowerCase()}:${String(item.vendor || '').trim().toLowerCase()}`;
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, { ...item, incidentCount: 1 });
+      continue;
+    }
+    existing.incidentCount += 1;
+    existing.occurrence_count = Math.max(Number(existing.occurrence_count || 0), Number(item.occurrence_count || 0));
+    const existingLast = new Date(existing.last_seen || existing.created_at || 0).getTime();
+    const itemLast = new Date(item.last_seen || item.created_at || 0).getTime();
+    if (itemLast > existingLast) {
+      existing.last_seen = item.last_seen || item.created_at;
+      existing.created_at = item.created_at || item.last_seen;
+      existing.message = item.message || existing.message;
+      existing.raw = item.raw || existing.raw;
+    }
+    const existingFirst = new Date(existing.first_seen || existing.created_at || 0).getTime();
+    const itemFirst = new Date(item.first_seen || item.created_at || 0).getTime();
+    if (itemFirst && (!existingFirst || itemFirst < existingFirst)) existing.first_seen = item.first_seen || item.created_at;
+  }
+  return [...grouped.values()].sort((a, b) => new Date(b.last_seen || b.created_at || 0).getTime() - new Date(a.last_seen || a.created_at || 0).getTime());
+}
 function number(value: unknown) { return Number(value || 0).toLocaleString(); }
 function EmptyState() { return <div className="mx-auto max-w-lg py-20 text-center"><div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-[#6d8cff]/10 text-[#8fa8ff]"><span className="text-2xl">✦</span></div><h2 className="text-xl font-semibold text-white">Add your first site to get started</h2><p className="mt-2 text-sm leading-6 text-slate-400">Connect one GTM monitor tag and see every fire, failure, duplicate, consent decision, and delivery path in one command center.</p><Link href="/dashboard/settings" className="mt-6 inline-flex rounded-xl bg-[#a8f06a] px-5 py-3 text-sm font-semibold text-[#09100a] transition hover:bg-[#c5ff91]">Add a site</Link></div>; }

@@ -28,5 +28,16 @@ describe('Slack and repeated-event regressions', () => {
     expect(page).toContain('Delivery health');
     expect(page).toContain('/api/alert-deliveries');
     expect(page).toContain('Live event pulse');
+    expect(page).toContain('collapseActionItems');
+    expect(page).toContain('Triggered');
+    expect(page).toContain('Last seen');
+  });
+
+  it('keeps fan-out evidence stronger than a duplicate repeat row and guards missing counts', () => {
+    const duplicates = read('app/api/duplicates/route.ts');
+    expect(duplicates).toContain('fanoutEvidenceKeys');
+    expect(duplicates).toContain('Math.max(2, Number(row.occurrence_count) || 0)');
+    expect(duplicates).toContain('first_seen');
+    expect(duplicates).toContain('last_seen');
   });
 });

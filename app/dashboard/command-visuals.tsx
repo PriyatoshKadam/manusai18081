@@ -1,5 +1,7 @@
 'use client';
 
+import { formatTime } from './ui';
+
 function number(value: unknown) {
   return Number(value || 0).toLocaleString();
 }
@@ -41,5 +43,5 @@ export function EventHeatmap({ events }: { events: any[] }) {
 }
 
 export function EvidenceRail({ items }: { items: any[] }) {
-  return <div className="evidence-rail">{items.length ? items.slice(0, 6).map((item, index) => <div className="evidence-rail-item" key={`${item.id || item.event_name}-${index}`}><span className={`evidence-rail-dot ${item.severity === 'critical' ? 'is-critical' : item.sourceType === 'derived_gtm_fanout' ? 'is-violet' : 'is-lime'}`} /><div className="min-w-0 flex-1"><div className="evidence-rail-title">{item.event_name || item.vendor || 'Telemetry signal'}</div><div className="evidence-rail-copy truncate">{item.message || item.root_cause || 'Evidence captured from a real visitor.'}</div></div><span className="evidence-rail-time">{item.occurrence_count || item.count || 1}×</span></div>) : <div className="empty-visual">No active evidence requiring attention.</div>}</div>;
+  return <div className="evidence-rail">{items.length ? items.slice(0, 6).map((item, index) => <div className="evidence-rail-item" key={`${item.id || item.event_name}-${index}`}><span className={`evidence-rail-dot ${item.severity === 'critical' ? 'is-critical' : item.sourceType === 'derived_gtm_fanout' ? 'is-violet' : 'is-lime'}`} /><div className="min-w-0 flex-1"><div className="evidence-rail-title">{item.event_name || item.vendor || 'Telemetry signal'}</div><div className="evidence-rail-copy truncate">{item.message || item.root_cause || 'Evidence captured from a real visitor.'}</div><div className="evidence-rail-copy">Triggered {formatTime(item.created_at || item.first_seen || item.last_seen)}{item.last_seen && item.last_seen !== (item.created_at || item.first_seen) ? ` · last seen ${formatTime(item.last_seen)}` : ''}</div></div><span className="evidence-rail-time">{item.occurrence_count || item.count || 1}×</span></div>) : <div className="empty-visual">No active evidence requiring attention.</div>}</div>;
 }
