@@ -14,7 +14,7 @@
   var g = window.__g4f = window.__g4f || {};
   if (g.__monitorInstalled) return;
   g.__monitorInstalled = true;
-  g.version = '12.2';
+  g.version = '12.3';
   g.k = apiKey;
   g.c = gtmContainerId;
   g.q = g.q || [];

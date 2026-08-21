@@ -100,7 +100,7 @@ describe('GTM Connect helpers', () => {
     const tag = monitorTagPayload({ id: 1, api_key: 'a'.repeat(48) }, 'trigger-1');
     expect(tag.type).toBe('html');
     expect(tag.firingTriggerId).toEqual(['trigger-1']);
-    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?v=12.2&apiKey=');
+    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?v=12.3&apiKey=');
     delete process.env.NEXT_PUBLIC_MONITOR_ORIGIN;
   });
 });
