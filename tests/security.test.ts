@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { isBlockedHostname, isSafeOutboundUrl } from '../lib/outbound';
 import { normalizeTelemetryEvent, redactTelemetryUrl } from '../lib/ingest-validation';
+import { hostnameMatches, telemetryOriginAllowed } from '../lib/telemetry-origin';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -54,6 +55,14 @@ describe('security hardening', () => {
     expect(proxy).toContain('!TELEMETRY_PATHS.has(req.nextUrl.pathname)');
     expect(read('app/api/jobs/route.ts')).toContain('crypto.timingSafeEqual');
     expect(read('app/api/jobs/route.ts')).toContain("Unsupported job");
+  });
+
+  it('accepts explicit app/www sibling hosts for one monitored site without allowing unrelated origins', () => {
+    expect(hostnameMatches('app.mokkup.ai', 'www.mokkup.ai')).toBe(true);
+    expect(hostnameMatches('www.mokkup.ai', 'app.mokkup.ai')).toBe(true);
+    expect(telemetryOriginAllowed('app.mokkup.ai', 'www.mokkup.ai', 'www.mokkup.ai')).toBe(true);
+    expect(telemetryOriginAllowed('evil.mokkup.ai', 'www.mokkup.ai', 'www.mokkup.ai')).toBe(false);
+    expect(telemetryOriginAllowed('app.other.com', 'www.mokkup.ai', 'www.mokkup.ai')).toBe(false);
   });
 
   it('keeps telemetry authentication key-based without origin-header rejection', () => {

@@ -4,6 +4,7 @@ import { query } from '../../../lib/db';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { classifyDeliveryMode } from '../../../lib/delivery';
 import { redactTelemetryUrl } from '../../../lib/ingest-validation';
+import { telemetryOriginAllowed } from '../../../lib/telemetry-origin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,18 +35,13 @@ function vendorsForSignal(method: string, blockedUrl: string) {
   if (/reddit/.test(textValue)) vendors.push('reddit');
   return vendors;
 }
-function hostnameMatches(host: string | null, candidate: string | null) {
-  if (!host || !candidate) return false;
-  const normalized = candidate.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '').split('/')[0];
-  return host === normalized || host.endsWith(`.${normalized}`);
-}
 function requestHost(req: NextRequest) {
   try { const origin = req.headers.get('origin'); const referer = req.headers.get('referer'); return origin ? new URL(origin).hostname.toLowerCase() : referer ? new URL(referer).hostname.toLowerCase() : null; } catch { return null; }
 }
 function allowedOrigin(req: NextRequest, site: { domain: string; first_party_domain: string | null }) {
   const host = requestHost(req);
   if (!host) return true;
-  return hostnameMatches(host, site.domain) || hostnameMatches(host, site.first_party_domain);
+  return telemetryOriginAllowed(host, site.domain, site.first_party_domain);
 }
 function signalConfidence(method: string, signal: string) {
   if (method === 'ga4_event_unmatched' || signal === 'ga4_event_correlation') return 'correlation_gap';
