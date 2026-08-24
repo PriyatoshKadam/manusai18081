@@ -28,7 +28,7 @@ services:
       - key: ALLOW_INSECURE_DEV_AUTH
         value: "false"
       - key: NEXT_PUBLIC_MONITOR_ORIGIN
-        sync: false
+        value: https://monitoring-0jsu.onrender.com
       - key: NEXT_PUBLIC_APP_URL
         sync: false
       - key: GTM_CLIENT_ID

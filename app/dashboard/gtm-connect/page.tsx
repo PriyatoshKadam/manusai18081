@@ -34,8 +34,9 @@ export default function GtmConnectPage() {
   const selectedAccount = accounts.find((item) => item.accountId === accountId);
   const selectedContainer = selectedAccount?.containers.find((item) => item.containerId === containerId);
   const preview = useMemo(() => {
-    const origin = (process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '').replace(/\/$/, '');
-    if (!site || !origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN to preview the monitor tag.';
+    const configuredOrigin = process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '';
+    const origin = (configuredOrigin || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
+    if (!site || !origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service to preview the monitor tag.';
     const url = new URL('/monitor.js', origin);
     url.searchParams.set('apiKey', site.api_key);
     if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', selectedContainer.publicId);
