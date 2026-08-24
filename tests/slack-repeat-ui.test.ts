@@ -41,6 +41,13 @@ describe('Slack and repeated-event regressions', () => {
     expect(detection).not.toContain('raw = $6::jsonb');
   });
 
+  it('does not present naturally repeatable GA4 events as duplicate evidence', () => {
+    const duplicates = read('app/api/duplicates/route.ts');
+    expect(duplicates).toContain("const NATURALLY_REPEATABLE_EVENTS = ['scroll', 'click', 'user_engagement', 'video_progress']");
+    expect(duplicates).toContain("LOWER(COALESCE(event_name, '')) <> ALL($2::text[])");
+    expect(duplicates).toContain('observation_kind = \'network\'');
+  });
+
   it('keeps fan-out evidence stronger than a duplicate repeat row and guards missing counts', () => {
     const duplicates = read('app/api/duplicates/route.ts');
     expect(duplicates).toContain('fanoutEvidenceKeys');

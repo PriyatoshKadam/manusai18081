@@ -3,6 +3,7 @@ import { getSession } from '../../../lib/auth';
 import { query } from '../../../lib/db';
 
 const REPEAT_SENSITIVE_EVENTS = ['login', 'run_audit', 'sign_up', 'purchase', 'begin_checkout', 'generate_lead', 'subscribe'];
+const NATURALLY_REPEATABLE_EVENTS = ['scroll', 'click', 'user_engagement', 'video_progress'];
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -17,9 +18,10 @@ export async function GET(req: NextRequest) {
       `SELECT id, event_name, vendor, category, code, message, root_cause, fix_steps, raw, occurrence_count, distinct_pushes, page_url, created_at
          FROM alerts WHERE site_id = $1 AND category IN ('analytics','gtm') AND resolved = false
            AND code IN ('duplicate_event','duplicate_network_request','gtm_multiple_tags_or_triggers','gtm_gtm_and_direct_implementation','gtm_datalayer_duplicate_push')
+           AND LOWER(COALESCE(event_name, '')) <> ALL($2::text[])
            AND created_at > NOW() - INTERVAL '24 hours'
          ORDER BY created_at DESC LIMIT 100`,
-      [siteId],
+      [siteId, NATURALLY_REPEATABLE_EVENTS],
     ),
     query(
       `SELECT event_name, vendor, page_url, session_id, request_signature,
@@ -32,6 +34,7 @@ export async function GET(req: NextRequest) {
         WHERE site_id = $1
           AND vendor = 'ga4'
           AND observation_kind = 'network'
+          AND LOWER(COALESCE(event_name, '')) <> ALL($2::text[])
           AND request_signature IS NOT NULL
           AND session_id IS NOT NULL
           AND received_at > NOW() - INTERVAL '24 hours'
@@ -39,7 +42,7 @@ export async function GET(req: NextRequest) {
        HAVING COUNT(*) > 1
         ORDER BY last_seen DESC
         LIMIT 100`,
-      [siteId],
+      [siteId, NATURALLY_REPEATABLE_EVENTS],
     ),
     query(
       `SELECT event_name, vendor, page_url, session_id, occurrence_id,
@@ -94,7 +97,13 @@ export async function GET(req: NextRequest) {
     ),
   ]);
 
-  const alerts = alertRows.rows.map((row: any) => ({
+  const alerts = alertRows.rows.filter((row: any) => {
+    if (row.code !== 'gtm_multiple_tags_or_triggers') return true;
+    const raw = typeof row.raw === 'string' ? (() => { try { return JSON.parse(row.raw); } catch { return {}; } })() : row.raw || {};
+    const observed = Number(raw.networkCount || raw.occurrenceCount || row.occurrence_count || 0);
+    const evidenceCount = Array.isArray(raw.eventIds) ? raw.eventIds.length : [raw.eventId, raw.duplicateOf].filter(Boolean).length;
+    return observed >= 2 && evidenceCount >= 2;
+  }).map((row: any) => ({
     ...row,
     first_seen: row.created_at,
     last_seen: row.last_seen || row.created_at,
@@ -143,7 +152,7 @@ export async function GET(req: NextRequest) {
     duplicateKey: `repeat:${row.session_id}:${row.event_name}:${row.occurrence_id || row.page_url || ''}`,
   }));
 
-  const derivedFanout = fanoutRows.rows.map((row: any) => ({
+  const derivedFanout = fanoutRows.rows.filter((row: any) => Number(row.network_count) >= 2 && Array.isArray(row.event_ids) && row.event_ids.length >= 2).map((row: any) => ({
     id: `fanout-${row.event_ids?.[0] || row.last_seen}`,
     event_name: row.event_name,
     vendor: row.vendor,
