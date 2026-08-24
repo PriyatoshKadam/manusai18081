@@ -15,6 +15,7 @@ export default function GtmConnectPage() {
   const status = search.get('gtm');
   const oauthReason = search.get('gtm_reason');
   const [sites, setSites] = useState<Site[]>([]);
+  const [selectedSiteId, setSelectedSiteId] = useState(siteId);
   const [connected, setConnected] = useState(false);
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -30,13 +31,14 @@ export default function GtmConnectPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [installation, setInstallation] = useState<Installation | null>(null);
-  const site = sites.find((item) => String(item.id) === String(siteId)) || sites[0];
+  const site = sites.find((item) => String(item.id) === String(selectedSiteId)) || sites[0];
   const selectedAccount = accounts.find((item) => item.accountId === accountId);
   const selectedContainer = selectedAccount?.containers.find((item) => item.containerId === containerId);
   const preview = useMemo(() => {
     const configuredOrigin = process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '';
     const origin = (configuredOrigin || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
-    if (!site || !origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service to preview the monitor tag.';
+    if (!site) return 'Create a monitored site in GAfix before generating the monitor tag preview.';
+    if (!origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service to preview the monitor tag.';
     const url = new URL('/monitor.js', origin);
     url.searchParams.set('apiKey', site.api_key);
     if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', selectedContainer.publicId);
@@ -63,7 +65,7 @@ export default function GtmConnectPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json()).then((data) => { if (!cancelled) setSites(data.sites || []); }).catch(() => undefined);
+    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { setSites(data.sites || []); setSelectedSiteId((current) => current || String(data.sites?.[0]?.id || '')); } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
     loadContainers();
     if (status === 'connected') setNotice('Google Tag Manager is connected. Select a container to continue.');
     if (status === 'not_configured') setError('GTM Connect is not enabled on this deployment yet. The GAfix owner must add the Google OAuth settings once in Render; customers do not need to create backend settings for their own connection.');
@@ -153,7 +155,7 @@ export default function GtmConnectPage() {
       <section className="card p-5 space-y-4">
         <div className="flex items-center justify-between gap-4"><div><h3 className="font-semibold text-ink-950">2. Select a container</h3><p className="text-sm text-ink-500 mt-1">Choose the container that already loads on the selected site.</p></div><button onClick={loadContainers} disabled={loadingContainers || !connected} className="text-sm text-brand-600 hover:text-brand-800 disabled:text-ink-300">{loadingContainers ? 'Loading…' : 'Refresh containers'}</button></div>
         <div className="grid gap-4 md:grid-cols-2">
-          <label className="text-sm text-ink-700">Monitored site<select value={String(site?.id || '')} disabled className="mt-1 w-full rounded-lg border border-ink-200 bg-ink-50 px-3 py-2 text-sm"><option>{site?.domain || 'No site selected'}</option></select></label>
+          <label className="text-sm text-ink-700">Monitored site<select value={String(site?.id || '')} onChange={(event) => setSelectedSiteId(event.target.value)} disabled={!sites.length} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">{sites.length ? 'Select a site' : 'No sites available'}</option>{sites.map((item) => <option key={item.id} value={item.id}>{item.domain}</option>)}</select></label>
           <label className="text-sm text-ink-700">GTM account<select value={accountId} onChange={(event) => setAccountId(event.target.value)} disabled={!connected || loadingContainers} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">Select an account</option>{accounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.name} ({account.accountId})</option>)}</select></label>
           <label className="text-sm text-ink-700 md:col-span-2">GTM container<select value={containerId} onChange={(event) => setContainerId(event.target.value)} disabled={!selectedAccount} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">Select a container</option>{selectedAccount?.containers.map((container) => <option key={container.containerId} value={container.containerId}>{container.name}{container.publicId ? ` · ${container.publicId}` : ''}</option>)}</select></label>
         </div>
@@ -165,6 +167,7 @@ export default function GtmConnectPage() {
       <section className="card p-5 space-y-4">
         <div><h3 className="font-semibold text-ink-950">3. Review the monitor tag</h3><p className="text-sm text-ink-500 mt-1">GAfix creates a compact Custom HTML tag with an All Pages trigger. The tag observes real-user network, dataLayer, consent, performance, console, and ad-block evidence.</p></div>
         <pre className="overflow-x-auto rounded-lg bg-ink-950 p-4 text-xs text-green-200">{preview}</pre>
+        {!site && <p className="text-xs text-amber-700">Create a site under GAfix Sites first, then return here to install its monitor.</p>}
         <button onClick={installTag} disabled={!site || !connected || !accountId || !containerId || loading} className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-ink-300">{loading && !installation ? 'Creating workspace…' : 'Add monitor tag to GTM'}</button>
         <p className="text-xs text-ink-400">This action creates a new workspace and does not change the live container.</p>
       </section>
