@@ -48,16 +48,16 @@ Open your Render service (`monitoring-0jsu`) → Settings, and set these:
 
 ### Step 3 — Set environment variables
 
-In Render → Environment, add these (keep your existing `DATABASE_URL`):
+In Render → Environment, add these. Because this deployment uses Supabase, `DATABASE_URL` must be entered as a secret on the Render service; it is not supplied by a Render database resource:
 
 | Key | Value |
 |---|---|
-| `DATABASE_URL` | (already set — leave it) |
+| `DATABASE_URL` | Supabase Postgres connection string; use the session pooler for the web service or the direct connection string when supported by your Supabase project |
 | `NEXT_PUBLIC_APP_URL` | `https://monitoring-0jsu.onrender.com` (your service URL) |
 | `SESSION_SECRET` | Generate a random secret with `openssl rand -base64 32` |
 | `IP_HASH_SECRET` | Generate a separate random secret for keyed IP pseudonymization |
 | `PG_SSL` | `true` |
-| `PG_SSL_REJECT_UNAUTHORIZED` | `false` for Render Postgres when no CA bundle is available; transport remains encrypted, and providing `PG_CA_CERT`/`PG_CA_CERT_PATH` enables verification |
+| `PG_SSL_REJECT_UNAUTHORIZED` | `true` when Supabase provides a trusted CA; use `false` only with an explicit deployment compatibility decision and never for an unknown database endpoint |
 | `NEXT_PUBLIC_MONITOR_ORIGIN` | The host serving `/monitor.js`, `/api/ingest`, and `/api/blocked` |
 | `GTM_CLIENT_ID` | Google Cloud OAuth web-client ID |
 | `GTM_CLIENT_SECRET` | Google Cloud OAuth web-client secret; store it only in Render secrets |
@@ -68,11 +68,17 @@ In Render → Environment, add these (keep your existing `DATABASE_URL`):
 | `ALERT_FROM_EMAIL` | (optional — verified Resend sender) |
 | `CRON_SECRET` | Secret used to authorize background anomaly, revenue, synthetic, and delivery jobs |
 
+### Supabase database setup
+
+Create or open the Supabase project, then go to **Project Settings → Database → Connection string**. Copy a PostgreSQL connection string that is intended for server-side use. For the Render web service, the Supabase **Session pooler** is generally the safest default because it provides a stable server-side connection path. Store the full connection string only in Render as `DATABASE_URL`; never place it in the browser, GitHub, or a `NEXT_PUBLIC_*` variable. If Supabase provides a CA certificate for your selected connection mode, add it as `PG_CA_CERT` or `PG_CA_CERT_PATH` and retain certificate verification.
+
+In Render → **monitoring → Environment**, replace the previous Render-database-linked value with the Supabase connection string and redeploy. The Render Blueprint no longer provisions or links a Render PostgreSQL database. The migration is idempotent and retries transient database connection failures, but a wrong host, password, project reference, or paused Supabase project still requires correcting `DATABASE_URL`.
+
 ### GTM Connect setup
 
 GA4Fix now includes a **Connect GTM** page under Dashboard → Setup. To enable it, create or select a Google Cloud project, enable the Tag Manager API, configure an OAuth consent screen, and create a Web application OAuth client. Register the exact production redirect URI shown above. The consent screen should explain that GA4Fix reads and edits the selected GTM container and can publish a container version after the customer confirms the action. Google’s documented scopes used by this integration are `tagmanager.readonly`, `tagmanager.edit.containers`, `tagmanager.edit.containerversions`, and `tagmanager.publish`.
 
-The migration uses the same PostgreSQL TLS configuration as the application pool. It removes `sslmode` and related SSL parameters from the connection string before passing an explicit `ssl` object to `node-postgres`; this prevents the connection string from silently replacing the CA or verification settings. Render Postgres is detected by hostname, and an existing deployment with `PG_SSL=true` also enters the compatibility mode even if its Blueprint environment variables were not synchronized. If no CA bundle is provided, the deployment uses encrypted TLS with certificate-chain tolerance to accommodate a self-signed certificate. If Render provides a CA bundle for the database, set `PG_CA_CERT` or `PG_CA_CERT_PATH` and remove the override so certificate verification remains enabled.
+The migration uses the same PostgreSQL TLS configuration as the application pool. It removes `sslmode` and related SSL parameters from the connection string before passing an explicit `ssl` object to `node-postgres`. Supabase hosts are recognized as TLS endpoints, and the migration retries transient connection startup, timeout, DNS, and capacity errors with bounded backoff. Use the Supabase session pooler connection string for the long-running Render web service; do not use a browser-side Supabase key as `DATABASE_URL`. If you provide the Supabase CA certificate, set `PG_CA_CERT` or `PG_CA_CERT_PATH` and keep certificate verification enabled.
 
 After the customer clicks **Connect Google account**, GA4Fix lists the accounts and containers available to that Google identity. **Add monitor tag to GTM** creates a new reviewable workspace with a Custom HTML tag and All Pages trigger; it does not change the live container. The separate **Publish container** action creates a version and publishes it only after an in-product confirmation. Customers can open the workspace in GTM and review the version history before publishing.
 

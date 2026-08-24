@@ -41,6 +41,34 @@ describe('PostgreSQL TLS options', () => {
     }
   });
 
+  it('uses TLS for Supabase direct and pooler hosts by default', () => {
+    const original = {
+      pgSsl: process.env.PG_SSL,
+      reject: process.env.PG_SSL_REJECT_UNAUTHORIZED,
+      nodeEnv: process.env.NODE_ENV,
+      renderAllow: process.env.ALLOW_RENDER_SELF_SIGNED_TLS,
+      devAllow: process.env.ALLOW_INSECURE_DB_TLS,
+    };
+    try {
+      delete process.env.PG_SSL;
+      delete process.env.PG_SSL_REJECT_UNAUTHORIZED;
+      delete process.env.ALLOW_RENDER_SELF_SIGNED_TLS;
+      delete process.env.ALLOW_INSECURE_DB_TLS;
+      process.env.NODE_ENV = 'production';
+      const direct = getPostgresOptions('postgresql://user:pass@db.project-ref.supabase.co/postgres?sslmode=require');
+      const pooler = getPostgresOptions('postgresql://user.project-ref:pass@aws-0-us-east-1.pooler.supabase.com:5432/postgres');
+      expect(direct.ssl).toMatchObject({ rejectUnauthorized: true });
+      expect(pooler.ssl).toMatchObject({ rejectUnauthorized: true });
+      expect(pooler.connectionString).not.toContain('sslmode');
+    } finally {
+      if (original.pgSsl === undefined) delete process.env.PG_SSL; else process.env.PG_SSL = original.pgSsl;
+      if (original.reject === undefined) delete process.env.PG_SSL_REJECT_UNAUTHORIZED; else process.env.PG_SSL_REJECT_UNAUTHORIZED = original.reject;
+      if (original.nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = original.nodeEnv;
+      if (original.renderAllow === undefined) delete process.env.ALLOW_RENDER_SELF_SIGNED_TLS; else process.env.ALLOW_RENDER_SELF_SIGNED_TLS = original.renderAllow;
+      if (original.devAllow === undefined) delete process.env.ALLOW_INSECURE_DB_TLS; else process.env.ALLOW_INSECURE_DB_TLS = original.devAllow;
+    }
+  });
+
   it('lets explicit true or a CA bundle restore certificate verification', () => {
     const original = {
       pgSsl: process.env.PG_SSL,

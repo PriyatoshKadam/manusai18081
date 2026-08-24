@@ -14,6 +14,15 @@ function isRenderHost(url) {
   }
 }
 
+function isSupabaseHost(url) {
+  try {
+    const hostname = new URL(url).hostname;
+    return /(^|\.)supabase\.co$/i.test(hostname) || /(^|\.)pooler\.supabase\.com$/i.test(hostname);
+  } catch {
+    return false;
+  }
+}
+
 function withoutSslConnectionOptions(url) {
   try {
     const parsed = new URL(url);
@@ -25,7 +34,7 @@ function withoutSslConnectionOptions(url) {
 }
 
 function getPostgresOptions(url) {
-  const wantsTls = url.includes('render.com') || url.includes('sslmode=require') || process.env.PG_SSL === 'true';
+  const wantsTls = isRenderHost(url) || isSupabaseHost(url) || url.includes('sslmode=require') || process.env.PG_SSL === 'true';
   if (!wantsTls) return { connectionString: url, ssl: false };
 
   const ca = readCa();
