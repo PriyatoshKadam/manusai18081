@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '../../../lib/auth';
 import { query } from '../../../lib/db';
+import { INTERNAL_CORRELATION_NOISE_SQL } from '../../../lib/adblock-evidence';
 
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
 const displayName = `(CASE WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', '')) ELSE event_name END)`;
@@ -15,12 +16,13 @@ export async function GET(req: NextRequest) {
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  const noiseFilter = `NOT ${INTERNAL_CORRELATION_NOISE_SQL}`;
   const stats = await query(
     `SELECT
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '1 hour') AS events_hour,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false) AS active_alerts,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false AND severity = 'critical') AS critical_alerts,
-       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND NOT (confidence = 'correlation_gap' AND detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
+       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS events_24h`,
     [siteId],
   );
@@ -62,7 +64,7 @@ export async function GET(req: NextRequest) {
   const blockedFlow = await query(
     `SELECT COALESCE(NULLIF(delivery_mode, ''), 'unknown') AS delivery_mode, COUNT(*)::int AS blocked
        FROM adblock_events
-      WHERE site_id = $1 AND NOT (confidence = 'correlation_gap' AND detection_method = 'ga4_event_unmatched' AND (event_name ILIKE 'gtm.%' OR event_name ILIKE 'termly.%' OR event_name = 'userPrefUpdate')) AND detected_at > NOW() - INTERVAL '24 hours'
+      WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours'
       GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')`,
     [siteId],
   );

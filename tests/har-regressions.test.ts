@@ -8,6 +8,7 @@ const duplicateRoute = fs.readFileSync('app/api/duplicates/route.ts', 'utf8');
 const schema = fs.readFileSync('db/schema.sql', 'utf8');
 const nextConfig = fs.readFileSync('next.config.js', 'utf8');
 const adblockRoute = fs.readFileSync('app/api/adblock/route.ts', 'utf8');
+const adblockEvidence = fs.readFileSync('lib/adblock-evidence.ts', 'utf8');
 
  describe('HAR regression protections', () => {
   it('flushes queued telemetry during page exit and uses correlation-gap signals', () => {
@@ -31,9 +32,10 @@ const adblockRoute = fs.readFileSync('app/api/adblock/route.ts', 'utf8');
   });
 
   it('does not surface GTM and consent lifecycle noise as ad-blocker detections', () => {
-    expect(adblockRoute).toContain("event_name ILIKE 'gtm.%'");
-    expect(adblockRoute).toContain("event_name ILIKE 'termly.%'");
-    expect(adblockRoute).toContain("event_name = 'userPrefUpdate'");
+    expect(adblockRoute).toContain('INTERNAL_CORRELATION_NOISE_SQL');
+    expect(adblockEvidence).toContain("event_name ILIKE 'gtm.%'");
+    expect(adblockEvidence).toContain("event_name ILIKE 'termly.%'");
+    expect(adblockEvidence).toContain("userprefupdate");
   });
 
   it('keeps malformed vendor observations from invalidating the entire ingest batch', () => {
