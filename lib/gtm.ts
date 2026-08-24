@@ -78,8 +78,11 @@ export async function exchangeCode(code: string, requestUrl?: string) {
   if (!redirectUri) throw new Error('GTM redirect URI is invalid');
   const body = new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' });
   const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
-  const payload = await response.json();
-  if (!response.ok || !payload.access_token) throw new Error(payload.error_description || 'Google did not return an access token');
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.access_token) {
+    const providerCode = typeof payload.error === 'string' ? payload.error.replace(/[^a-z0-9_-]/gi, '').slice(0, 80) : 'unknown_provider_error';
+    throw new Error(`Google token exchange failed (${providerCode})`);
+  }
   return payload as { refresh_token?: string; access_token: string; expires_in?: number };
 }
 

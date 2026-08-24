@@ -55,11 +55,12 @@ export async function GET(req: NextRequest) {
     return redirect(req, 'connected');
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Google OAuth callback failed';
-    const reason = /redirect_uri_mismatch|redirect URI/i.test(message) ? 'redirect_uri_mismatch'
-      : /invalid_client|unauthorized_client|client authentication/i.test(message) ? 'invalid_client'
-        : /invalid_grant|expired|revoked/i.test(message) ? 'invalid_grant'
-          : /refresh token/i.test(message) ? 'refresh_token'
-            : 'token_exchange';
+    const reason = /GTM_CLIENT_ID|GTM_CLIENT_SECRET|GTM redirect URI|GTM OAuth credentials/i.test(message) ? 'missing_config'
+      : /redirect_uri_mismatch|redirect URI/i.test(message) ? 'redirect_uri_mismatch'
+        : /invalid_client|unauthorized_client|client authentication/i.test(message) ? 'invalid_client'
+            : /invalid_grant|expired|revoked/i.test(message) ? 'invalid_grant'
+            : /refresh token/i.test(message) ? 'refresh_token'
+              : 'token_exchange';
     console.error('GTM OAuth callback error:', reason);
     return redirect(req, 'error', reason);
   }
