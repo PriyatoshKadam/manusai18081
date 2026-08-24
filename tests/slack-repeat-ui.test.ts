@@ -15,8 +15,8 @@ describe('Slack and repeated-event regressions', () => {
     const detection = read('lib/detection.ts');
     const duplicates = read('app/api/duplicates/route.ts');
     expect(detection).toContain("'run_audit'");
-    expect(detection).toContain('occurrence_count = COALESCE(occurrence_count, 1) + 1');
-    expect(detection).toContain('last_seen = NOW()');
+    expect(detection).toContain('occurrence_count=COALESCE(occurrence_count,1)+1');
+    expect(detection).toContain('last_seen=NOW()');
     expect(duplicates).toContain("'run_audit'");
     expect(duplicates).toContain('occurrence_id');
     expect(duplicates).toContain('occurrence_count > 1');
@@ -35,9 +35,9 @@ describe('Slack and repeated-event regressions', () => {
 
   it('keeps detection SQL parameters type-stable for alert upserts', () => {
     const detection = read('lib/detection.ts');
-    expect(detection).toContain('raw = $5::jsonb');
+    expect(detection).toContain('raw=$5::jsonb');
     expect(detection).toContain('COALESCE($4::text,\'\')');
-    expect(detection).toContain('($6::int * INTERVAL');
+    expect(detection).toContain('($6::int*INTERVAL');
     expect(detection).not.toContain('raw = $6::jsonb');
   });
 
