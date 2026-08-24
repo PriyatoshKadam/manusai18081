@@ -9,10 +9,12 @@ describe('GTM inventory correlation', () => {
     tags: [
       { tagId: '1', name: 'GA4 Login Tag', type: 'gaawe', firingTriggerId: ['10'], parameter: [{ key: 'eventName', value: 'login' }, { key: 'measurementId', value: 'G-TEST' }] },
       { tagId: '2', name: 'Google Ads Signup', type: 'awct', firingTriggerId: ['11'], parameter: [{ key: 'conversionId', value: 'AW-123' }, { key: 'conversionLabel', value: 'SignupLabel' }] },
+      { tagId: '3', name: 'Google Ads Remarketing', type: 'sp', firingTriggerId: ['12'], parameter: [{ key: 'conversionId', value: '11078102743' }] },
     ],
     triggers: [
       { triggerId: '10', name: 'Login event', type: 'customEvent' },
       { triggerId: '11', name: 'Signup event', type: 'customEvent' },
+      { triggerId: '12', name: 'All Pages', type: 'pageview' },
     ],
   });
 
@@ -43,6 +45,15 @@ describe('GTM inventory correlation', () => {
   it('checks required purchase and Google Ads conversion parameters from request data', () => {
     expect(parameterHealth('ga4', 'purchase', { value: 10 }, null)).toMatchObject({ parameterStatus: 'missing', missingParameters: ['currency', 'transaction_id'] });
     expect(parameterHealth('gads', 'conversion', { tid: 'AW-123' }, 'https://www.googleadservices.com/pagead/conversion/AW-123/')).toMatchObject({ parameterStatus: 'missing', missingParameters: ['conversion_label'] });
+    expect(parameterHealth('gads', 'conversion', {}, 'https://www.googleadservices.com/pagead/conversion/11078102743/?label=Dk4NCNjuisQcENfduaIp&en=conversion')).toMatchObject({ parameterStatus: 'complete', missingParameters: [], observedParameters: ['conversion_id', 'label'] });
+    expect(parameterHealth('gads', 'gtag.config', {}, 'https://googleads.g.doubleclick.net/pagead/viewthroughconversion/11078102743/?en=gtag.config')).toMatchObject({ parameterStatus: 'not_applicable', missingParameters: [] });
     expect(parameterHealth('gads', 'page_view', {}, null).parameterStatus).toBe('not_applicable');
+  });
+
+  it('matches the Google Ads Remarketing tag for view-through configuration requests', () => {
+    const result = correlateEventWithGtm({ vendor: 'gads', eventName: 'gtag.config', rawUrl: 'https://googleads.g.doubleclick.net/pagead/viewthroughconversion/11078102743/?en=gtag.config' }, inventory);
+    expect(result.tagName).toBe('Google Ads Remarketing');
+    expect(result.triggerName).toBe('All Pages');
+    expect(result.confidence).toBe('configuration_match');
   });
 });

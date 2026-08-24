@@ -150,6 +150,17 @@ function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'other' {
   return 'other';
 }
 
+function googleAdsPathConversionId(rawUrl: string | null): string | null {
+  if (!rawUrl) return null;
+  try {
+    const pathname = new URL(rawUrl).pathname;
+    const match = pathname.match(/\/pagead\/(?:conversion|viewthroughconversion)\/([^/]+)/i);
+    return match?.[1] ? decodeURIComponent(match[1]).trim() || null : null;
+  } catch {
+    return null;
+  }
+}
+
 function eventValue(event: Record<string, unknown>, names: string[]) {
   const params = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
   for (const name of names) {
@@ -169,9 +180,13 @@ export function parameterHealth(vendor: string, eventName: string | null, params
   try {
     if (rawUrl) for (const [key, value] of new URL(rawUrl).searchParams.entries()) if (value) values.set(normalized(key), value);
   } catch {}
+  const pathConversionId = googleAdsPathConversionId(rawUrl);
+  if (pathConversionId) values.set('conversion_id', pathConversionId);
   const normalizedVendor = normalized(vendor);
   const name = normalized(eventName);
-  const gadsConversion = normalizedVendor === 'gads' && /conversion|purchase|sign[_ -]?up|lead|submit|viewthroughconversion/i.test(`${name} ${rawUrl || ''}`);
+  const requestText = `${name} ${normalized(rawUrl)}`;
+  const isRemarketingBeacon = normalizedVendor === 'gads' && /viewthroughconversion|en=gtag\.config|gtag\.config/.test(requestText);
+  const gadsConversion = normalizedVendor === 'gads' && !isRemarketingBeacon && /(?:^|[^a-z])conversion|purchase|sign[_ -]?up|lead|submit/i.test(requestText);
   const required = gadsConversion
     ? [['conversion_id', 'google_conversion_id', 'tid'], ['conversion_label', 'google_conversion_label', 'label', 'send_to']]
     : normalizedVendor === 'ga4' && name === 'purchase'
@@ -195,13 +210,16 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
   const eventName = normalized(event.eventName);
   const eventParams = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
   const measurementId = normalized(event.measurementId || eventParams.tid || eventParams.measurement_id);
-  const conversionId = normalized(eventParams.conversion_id || eventParams.google_conversion_id || eventParams.tid);
+  const conversionId = normalized(eventParams.conversion_id || eventParams.google_conversion_id || eventParams.tid || googleAdsPathConversionId(stringValue(event.rawUrl, 2048)));
   const conversionLabel = normalized(eventParams.conversion_label || eventParams.google_conversion_label || eventParams.label);
   const candidates = inventory.tags.map((tag) => {
     let score = 0;
     const tagType = tagVendor(tag);
     if (tagType === vendor) score += 4;
     else if (tagType !== 'other') return { tag, score: -1 };
+    const isRemarketingRequest = vendor === 'gads' && /viewthroughconversion|en=gtag\.config|gtag\.config/.test(`${eventName} ${normalized(stringValue(event.rawUrl, 2048))}`);
+    if (isRemarketingRequest && normalized(tag.type) === 'sp') score += 6;
+    if (isRemarketingRequest && normalized(tag.type) !== 'sp') return { tag, score: -1 };
     if (eventName && containsEventName(tag.eventName, eventName)) score += 5;
     if (vendor === 'ga4' && measurementId && normalized(tag.measurementId) === measurementId) score += 3;
     if (vendor === 'gads' && conversionId && normalized(tag.conversionId) === conversionId) score += 4;
