@@ -21,6 +21,8 @@ services:
         value: "true"
       - key: PG_CA_CERT
         sync: false
+      - key: PG_CA_CERT_PATH
+        sync: false
       - key: ALLOW_RENDER_SELF_SIGNED_TLS
         value: "false"
       - key: ALLOW_INSECURE_DB_TLS
