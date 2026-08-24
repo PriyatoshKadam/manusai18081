@@ -55,15 +55,32 @@ export async function getSession(): Promise<{ uid: number; email: string } | nul
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE)?.value;
   if (!token) return null;
+
   try {
     const { payload } = await jwtVerify(token, getSecret(), {
       issuer: 'ga4fix',
       audience: 'ga4fix-app',
     });
-    const uid = Number(payload.uid);
-    const email = typeof payload.email === 'string' ? payload.email : '';
-    if (!Number.isSafeInteger(uid) || uid <= 0 || !email) return null;
-    return { uid, email };
+
+    const tokenUid = Number(payload.uid);
+    const email = typeof payload.email === 'string' ? payload.email.trim().toLowerCase() : '';
+    if (!Number.isSafeInteger(tokenUid) || tokenUid <= 0 || !email) return null;
+
+    // The JWT can outlive a database migration. Never trust its numeric uid
+    // as the foreign-key owner without checking the current database.
+    // Resolve the user by email so a restored/migrated database with different
+    // BIGSERIAL ids does not produce orphaned site rows or FK violations.
+    const result = await query<{ id: number; email: string }>(
+      'SELECT id, email FROM users WHERE email = $1 LIMIT 1',
+      [email],
+    );
+    const user = result.rows[0];
+    if (!user) return null;
+
+    const currentUid = Number(user.id);
+    if (!Number.isSafeInteger(currentUid) || currentUid <= 0) return null;
+
+    return { uid: currentUid, email: user.email };
   } catch {
     return null;
   }
