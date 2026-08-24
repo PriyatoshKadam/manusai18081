@@ -58,10 +58,14 @@ export async function GET(req: NextRequest) {
     const reason = /GTM_CLIENT_ID|GTM_CLIENT_SECRET|GTM redirect URI|GTM OAuth credentials/i.test(message) ? 'missing_config'
       : /redirect_uri_mismatch|redirect URI/i.test(message) ? 'redirect_uri_mismatch'
         : /invalid_client|unauthorized_client|client authentication/i.test(message) ? 'invalid_client'
-            : /invalid_grant|expired|revoked/i.test(message) ? 'invalid_grant'
+          : /invalid_grant|expired|revoked/i.test(message) ? 'invalid_grant'
             : /refresh token/i.test(message) ? 'refresh_token'
-              : 'token_exchange';
-    console.error('GTM OAuth callback error:', reason);
+              : /access_denied|consent/i.test(message) ? 'denied'
+                : /userinfo|Google account information|invalid_token/i.test(message) ? 'google_account'
+                  : /relation .* does not exist|database|constraint|235\d{3}/i.test(message) ? 'database'
+                    : 'token_exchange';
+    const safeDetail = message.replace(/https?:\/\/[^\s]+/gi, '[url]').replace(/\b[A-Za-z0-9_-]{20,}\b/g, '[redacted]').slice(0, 180);
+    console.error('GTM OAuth callback error:', reason, safeDetail);
     return redirect(req, 'error', reason);
   }
 }
