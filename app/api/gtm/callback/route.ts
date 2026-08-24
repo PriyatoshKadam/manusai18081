@@ -8,10 +8,11 @@ import { query } from '../../../../lib/db';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function redirect(req: NextRequest, status: string) {
+function redirect(req: NextRequest, status: string, reason?: string) {
   const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || req.url;
   const url = new URL('/dashboard/gtm-connect', base);
   url.searchParams.set('gtm', status);
+  if (reason) url.searchParams.set('gtm_reason', reason);
   return NextResponse.redirect(url);
 }
 
@@ -38,7 +39,11 @@ export async function GET(req: NextRequest) {
     const accessToken = tokenResponse.access_token;
     if (!accessToken) throw new Error('Google did not return an access token');
     const identity = await googleUserInfo(accessToken);
-    const encryptedRefreshToken = encryptSecret(tokenResponse.refresh_token);
+    const existing = await query('SELECT refresh_token_encrypted FROM gtm_connections WHERE user_id = $1 LIMIT 1', [session.uid]);
+    const encryptedRefreshToken = tokenResponse.refresh_token
+      ? encryptSecret(tokenResponse.refresh_token)
+      : existing.rows[0]?.refresh_token_encrypted;
+    if (!encryptedRefreshToken) throw new Error('Google did not return a refresh token. Revoke the existing GAfix permission and connect again.');
     await query(
       `INSERT INTO gtm_connections (user_id, google_email, refresh_token_encrypted, scope)
        VALUES ($1, $2, $3, $4)
@@ -49,7 +54,13 @@ export async function GET(req: NextRequest) {
     );
     return redirect(req, 'connected');
   } catch (error) {
-    console.error('GTM OAuth callback error:', error);
-    return redirect(req, 'error');
+    const message = error instanceof Error ? error.message : 'Google OAuth callback failed';
+    const reason = /redirect_uri_mismatch|redirect URI/i.test(message) ? 'redirect_uri_mismatch'
+      : /invalid_client|unauthorized_client|client authentication/i.test(message) ? 'invalid_client'
+        : /invalid_grant|expired|revoked/i.test(message) ? 'invalid_grant'
+          : /refresh token/i.test(message) ? 'refresh_token'
+            : 'token_exchange';
+    console.error('GTM OAuth callback error:', reason);
+    return redirect(req, 'error', reason);
   }
 }

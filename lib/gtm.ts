@@ -79,8 +79,8 @@ export async function exchangeCode(code: string, requestUrl?: string) {
   const body = new URLSearchParams({ code, client_id: clientId, client_secret: clientSecret, redirect_uri: redirectUri, grant_type: 'authorization_code' });
   const response = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
   const payload = await response.json();
-  if (!response.ok || !payload.refresh_token) throw new Error(payload.error_description || 'Google did not return a refresh token');
-  return payload as { refresh_token: string; access_token?: string; expires_in?: number };
+  if (!response.ok || !payload.access_token) throw new Error(payload.error_description || 'Google did not return an access token');
+  return payload as { refresh_token?: string; access_token: string; expires_in?: number };
 }
 
 async function refreshAccessToken(refreshToken: string) {

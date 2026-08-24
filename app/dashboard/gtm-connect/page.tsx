@@ -13,6 +13,7 @@ export default function GtmConnectPage() {
   const search = useSearchParams();
   const siteId = search.get('siteId') || '';
   const status = search.get('gtm');
+  const oauthReason = search.get('gtm_reason');
   const [sites, setSites] = useState<Site[]>([]);
   const [connected, setConnected] = useState(false);
   const [googleEmail, setGoogleEmail] = useState<string | null>(null);
@@ -67,7 +68,7 @@ export default function GtmConnectPage() {
     if (status === 'not_configured') setError('GTM Connect is not enabled on this deployment yet. The GAfix owner must add the Google OAuth settings once in Render; customers do not need to create backend settings for their own connection.');
     if (status === 'denied') setError('Google authorization was cancelled.');
     if (status === 'invalid_state') setError('The Google authorization session expired. Please try again.');
-    if (status === 'error') setError('Google authorization could not be completed. Check the deployment OAuth settings.');
+    if (status === 'error') setError(oauthReason === 'redirect_uri_mismatch' ? 'Google rejected the callback URL. Make sure Google Cloud and Render both use https://monitoring-0jsu.onrender.com/api/gtm/callback exactly.' : oauthReason === 'invalid_client' ? 'Google rejected the OAuth client credentials. Verify that GTM_CLIENT_ID and GTM_CLIENT_SECRET belong to the same Google Cloud Web application, then redeploy Render.' : oauthReason === 'invalid_grant' ? 'Google authorization has expired or been revoked. Remove GAfix from Google account permissions and connect again.' : oauthReason === 'refresh_token' ? 'Google did not provide a refresh token. Remove GAfix from Google account permissions and connect again with consent enabled.' : 'Google authorization could not be completed. Verify the deployed OAuth settings and try again.');
     return () => { cancelled = true; };
     // The initial load intentionally runs once for this dashboard page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
