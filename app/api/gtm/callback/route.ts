@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
           : /invalid_grant|expired|revoked/i.test(message) ? 'invalid_grant'
             : /refresh token/i.test(message) ? 'refresh_token'
               : /access_denied|consent/i.test(message) ? 'denied'
-                : /userinfo|Google account information|invalid_token/i.test(message) ? 'google_account'
+                : /userinfo|Google account information|invalid_token|invalid credentials/i.test(message) ? 'google_account'
                   : /relation .* does not exist|database|constraint|235\d{3}/i.test(message) ? 'database'
                     : 'token_exchange';
     const safeDetail = message.replace(/https?:\/\/[^\s]+/gi, '[url]').replace(/\b[A-Za-z0-9_-]{20,}\b/g, '[redacted]').slice(0, 180);

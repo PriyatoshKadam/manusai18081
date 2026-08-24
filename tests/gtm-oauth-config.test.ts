@@ -10,6 +10,8 @@ describe('GTM OAuth configuration guidance', () => {
     expect(route).toContain("redirect.searchParams.set('gtm', 'not_configured')");
     expect(route).toContain('const authorizationUrl = buildGtmAuthorizationUrl');
     expect(helper).toContain("process.env.GTM_CLIENT_ID");
+    expect(helper).toContain("'openid'");
+    expect(helper).toContain("'email'");
     expect(helper).toContain("process.env.GTM_CLIENT_SECRET");
     expect(helper).not.toContain('NEXT_PUBLIC_GTM_CLIENT_SECRET');
   });

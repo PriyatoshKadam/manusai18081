@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import { query } from './db';
 
 export const GTM_SCOPES = [
+  'openid',
+  'email',
   'https://www.googleapis.com/auth/tagmanager.readonly',
   'https://www.googleapis.com/auth/tagmanager.edit.containers',
   'https://www.googleapis.com/auth/tagmanager.edit.containerversions',
