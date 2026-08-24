@@ -35,6 +35,14 @@ export interface ParsedEvent {
   resourceType?: string | null;
   deliveryMode?: 'client_side' | 'server_side' | 'unknown';
   isSynthetic?: boolean;
+  gtmTagId?: string | null;
+  gtmTagName?: string | null;
+  gtmTriggerName?: string | null;
+  gtmWorkspaceId?: string | null;
+  gtmCorrelationConfidence?: string | null;
+  missingParameters?: string[];
+  observedParameters?: string[];
+  parameterStatus?: string | null;
 }
 
 type DuplicateMatch = ParsedEvent & { id: number };
@@ -177,6 +185,28 @@ async function createAlert(input:{siteId:number;severity:string;code:string;cate
 
 function getPurchaseCurrency(params:Record<string,any>){return firstValue(params.currency,params['ep.currency'],params['epn.currency'],params.cu,params.ecommerce?.currency,params.items?.[0]?.currency);}
 function getPurchaseValue(params:Record<string,any>){return firstValue(params.value,params['ep.value'],params['epn.value'],params.ecommerce?.value);}
+async function checkRequiredParameters(event:ParsedEvent){
+  if (event.parameterStatus !== 'missing' || !event.missingParameters?.length) return;
+  const missing = event.missingParameters.slice(0, 10);
+  const tagContext = event.gtmTagName ? ` for GTM tag “${event.gtmTagName}”` : '';
+  const code = event.vendor === 'gads' ? 'gads_missing_parameters' : 'missing_event_parameters';
+  await createAlert({
+    siteId: event.siteId,
+    severity: event.eventName?.trim().toLowerCase() === 'purchase' ? 'critical' : 'warning',
+    code,
+    category: 'analytics',
+    vendor: event.vendor,
+    eventName: event.eventName,
+    message: `${event.vendor.toUpperCase()} ${event.eventName || 'event'} is missing ${missing.join(', ')}${tagContext}.`,
+    rootCause: `The observed request did not contain all required parameters. GTM match confidence is ${event.gtmCorrelationConfidence || 'unmatched'}; this is a payload-quality finding, not proof that the tag failed to fire.`,
+    fixSteps: event.vendor === 'gads'
+      ? ['Open the matched Google Ads tag in GTM and verify conversion ID and conversion label or send_to.', 'Check the request in the browser Network panel and confirm the conversion metadata is present.', 'If the tag is intentionally configured without one field, mark the implementation as not applicable rather than adding a placeholder.']
+      : ['Open the matched GA4 tag in GTM and verify the event parameters.', 'Confirm the parameters are populated before the tag fires.', 'Use DebugView or Tag Assistant to verify the final request payload.'],
+    pageUrl: event.pageUrl || '',
+    raw: { eventId: event.eventId, missingParameters: missing, observedParameters: event.observedParameters || [], gtmTagId: event.gtmTagId || null, gtmTagName: event.gtmTagName || null, gtmTriggerName: event.gtmTriggerName || null, gtmCorrelationConfidence: event.gtmCorrelationConfidence || 'unmatched' },
+    dedupeMinutes: 30,
+  });
+}
 async function checkTransportAndConsent(event:ParsedEvent){
   if(!event.vendor||!['ga4','gads','meta','tiktok','linkedin','snapchat','pinterest'].includes(event.vendor))return;
   if((event.statusCode&&event.statusCode>=400)||event.failureReason){const code=event.statusCode&&event.statusCode>=400?'tag_http_failure':'tag_transport_failure';const reason=event.failureReason||`http_${event.statusCode}`;await createAlert({siteId:event.siteId,severity:event.eventName?.trim().toLowerCase()==='purchase'?'critical':'warning',code,category:'transport',vendor:event.vendor,eventName:event.eventName,message:`${event.vendor} ${event.eventName||'tag'} failed to deliver (${reason}).`,rootCause:'The browser observed a failed analytics transport or an HTTP error response. This is not automatically an ad blocker.',fixSteps:['Check the request URL and response status in the browser Network panel.','Check CSP, consent rules, ad blockers, and vendor endpoint configuration.','Compare the dataLayer push with the network request in GTM Preview or Tag Assistant.'],pageUrl:event.pageUrl||'',raw:{eventId:event.eventId,statusCode:event.statusCode||null,latencyMs:event.latencyMs||null,failureReason:reason,rawUrl:event.rawUrl||null},dedupeMinutes:10});}
@@ -185,4 +215,4 @@ async function checkTransportAndConsent(event:ParsedEvent){
 async function checkPurchase(event:ParsedEvent){if(event.vendor!=='ga4'||event.eventName?.trim().toLowerCase()!=='purchase')return;const currency=getPurchaseCurrency(event.params);const value=getPurchaseValue(event.params);const transactionId=getTransactionId(event.params);if(!currency)await createAlert({siteId:event.siteId,severity:'critical',code:'missing_purchase_currency',vendor:event.vendor,eventName:event.eventName,message:'Purchase event is missing a currency parameter.',rootCause:'GA4 received purchase without currency.',fixSteps:['Send currency with every purchase event.','Use a three-letter ISO 4217 code such as USD, EUR, or INR.','Verify currency is present in GTM and direct-code purchase implementations.'],pageUrl:event.pageUrl,raw:{eventId:event.eventId,transactionId:transactionId||null,value:value||null,params:event.params}});if(!transactionId)await createAlert({siteId:event.siteId,severity:'critical',code:'missing_purchase_transaction_id',vendor:event.vendor,eventName:event.eventName,message:'Purchase event is missing transaction_id.',rootCause:'Without transaction_id, duplicate purchase detection cannot reliably identify the same transaction.',fixSteps:['Send a unique transaction_id with every purchase.','Use the same transaction ID across all purchase implementations.','Do not generate a new transaction_id each time the tag fires.'],pageUrl:event.pageUrl,raw:{eventId:event.eventId,value:value||null,currency:currency||null,params:event.params}});}
 async function checkFirstSeenCustomEvent(event:ParsedEvent){if(event.vendor!=='ga4'||!event.eventName||classifyEvent(event.eventName)!=='custom')return;const result=await query(`INSERT INTO custom_events_seen(site_id,event_name,first_seen,last_seen,count) VALUES($1,$2,NOW(),NOW(),1) ON CONFLICT(site_id,event_name) DO UPDATE SET last_seen=NOW(),count=custom_events_seen.count+1 RETURNING(xmax=0)AS first_seen`,[event.siteId,event.eventName.trim().toLowerCase()]);if(result.rows[0]?.first_seen)await createAlert({siteId:event.siteId,severity:'info',code:'custom_event_detected',category:'analytics',vendor:event.vendor,eventName:event.eventName,message:`Custom GA4 event detected: ${event.eventName}.`,rootCause:'This event is not in GA4\'s automatic/recommended event set; validate the GTM event name and parameters.',fixSteps:['Check the GTM trigger that creates the event.','Confirm the event name is intentional and consistent across SPA routes.','Open DebugView or Tag Assistant to validate parameters.'],pageUrl:event.pageUrl,raw:{source:event.source,observationKind:event.observationKind,params:event.params},dedupeMinutes:60});}
 async function createDuplicateAlert(event:ParsedEvent,evidence:DuplicateEvidence){const duplicate=evidence.previous;const name=event.eventName?.trim().toLowerCase()||'';const samePush=event.dlPushIndex!==null&&duplicate.dlPushIndex!==null&&event.dlPushIndex===duplicate.dlPushIndex;const differentSource=!!event.source&&!!duplicate.source&&event.source!==duplicate.source;const code=samePush?'gtm_multiple_tags_or_triggers':differentSource?'gtm_and_direct_implementation':name==='purchase'?'duplicate_purchase':name==='page_view'?'duplicate_page_view':'duplicate_event';await createAlert({siteId:event.siteId,severity:name==='purchase'||evidence.score>=95?'critical':'warning',code,category:'duplicate',vendor:event.vendor,eventName:event.eventName,message:name==='page_view'?'page_view was delivered more than once for the same navigation occurrence.':`${event.eventName} was delivered more than once for the same logical occurrence.`,rootCause:evidence.rootCause,pageUrl:event.pageUrl,occurrenceCount:2,distinctPushes:event.dlPushIndex!==null&&duplicate.dlPushIndex!==null&&event.dlPushIndex!==duplicate.dlPushIndex?2:1,fixSteps:['Check whether more than one GTM tag or trigger sends this event.','Check direct gtag() or vendor SDK implementations alongside GTM.','For purchase/refund, verify transaction_id is unique and stable.','For custom conversions, add an explicit event_id when the same business action may be retried.','For SPA page views, compare navigation_id and occurrence_id before treating repeated page_view requests as duplicates.'],raw:{confidence:evidence.confidence,score:evidence.score,reason:evidence.reason,eventId:event.eventId,duplicateOf:duplicate.id,sessionId:event.sessionId,occurrenceId:event.occurrenceId,duplicateOccurrenceId:duplicate.occurrenceId,navigationId:event.navigationId,duplicateNavigationId:duplicate.navigationId,dlPushIndex:event.dlPushIndex,duplicateDlPushIndex:duplicate.dlPushIndex,requestSignature:event.requestSignature,transport:event.transport}});}
-export async function runDetection(event:ParsedEvent){try{await checkFirstSeenCustomEvent(event);await checkTransportAndConsent(event);const evidence=await findDuplicateEvidence(event);if(evidence?.confidence==='confirmed')await createDuplicateAlert(event,evidence);await checkPurchase(event);}catch(error){console.error('Detection error:',error);}}
+export async function runDetection(event:ParsedEvent){try{await checkFirstSeenCustomEvent(event);await checkRequiredParameters(event);await checkTransportAndConsent(event);const evidence=await findDuplicateEvidence(event);if(evidence?.confidence==='confirmed')await createDuplicateAlert(event,evidence);await checkPurchase(event);}catch(error){console.error('Detection error:',error);}}

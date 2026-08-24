@@ -26,10 +26,16 @@ export async function GET(req: NextRequest) {
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS events_24h`,
     [siteId],
   );
+  const correlationSelect = `
+              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(gtm_tag_name, '')), NULL) AS gtm_tag_names,
+              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(gtm_trigger_name, '')), NULL) AS gtm_trigger_names,
+              CASE WHEN COUNT(DISTINCT NULLIF(gtm_tag_name, '')) > 1 THEN 'ambiguous' ELSE MAX(NULLIF(gtm_correlation_confidence, '')) END AS gtm_correlation_confidence,
+              ARRAY_AGG(DISTINCT parameter_status) AS parameter_statuses,
+              ARRAY_AGG(DISTINCT missing_parameters) AS missing_parameters,`;
   const eventsQ = vendor
     ? `SELECT ${displayName} AS event_name, event_type, vendor,
               MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
-              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
               COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
@@ -39,7 +45,7 @@ export async function GET(req: NextRequest) {
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
     : `SELECT ${displayName} AS event_name, event_type, vendor,
               MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
-              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
               COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,

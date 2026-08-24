@@ -309,6 +309,29 @@ CREATE TABLE IF NOT EXISTS gtm_installations (
 CREATE INDEX IF NOT EXISTS idx_gtm_installations_user_site
   ON gtm_installations(user_id, site_id, created_at DESC);
 
+-- Versioned, tenant-scoped read-only snapshots of GTM configuration.
+CREATE TABLE IF NOT EXISTS gtm_config_snapshots (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  account_id TEXT NOT NULL,
+  container_id TEXT NOT NULL,
+  container_public_id TEXT,
+  workspace_id TEXT NOT NULL,
+  tags JSONB NOT NULL DEFAULT '[]'::jsonb,
+  triggers JSONB NOT NULL DEFAULT '[]'::jsonb,
+  variables JSONB NOT NULL DEFAULT '[]'::jsonb,
+  fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gtm_snapshots_user_site
+  ON gtm_config_snapshots(user_id, site_id, fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gtm_snapshots_container
+  ON gtm_config_snapshots(site_id, container_id, workspace_id, fetched_at DESC);
+CREATE INDEX IF NOT EXISTS idx_gtm_snapshots_public_container
+  ON gtm_config_snapshots(site_id, container_public_id, fetched_at DESC);
+
 -- Legacy unmatched-event reports are correlation evidence, not confirmed ad blocking.
 UPDATE adblock_events
 SET confidence = CASE
@@ -330,7 +353,15 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS resource_domain TEXT,
   ADD COLUMN IF NOT EXISTS resource_type TEXT,
   ADD COLUMN IF NOT EXISTS delivery_mode TEXT NOT NULL DEFAULT 'unknown',
-  ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS gtm_tag_id TEXT,
+  ADD COLUMN IF NOT EXISTS gtm_tag_name TEXT,
+  ADD COLUMN IF NOT EXISTS gtm_trigger_name TEXT,
+  ADD COLUMN IF NOT EXISTS gtm_workspace_id TEXT,
+  ADD COLUMN IF NOT EXISTS gtm_correlation_confidence TEXT DEFAULT 'unmatched',
+  ADD COLUMN IF NOT EXISTS missing_parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS observed_parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS parameter_status TEXT NOT NULL DEFAULT 'not_applicable';
 
 ALTER TABLE alerts
   ADD COLUMN IF NOT EXISTS confidence TEXT NOT NULL DEFAULT 'confirmed',
@@ -346,6 +377,8 @@ CREATE INDEX IF NOT EXISTS idx_events_site_resource
 
 CREATE INDEX IF NOT EXISTS idx_events_site_delivery
   ON events(site_id, delivery_mode, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_site_gtm_tag
+  ON events(site_id, gtm_tag_id, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_alerts_site_dedupe
   ON alerts(site_id, dedupe_key, created_at DESC);

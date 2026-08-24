@@ -5,6 +5,8 @@ import { assertBodySize, parseIngestBody } from '../../../lib/ingest-validation'
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { recordComplianceEvidence } from '../../../lib/compliance';
 import { classifyDeliveryMode } from '../../../lib/delivery';
+import { correlateEventWithGtm } from '../../../lib/gtm-inventory';
+import type { GtmInventory } from '../../../lib/gtm-inventory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -39,15 +41,34 @@ export async function POST(req: NextRequest) {
     if (!site) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
 
     let processedCount = 0;
+    const inventoryCache = new Map<string, GtmInventory | null>();
     for (const event of body.events) {
       try {
         const deliveryMode = classifyDeliveryMode(event.rawUrl, event.pageUrl, { ...site, appOrigin: process.env.NEXT_PUBLIC_APP_URL || null });
+        let inventory: GtmInventory | null = null;
+        const publicContainerId = event.gtmContainerId?.trim() || '';
+        if (publicContainerId) {
+          if (inventoryCache.has(publicContainerId)) inventory = inventoryCache.get(publicContainerId) || null;
+          else {
+            const snapshot = await query(
+              `SELECT account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at
+                 FROM gtm_config_snapshots
+                WHERE site_id = $1 AND (container_public_id = $2 OR container_id = $2)
+                ORDER BY fetched_at DESC LIMIT 1`,
+              [site.id, publicContainerId],
+            );
+            const row = snapshot.rows[0];
+            inventory = row ? { accountId: row.account_id, containerId: row.container_id, workspaceId: row.workspace_id, fetchedAt: row.fetched_at, tags: row.tags || [], triggers: row.triggers || [], variables: row.variables || [] } : null;
+            inventoryCache.set(publicContainerId, inventory);
+          }
+        }
+        const enrichment = correlateEventWithGtm({ vendor: event.vendor, eventName: event.eventName, params: event.params, rawUrl: event.rawUrl, measurementId: event.params.tid }, inventory);
         const inserted = await query(
           `INSERT INTO events
              (site_id, vendor, event_name, event_type, page_url, client_id, params, raw_url, dl_push_index, source,
               observation_kind, session_id, occurrence_id, network_occurrence_id, request_signature, transport,
-              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, consent_state, web_vitals, revenue_value, revenue_currency, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'observed',$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, consent_state, web_vitals, revenue_value, revenue_currency, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic, gtm_tag_id, gtm_tag_name, gtm_trigger_name, gtm_workspace_id, gtm_correlation_confidence, missing_parameters, observed_parameters, parameter_status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'observed',$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36::jsonb,$37::jsonb,$38)
            RETURNING id, received_at`,
           [
             site.id, event.vendor, event.eventName, classifyEvent(event.eventName, event.vendor), event.pageUrl, event.clientId,
@@ -55,6 +76,7 @@ export async function POST(req: NextRequest) {
             event.sessionId, event.occurrenceId, event.networkOccurrenceId, event.requestSignature, event.transport,
             event.gtmContainerId, event.navigationId, event.statusCode, event.latencyMs, event.failureReason,
             JSON.stringify(event.consentState), JSON.stringify(event.webVitals), event.revenueValue, event.revenueCurrency, event.transactionId, event.resourceDomain, event.resourceType, deliveryMode, event.isSynthetic,
+            enrichment.tagId, enrichment.tagName, enrichment.triggerName, enrichment.workspaceId, enrichment.confidence, JSON.stringify(enrichment.missingParameters), JSON.stringify(enrichment.observedParameters), enrichment.parameterStatus,
           ],
         );
         const dbEvent = inserted.rows[0];
@@ -65,6 +87,7 @@ export async function POST(req: NextRequest) {
           observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId,
           networkOccurrenceId: event.networkOccurrenceId, requestSignature: event.requestSignature, transport: event.transport,
           gtmContainerId: event.gtmContainerId, navigationId: event.navigationId, statusCode: event.statusCode, latencyMs: event.latencyMs, failureReason: event.failureReason, consentState: event.consentState, webVitals: event.webVitals, revenueValue: event.revenueValue, revenueCurrency: event.revenueCurrency, transactionId: event.transactionId, resourceDomain: event.resourceDomain, resourceType: event.resourceType, deliveryMode,
+          gtmTagId: enrichment.tagId, gtmTagName: enrichment.tagName, gtmTriggerName: enrichment.triggerName, gtmWorkspaceId: enrichment.workspaceId, gtmCorrelationConfidence: enrichment.confidence, missingParameters: enrichment.missingParameters, observedParameters: enrichment.observedParameters, parameterStatus: enrichment.parameterStatus,
         };
         void recordComplianceEvidence(parsed, { domain: site.domain, firstPartyDomain: site.first_party_domain });
         await runDetection(parsed);

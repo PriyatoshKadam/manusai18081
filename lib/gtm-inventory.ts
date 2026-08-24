@@ -1,0 +1,226 @@
+export type GtmTagRecord = {
+  tagId: string;
+  name: string;
+  type: string;
+  firingTriggerIds: string[];
+  parameterKeys: string[];
+  eventName: string | null;
+  measurementId: string | null;
+  conversionId: string | null;
+  conversionLabel: string | null;
+  sendTo: string | null;
+};
+
+export type GtmTriggerRecord = {
+  triggerId: string;
+  name: string;
+  type: string;
+  customEventName: string | null;
+};
+
+export type GtmVariableRecord = {
+  variableId: string;
+  name: string;
+  type: string;
+};
+
+export type GtmInventory = {
+  accountId: string;
+  containerId: string;
+  workspaceId: string;
+  fetchedAt: string;
+  tags: GtmTagRecord[];
+  triggers: GtmTriggerRecord[];
+  variables: GtmVariableRecord[];
+};
+
+export type EventEnrichment = {
+  tagId: string | null;
+  tagName: string | null;
+  triggerName: string | null;
+  workspaceId: string | null;
+  confidence: 'configuration_match' | 'likely_match' | 'ambiguous' | 'unmatched';
+  missingParameters: string[];
+  observedParameters: string[];
+  parameterStatus: 'complete' | 'missing' | 'not_applicable';
+};
+
+type RawResource = Record<string, unknown>;
+
+const VALUE_KEYS = new Set(['eventName', 'event_name', 'measurementId', 'measurement_id', 'conversionId', 'conversion_id', 'conversionLabel', 'conversion_label', 'sendTo', 'send_to']);
+const SENSITIVE_KEYS = /html|script|token|secret|key|password|credential|authorization/i;
+
+function stringValue(value: unknown, max = 240): string | null {
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') return null;
+  const result = String(value).trim();
+  return result ? result.slice(0, max) : null;
+}
+
+function safeId(value: unknown): string {
+  return stringValue(value, 100)?.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 100) || '';
+}
+
+function parametersOf(resource: RawResource): RawResource[] {
+  return Array.isArray(resource.parameter) ? resource.parameter.filter((item): item is RawResource => Boolean(item && typeof item === 'object' && !Array.isArray(item))) : [];
+}
+
+function parameterMap(resource: RawResource) {
+  const values: Record<string, string> = {};
+  for (const parameter of parametersOf(resource)) {
+    const key = stringValue(parameter.key, 80);
+    if (!key || SENSITIVE_KEYS.test(key)) continue;
+    const value = stringValue(parameter.value, 240);
+    if (value && VALUE_KEYS.has(key)) values[key] = value;
+  }
+  return values;
+}
+
+function firstValue(values: Record<string, string>, keys: string[]) {
+  for (const key of keys) if (values[key]) return values[key];
+  return null;
+}
+
+export function normalizeGtmTag(resource: RawResource): GtmTagRecord | null {
+  const tagId = safeId(resource.tagId);
+  if (!tagId) return null;
+  const parameters = parametersOf(resource);
+  const parameterKeys = parameters.map((parameter) => stringValue(parameter.key, 80)).filter((value): value is string => Boolean(value && !SENSITIVE_KEYS.test(value))).slice(0, 80);
+  const values = parameterMap(resource);
+  return {
+    tagId,
+    name: stringValue(resource.name, 200) || `Tag ${tagId}`,
+    type: stringValue(resource.type, 80) || 'unknown',
+    firingTriggerIds: Array.isArray(resource.firingTriggerId) ? resource.firingTriggerId.map(safeId).filter(Boolean).slice(0, 40) : [],
+    parameterKeys,
+    eventName: firstValue(values, ['eventName', 'event_name']),
+    measurementId: firstValue(values, ['measurementId', 'measurement_id']),
+    conversionId: firstValue(values, ['conversionId', 'conversion_id']),
+    conversionLabel: firstValue(values, ['conversionLabel', 'conversion_label']),
+    sendTo: firstValue(values, ['sendTo', 'send_to']),
+  };
+}
+
+export function normalizeGtmTrigger(resource: RawResource): GtmTriggerRecord | null {
+  const triggerId = safeId(resource.triggerId);
+  if (!triggerId) return null;
+  const filters = Array.isArray(resource.customEventFilter) ? resource.customEventFilter : [];
+  const customEventName = filters
+    .map((filter) => {
+      if (!filter || typeof filter !== 'object') return null;
+      const filterParams = Array.isArray((filter as RawResource).parameter) ? (filter as RawResource).parameter as unknown[] : [];
+      const value = filterParams[1] && typeof filterParams[1] === 'object' ? (filterParams[1] as RawResource).value : null;
+      return stringValue(value, 120);
+    })
+    .find(Boolean) || stringValue(resource.customEventName, 120);
+  return {
+    triggerId,
+    name: stringValue(resource.name, 200) || `Trigger ${triggerId}`,
+    type: stringValue(resource.type, 80) || 'unknown',
+    customEventName,
+  };
+}
+
+export function normalizeGtmVariable(resource: RawResource): GtmVariableRecord | null {
+  const variableId = safeId(resource.variableId);
+  if (!variableId) return null;
+  return { variableId, name: stringValue(resource.name, 200) || `Variable ${variableId}`, type: stringValue(resource.type, 80) || 'unknown' };
+}
+
+export function normalizeGtmInventory(input: { accountId: string; containerId: string; workspaceId: string; tags?: unknown[]; triggers?: unknown[]; variables?: unknown[] }): GtmInventory {
+  return {
+    accountId: safeId(input.accountId),
+    containerId: safeId(input.containerId),
+    workspaceId: safeId(input.workspaceId),
+    fetchedAt: new Date().toISOString(),
+    tags: (input.tags || []).filter((value): value is RawResource => Boolean(value && typeof value === 'object' && !Array.isArray(value))).map(normalizeGtmTag).filter((value): value is GtmTagRecord => Boolean(value)).slice(0, 2000),
+    triggers: (input.triggers || []).filter((value): value is RawResource => Boolean(value && typeof value === 'object' && !Array.isArray(value))).map(normalizeGtmTrigger).filter((value): value is GtmTriggerRecord => Boolean(value)).slice(0, 2000),
+    variables: (input.variables || []).filter((value): value is RawResource => Boolean(value && typeof value === 'object' && !Array.isArray(value))).map(normalizeGtmVariable).filter((value): value is GtmVariableRecord => Boolean(value)).slice(0, 2000),
+  };
+}
+
+function normalized(value: unknown) { return String(value || '').trim().toLowerCase(); }
+function containsEventName(value: string | null, eventName: string) {
+  const candidate = normalized(value);
+  return Boolean(candidate && (candidate === eventName || candidate.includes(eventName) || candidate.includes('{{event}}')));
+}
+function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'other' {
+  const type = normalized(tag.type);
+  if (type.includes('googleads') || type === 'awct' || type === 'sp') return 'gads';
+  if (type.includes('googleanalytics') || type === 'gaawe' || type === 'gaawc') return 'ga4';
+  return 'other';
+}
+
+function eventValue(event: Record<string, unknown>, names: string[]) {
+  const params = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
+  for (const name of names) {
+    const value = event[name] ?? params[name];
+    const result = stringValue(value, 240);
+    if (result) return result;
+  }
+  return null;
+}
+
+export function parameterHealth(vendor: string, eventName: string | null, params: Record<string, unknown> = {}, rawUrl: string | null = null) {
+  const values = new Map<string, string>();
+  for (const [key, value] of Object.entries(params)) {
+    const text = stringValue(value, 240);
+    if (text) values.set(normalized(key), text);
+  }
+  try {
+    if (rawUrl) for (const [key, value] of new URL(rawUrl).searchParams.entries()) if (value) values.set(normalized(key), value);
+  } catch {}
+  const normalizedVendor = normalized(vendor);
+  const name = normalized(eventName);
+  const gadsConversion = normalizedVendor === 'gads' && /conversion|purchase|sign[_ -]?up|lead|submit|viewthroughconversion/i.test(`${name} ${rawUrl || ''}`);
+  const required = gadsConversion
+    ? [['conversion_id', 'google_conversion_id', 'tid'], ['conversion_label', 'google_conversion_label', 'label', 'send_to']]
+    : normalizedVendor === 'ga4' && name === 'purchase'
+      ? [['currency', 'cu', 'ep.currency', 'epn.currency'], ['value', 'ep.value', 'epn.value'], ['transaction_id', 'transactionid', 'ep.transaction_id', 'epn.transaction_id']]
+      : [];
+  if (!required.length) return { missingParameters: [], observedParameters: [], parameterStatus: 'not_applicable' as const };
+  const observedParameters: string[] = [];
+  const missingParameters: string[] = [];
+  for (const aliases of required) {
+    const found = aliases.find((alias) => values.has(alias) && values.get(alias));
+    if (found) observedParameters.push(found);
+    else missingParameters.push(aliases[0]);
+  }
+  return { missingParameters, observedParameters, parameterStatus: missingParameters.length ? 'missing' as const : 'complete' as const };
+}
+
+export function correlateEventWithGtm(event: Record<string, unknown>, inventory: GtmInventory | null): EventEnrichment {
+  const health = parameterHealth(String(event.vendor || ''), stringValue(event.eventName, 120), event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {}, stringValue(event.rawUrl, 2048));
+  if (!inventory) return { tagId: null, tagName: null, triggerName: null, workspaceId: null, confidence: 'unmatched', ...health };
+  const vendor = normalized(event.vendor);
+  const eventName = normalized(event.eventName);
+  const eventParams = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
+  const measurementId = normalized(event.measurementId || eventParams.tid || eventParams.measurement_id);
+  const conversionId = normalized(eventParams.conversion_id || eventParams.google_conversion_id || eventParams.tid);
+  const conversionLabel = normalized(eventParams.conversion_label || eventParams.google_conversion_label || eventParams.label);
+  const candidates = inventory.tags.map((tag) => {
+    let score = 0;
+    const tagType = tagVendor(tag);
+    if (tagType === vendor) score += 4;
+    else if (tagType !== 'other') return { tag, score: -1 };
+    if (eventName && containsEventName(tag.eventName, eventName)) score += 5;
+    if (vendor === 'ga4' && measurementId && normalized(tag.measurementId) === measurementId) score += 3;
+    if (vendor === 'gads' && conversionId && normalized(tag.conversionId) === conversionId) score += 4;
+    if (vendor === 'gads' && conversionLabel && normalized(tag.conversionLabel) === conversionLabel) score += 4;
+    if (vendor === 'gads' && tag.sendTo && conversionLabel && normalized(tag.sendTo).includes(conversionLabel)) score += 2;
+    if (tag.firingTriggerIds.length) score += 1;
+    return { tag, score };
+  }).filter((candidate) => candidate.score >= 5).sort((a, b) => b.score - a.score);
+  if (!candidates.length) return { tagId: null, tagName: null, triggerName: null, workspaceId: inventory.workspaceId, confidence: 'unmatched', ...health };
+  const best = candidates[0];
+  const tied = candidates.filter((candidate) => candidate.score === best.score);
+  const triggerIds = best.tag.firingTriggerIds;
+  const triggerName = inventory.triggers.find((trigger) => triggerIds.includes(trigger.triggerId))?.name || null;
+  return {
+    tagId: tied.length === 1 ? best.tag.tagId : null,
+    tagName: tied.length === 1 ? best.tag.name : null,
+    triggerName: tied.length === 1 ? triggerName : null,
+    workspaceId: inventory.workspaceId,
+    confidence: tied.length > 1 ? 'ambiguous' : best.score >= 9 ? 'configuration_match' : 'likely_match',
+    ...health,
+  };
+}

@@ -6,6 +6,24 @@ import AlertModal from './alert-modal';
 import { SeverityChip, timeAgo } from './ui';
 import { EventSessionChart, SourceLaneChart } from './event-analytics';
 
+function tagSummary(event: any) {
+  const names = Array.isArray(event.gtm_tag_names) ? event.gtm_tag_names.filter(Boolean) : [];
+  if (names.length > 1 || event.gtm_correlation_confidence === 'ambiguous') return 'Multiple possible tags';
+  if (names.length === 1) return `${names[0]}${event.gtm_correlation_confidence === 'likely_match' ? ' · likely' : ''}`;
+  return event.gtm_correlation_confidence === 'unmatched' || !event.gtm_correlation_confidence ? 'Not matched' : 'Configuration match unavailable';
+}
+function missingParameterNames(event: any) {
+  const values = Array.isArray(event.missing_parameters) ? event.missing_parameters.flatMap((value: any) => Array.isArray(value) ? value : []) : [];
+  return [...new Set(values.filter(Boolean))];
+}
+function ParameterHealth({ event }: { event: any }) {
+  const missing = missingParameterNames(event);
+  if (missing.length) return <span className="pill bg-[#ff718d]/10 text-[#ff9aae]" title={`Missing: ${missing.join(', ')}`}>Missing: {missing.join(', ')}</span>;
+  const statuses = Array.isArray(event.parameter_statuses) ? event.parameter_statuses : [];
+  if (statuses.includes('complete')) return <span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">Complete</span>;
+  return <span className="text-xs text-slate-500">Not applicable</span>;
+}
+
 export default function VendorView({ vendor, label, id }: { vendor: string; label: string; id: string | null }) {
   const search = useSearchParams();
   const siteId = search.get('siteId');
@@ -79,6 +97,8 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
               <tr>
                 <th className="text-left px-4 py-2 font-medium">Event name</th>
                 <th className="text-left px-4 py-2 font-medium">Type</th>
+                <th className="text-left px-4 py-2 font-medium">GTM tag</th>
+                <th className="text-left px-4 py-2 font-medium">Parameters</th>
                 <th className="text-right px-4 py-2 font-medium">Count</th>
                 <th className="text-right px-4 py-2 font-medium">Sessions</th>
                 <th className="text-right px-4 py-2 font-medium">Latency</th>
@@ -93,6 +113,8 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
                   <tr key={i} className="hover:bg-white/[.04]">
                     <td className="px-4 py-3 mono">{e.event_name || (vendor === 'gads' && (e.conversion_label || e.conversion_id) ? `${e.conversion_label || 'Conversion'}${e.conversion_id ? ` · ${e.conversion_id}` : ''}` : '(unnamed)')} {vendor === 'gads' && e.event_name && (e.conversion_label || e.conversion_id) ? <span className="block text-[10px] text-slate-500 not-italic">{e.conversion_label || 'Conversion'}{e.conversion_id ? ` · ${e.conversion_id}` : ''}</span> : null}</td>
                     <td className="px-4 py-3 text-slate-400 capitalize">{e.event_type || 'unknown'}</td>
+                    <td className="px-4 py-3"><div className="max-w-[190px] truncate" title={tagSummary(e)}>{tagSummary(e)}</div>{e.gtm_trigger_names?.length ? <div className="text-[10px] text-slate-500 truncate max-w-[190px]" title={e.gtm_trigger_names.join(', ')}>Trigger: {e.gtm_trigger_names.join(', ')}</div> : null}</td>
+                    <td className="px-4 py-3"><ParameterHealth event={e} /></td>
                     <td className="px-4 py-3 text-right font-medium">{Number(e.cnt).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-slate-400">{Number(e.sessions || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-right text-slate-400">{Number(e.avg_latency_ms || 0) ? `${Number(e.avg_latency_ms).toLocaleString()} ms` : '—'}</td>
