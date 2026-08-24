@@ -33,6 +33,14 @@ describe('Slack and repeated-event regressions', () => {
     expect(page).toContain('Last seen');
   });
 
+  it('keeps detection SQL parameters type-stable for alert upserts', () => {
+    const detection = read('lib/detection.ts');
+    expect(detection).toContain('raw = $5::jsonb');
+    expect(detection).toContain('COALESCE($4::text,\'\')');
+    expect(detection).toContain('($6::int * INTERVAL');
+    expect(detection).not.toContain('raw = $6::jsonb');
+  });
+
   it('keeps fan-out evidence stronger than a duplicate repeat row and guards missing counts', () => {
     const duplicates = read('app/api/duplicates/route.ts');
     expect(duplicates).toContain('fanoutEvidenceKeys');
