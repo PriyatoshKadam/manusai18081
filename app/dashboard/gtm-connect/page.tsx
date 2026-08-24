@@ -64,6 +64,7 @@ export default function GtmConnectPage() {
     fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json()).then((data) => { if (!cancelled) setSites(data.sites || []); }).catch(() => undefined);
     loadContainers();
     if (status === 'connected') setNotice('Google Tag Manager is connected. Select a container to continue.');
+    if (status === 'not_configured') setError('GTM Connect is not enabled on this deployment yet. The GAfix owner must add the Google OAuth settings once in Render; customers do not need to create backend settings for their own connection.');
     if (status === 'denied') setError('Google authorization was cancelled.');
     if (status === 'invalid_state') setError('The Google authorization session expired. Please try again.');
     if (status === 'error') setError('Google authorization could not be completed. Check the deployment OAuth settings.');
@@ -140,10 +141,11 @@ export default function GtmConnectPage() {
 
       <section className="card p-5 space-y-4">
         <div className="flex items-start justify-between gap-4">
-          <div><h3 className="font-semibold text-ink-950">1. Authorize Google Tag Manager</h3><p className="text-sm text-ink-500 mt-1">GAfix requests container read, edit, version, and publish permissions. Refresh tokens are encrypted on the server and never sent to the browser.</p></div>
+          <div><h3 className="font-semibold text-ink-950">1. Authorize Google Tag Manager</h3><p className="text-sm text-ink-500 mt-1">The GAfix deployment must be configured with one Google OAuth application. After that one-time setup, each customer simply authorizes their own Google account here; they do not add backend variables or share credentials.</p></div>
           <a href="/api/gtm/connect" className="shrink-0 rounded-lg bg-ink-950 px-4 py-2 text-sm font-medium text-white hover:bg-ink-800">{connected ? 'Reconnect Google' : 'Connect Google account'}</a>
         </div>
         {connected && <div className="text-sm text-green-700">Connected as <strong>{googleEmail || 'Google account'}</strong>.</div>}
+        <div className="rounded-lg bg-ink-50 px-4 py-3 text-xs text-ink-600">Customer authorization is handled by Google OAuth. The GAfix owner configures the OAuth client ID, secret, and callback URL once on the server; those secrets must never be entered into GTM or exposed in the browser.</div>
       </section>
 
       <section className="card p-5 space-y-4">
