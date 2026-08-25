@@ -22,7 +22,7 @@ describe('GTM inventory correlation', () => {
       { triggerId: '13', name: 'Meta All Pages', type: 'pageview' },
       { triggerId: '14', name: 'LinkedIn All Pages', type: 'pageview' },
       { triggerId: '15', name: 'Bing All Pages', type: 'pageview' },
-      { triggerId: '16', name: 'Snapchat All Pages', type: 'pageview' },
+      { triggerId: '16', name: 'Snapchat LEVEL_COMPLETE', type: 'customEvent', customEventName: 'LEVEL_COMPLETE' },
     ],
   });
 
@@ -77,8 +77,11 @@ describe('GTM inventory correlation', () => {
     expect(bing.confidence).toBe('configuration_match');
     const snapchat = correlateEventWithGtm({ vendor: 'snapchat', eventName: 'LEVEL_COMPLETE', params: { pid: 'ae22325f-e147-4629-90b7-d24f349298c1', ev: 'LEVEL_COMPLETE' }, rawUrl: 'https://tr.snapchat.com/p?pid=ae22325f-e147-4629-90b7-d24f349298c1&ev=LEVEL_COMPLETE' }, inventory);
     expect(snapchat.tagName).toBe('Snapchat Pixel');
-    expect(snapchat.triggerName).toBe('Snapchat All Pages');
+    expect(snapchat.triggerName).toBe('Snapchat LEVEL_COMPLETE');
     expect(snapchat.confidence).toBe('configuration_match');
+    const unrelated = correlateEventWithGtm({ vendor: 'snapchat', eventName: 'PURCHASE', params: { pid: 'ae22325f-e147-4629-90b7-d24f349298c1', ev: 'PURCHASE' }, rawUrl: 'https://tr.snapchat.com/p?pid=ae22325f-e147-4629-90b7-d24f349298c1&ev=PURCHASE' }, inventory);
+    expect(unrelated.tagName).toBeNull();
+    expect(unrelated.confidence).toBe('unmatched');
   });
 
   it('matches the Google Ads Remarketing tag for view-through configuration requests', () => {

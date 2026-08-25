@@ -143,7 +143,23 @@ export function normalizeGtmInventory(input: { accountId: string; containerId: s
 function normalized(value: unknown) { return String(value || '').trim().toLowerCase(); }
 function containsEventName(value: string | null, eventName: string) {
   const candidate = normalized(value);
-  return Boolean(candidate && (candidate === eventName || candidate.includes(eventName) || candidate.includes('{{event}}')));
+  if (!candidate || !eventName) return false;
+  return candidate === eventName;
+}
+function triggerMatchesEvent(inventory: GtmInventory, tag: GtmTagRecord, eventName: string) {
+  return tag.firingTriggerIds.some((triggerId) => {
+    const trigger = inventory.triggers.find((item) => item.triggerId === triggerId);
+    return Boolean(trigger && containsEventName(trigger.customEventName, eventName));
+  });
+}
+function isBaseEvent(vendor: string, eventName: string) {
+  const baseEvents: Record<string, string[]> = {
+    meta: ['pageview', 'page_view'],
+    linkedin: ['pageview', 'page_view'],
+    bing: ['pageload', 'page_load'],
+    snapchat: ['pageview', 'page_view'],
+  };
+  return Boolean(baseEvents[vendor]?.includes(eventName));
 }
 function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'meta' | 'linkedin' | 'bing' | 'snapchat' | 'other' {
   const type = normalized(tag.type);
@@ -244,14 +260,19 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
     const isRemarketingRequest = vendor === 'gads' && /viewthroughconversion|en=gtag\.config|gtag\.config/.test(`${eventName} ${normalized(stringValue(event.rawUrl, 2048))}`);
     if (isRemarketingRequest && normalized(tag.type) === 'sp') score += 6;
     if (isRemarketingRequest && normalized(tag.type) !== 'sp') return { tag, score: -1 };
-    if (eventName && containsEventName(tag.eventName, eventName)) score += 5;
+    const eventMatch = Boolean(eventName && (containsEventName(tag.eventName, eventName) || triggerMatchesEvent(inventory, tag, eventName)));
+    const baseEventPlatformMatch = Boolean(eventName && isBaseEvent(vendor, eventName) && platformId && normalized(tag.platformId) === platformId);
+    if (vendor === 'ga4' && !eventMatch) return { tag, score: -1 };
+    if (vendor !== 'gads' && !isBaseEvent(vendor, eventName) && !eventMatch) return { tag, score: -1 };
+    if (eventMatch) score += 5;
+    if (baseEventPlatformMatch) score += 4;
     if (vendor === 'ga4' && measurementId && normalized(tag.measurementId) === measurementId) score += 3;
     if (vendor === 'gads' && conversionId && normalized(tag.conversionId) === conversionId) score += 4;
     if (vendor === 'gads' && conversionLabel && normalized(tag.conversionLabel) === conversionLabel) score += 4;
     if (vendor === 'gads' && tag.sendTo && conversionLabel && normalized(tag.sendTo).includes(conversionLabel)) score += 2;
-    if ((vendor === 'meta' || vendor === 'linkedin') && platformId && normalized(tag.platformId) === platformId) score += 4;
+    if ((vendor === 'meta' || vendor === 'linkedin' || vendor === 'bing' || vendor === 'snapchat') && platformId && normalized(tag.platformId) === platformId && !baseEventPlatformMatch) score += 2;
     if (tag.firingTriggerIds.length) score += 1;
-    return { tag, score };
+    return { tag, score, eventMatch, baseEventPlatformMatch };
   }).filter((candidate) => candidate.score >= 5).sort((a, b) => b.score - a.score);
   if (!candidates.length) return { tagId: null, tagName: null, triggerName: null, workspaceId: inventory.workspaceId, confidence: 'unmatched', ...health };
   const best = candidates[0];
@@ -259,12 +280,14 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
   const triggerIds = best.tag.firingTriggerIds;
   const triggerName = inventory.triggers.find((trigger) => triggerIds.includes(trigger.triggerId))?.name || null;
   const exactPlatformMatch = Boolean(platformId && normalized(best.tag.platformId) === platformId);
+  const exactEventMatch = Boolean((best as { eventMatch?: boolean }).eventMatch);
+  const baseEventMatch = Boolean((best as { baseEventPlatformMatch?: boolean }).baseEventPlatformMatch);
   return {
     tagId: tied.length === 1 ? best.tag.tagId : null,
     tagName: tied.length === 1 ? best.tag.name : null,
     triggerName: tied.length === 1 ? triggerName : null,
     workspaceId: inventory.workspaceId,
-    confidence: tied.length > 1 ? 'ambiguous' : exactPlatformMatch || best.score >= 8 ? 'configuration_match' : 'likely_match',
+    confidence: tied.length > 1 ? 'ambiguous' : exactEventMatch || baseEventMatch || (vendor === 'gads' && (exactPlatformMatch || best.score >= 8)) ? 'configuration_match' : 'likely_match',
     ...health,
   };
 }
