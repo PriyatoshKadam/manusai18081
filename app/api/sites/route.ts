@@ -16,7 +16,7 @@ export async function GET() {
 
   const result = await query(
     `SELECT id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id,
-            meta_pixel_id, tiktok_pixel_id, api_key, first_party_domain, created_at
+            meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, api_key, first_party_domain, created_at
      FROM sites WHERE user_id = $1 ORDER BY created_at DESC`,
     [session.uid]
   );
@@ -46,8 +46,8 @@ export async function POST(req: NextRequest) {
     const result = await query(
       `INSERT INTO sites
          (user_id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id,
-          meta_pixel_id, tiktok_pixel_id, first_party_domain, slack_webhook_url, api_key)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+          meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, first_party_domain, slack_webhook_url, api_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        RETURNING id, api_key, domain`,
       [
         session.uid,
@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
         input.gads_conversion_id,
         input.meta_pixel_id,
         input.tiktok_pixel_id,
+        input.linkedin_partner_id,
         input.first_party_domain,
         input.slack_webhook_url,
         apiKey,

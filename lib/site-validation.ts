@@ -7,6 +7,7 @@ export type SiteInput = {
   gads_conversion_id?: string | null;
   meta_pixel_id?: string | null;
   tiktok_pixel_id?: string | null;
+  linkedin_partner_id?: string | null;
   first_party_domain?: string | null;
   slack_webhook_url?: string | null;
 };
@@ -18,6 +19,7 @@ export type NormalizedSiteInput = SiteInput & {
   gads_conversion_id: string | null;
   meta_pixel_id: string | null;
   tiktok_pixel_id: string | null;
+  linkedin_partner_id: string | null;
   first_party_domain: string | null;
   slack_webhook_url: string | null;
 };
@@ -264,6 +266,18 @@ export function normalizeSiteInput(
         input.tiktok_pixel_id,
         'TikTok Pixel ID',
         /^[A-Z0-9_-]+$/i
+      );
+  }
+
+  if (
+    !partial ||
+    'linkedin_partner_id' in input
+  ) {
+    result.linkedin_partner_id =
+      identifier(
+        input.linkedin_partner_id,
+        'LinkedIn partner ID',
+        /^[0-9]+$/
       );
   }
 

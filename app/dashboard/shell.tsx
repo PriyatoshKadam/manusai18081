@@ -57,6 +57,7 @@ export default function DashboardShell({
       { href: '/dashboard/ads', label: 'Google Ads', badge: 'Ad', badgeColor: 'bg-blue-500' },
       { href: '/dashboard/meta', label: 'Meta Pixel', badge: 'M', badgeColor: 'bg-blue-600' },
       { href: '/dashboard/tiktok', label: 'TikTok Pixel', badge: 'TT', badgeColor: 'bg-ink-950' },
+      { href: '/dashboard/linkedin', label: 'LinkedIn Insight', badge: 'in', badgeColor: 'bg-sky-700' },
     ]},
     { section: 'Insights', items: [
       { href: '/dashboard/sessions', label: 'Sessions', icon: iconUsers },
@@ -181,6 +182,7 @@ function pageTitle(path: string) {
     '/dashboard/ads': 'Google Ads',
     '/dashboard/meta': 'Meta Pixel',
     '/dashboard/tiktok': 'TikTok Pixel',
+    '/dashboard/linkedin': 'LinkedIn Insight Tag',
     '/dashboard/sessions': 'Sessions',
     '/dashboard/revenue': 'Revenue impact',
     '/dashboard/vitals': 'Web Vitals',

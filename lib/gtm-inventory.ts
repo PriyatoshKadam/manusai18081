@@ -9,6 +9,7 @@ export type GtmTagRecord = {
   conversionId: string | null;
   conversionLabel: string | null;
   sendTo: string | null;
+  platformId: string | null;
 };
 
 export type GtmTriggerRecord = {
@@ -47,7 +48,7 @@ export type EventEnrichment = {
 
 type RawResource = Record<string, unknown>;
 
-const VALUE_KEYS = new Set(['eventName', 'event_name', 'measurementId', 'measurement_id', 'conversionId', 'conversion_id', 'conversionLabel', 'conversion_label', 'sendTo', 'send_to']);
+const VALUE_KEYS = new Set(['eventName', 'event_name', 'measurementId', 'measurement_id', 'conversionId', 'conversion_id', 'conversionLabel', 'conversion_label', 'sendTo', 'send_to', 'pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid']);
 const SENSITIVE_KEYS = /html|script|token|secret|key|password|credential|authorization/i;
 
 function stringValue(value: unknown, max = 240): string | null {
@@ -97,6 +98,7 @@ export function normalizeGtmTag(resource: RawResource): GtmTagRecord | null {
     conversionId: firstValue(values, ['conversionId', 'conversion_id']),
     conversionLabel: firstValue(values, ['conversionLabel', 'conversion_label']),
     sendTo: firstValue(values, ['sendTo', 'send_to']),
+    platformId: firstValue(values, ['pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid']),
   };
 }
 
@@ -143,10 +145,13 @@ function containsEventName(value: string | null, eventName: string) {
   const candidate = normalized(value);
   return Boolean(candidate && (candidate === eventName || candidate.includes(eventName) || candidate.includes('{{event}}')));
 }
-function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'other' {
+function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'meta' | 'linkedin' | 'other' {
   const type = normalized(tag.type);
   if (type.includes('googleads') || type === 'awct' || type === 'sp') return 'gads';
   if (type.includes('googleanalytics') || type === 'gaawe' || type === 'gaawc') return 'ga4';
+  const name = normalized(tag.name);
+  if (type.includes('linkedin') || name.includes('linkedin') || name.includes('insight tag')) return 'linkedin';
+  if (type.includes('facebook') || type.includes('meta') || name.includes('facebook') || name.includes('meta pixel')) return 'meta';
   return 'other';
 }
 
@@ -191,7 +196,11 @@ export function parameterHealth(vendor: string, eventName: string | null, params
     ? [['conversion_id', 'google_conversion_id', 'tid'], ['conversion_label', 'google_conversion_label', 'label', 'send_to']]
     : normalizedVendor === 'ga4' && name === 'purchase'
       ? [['currency', 'cu', 'ep.currency', 'epn.currency'], ['value', 'ep.value', 'epn.value'], ['transaction_id', 'transactionid', 'ep.transaction_id', 'epn.transaction_id']]
-      : [];
+      : normalizedVendor === 'meta'
+        ? [['id', 'pixel_id', 'pixelid'], ['ev', 'event', 'event_name']]
+        : normalizedVendor === 'linkedin'
+          ? [['pid', 'partner_id', 'partnerid']]
+          : [];
   if (!required.length) return { missingParameters: [], observedParameters: [], parameterStatus: 'not_applicable' as const };
   const observedParameters: string[] = [];
   const missingParameters: string[] = [];
@@ -212,6 +221,11 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
   const measurementId = normalized(event.measurementId || eventParams.tid || eventParams.measurement_id);
   const conversionId = normalized(eventParams.conversion_id || eventParams.google_conversion_id || eventParams.tid || googleAdsPathConversionId(stringValue(event.rawUrl, 2048)));
   const conversionLabel = normalized(eventParams.conversion_label || eventParams.google_conversion_label || eventParams.label);
+  const platformId = vendor === 'meta'
+    ? normalized(eventParams.id || eventParams.pixel_id || eventParams.pixelId)
+    : vendor === 'linkedin'
+      ? normalized(eventParams.pid || eventParams.partner_id || eventParams.partnerId)
+      : '';
   const candidates = inventory.tags.map((tag) => {
     let score = 0;
     const tagType = tagVendor(tag);
@@ -225,6 +239,7 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
     if (vendor === 'gads' && conversionId && normalized(tag.conversionId) === conversionId) score += 4;
     if (vendor === 'gads' && conversionLabel && normalized(tag.conversionLabel) === conversionLabel) score += 4;
     if (vendor === 'gads' && tag.sendTo && conversionLabel && normalized(tag.sendTo).includes(conversionLabel)) score += 2;
+    if ((vendor === 'meta' || vendor === 'linkedin') && platformId && normalized(tag.platformId) === platformId) score += 4;
     if (tag.firingTriggerIds.length) score += 1;
     return { tag, score };
   }).filter((candidate) => candidate.score >= 5).sort((a, b) => b.score - a.score);

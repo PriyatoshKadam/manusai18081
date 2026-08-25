@@ -4,7 +4,15 @@ import { query } from '../../../lib/db';
 import { INTERNAL_CORRELATION_NOISE_SQL } from '../../../lib/adblock-evidence';
 
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
-const displayName = `(CASE WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', '')) ELSE event_name END)`;
+const displayName = `(CASE
+  WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', ''), 'conversion')
+  WHEN vendor = 'meta' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'ev', ''), NULLIF(params->>'event', ''), 'PageView')
+  WHEN vendor = 'linkedin' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'event', ''), NULLIF(params->>'event_name', ''), NULLIF(params->>'action', ''), 'page_view')
+  ELSE event_name END)`;
+const platformId = `CASE
+  WHEN vendor = 'meta' THEN COALESCE(NULLIF(params->>'id', ''), NULLIF(params->>'pixel_id', ''), NULLIF(params->>'pixelId', ''))
+  WHEN vendor = 'linkedin' THEN COALESCE(NULLIF(params->>'pid', ''), NULLIF(params->>'partner_id', ''), NULLIF(params->>'partnerId', ''))
+  ELSE NULL END`;
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -35,7 +43,8 @@ export async function GET(req: NextRequest) {
   const eventsQ = vendor
     ? `SELECT ${displayName} AS event_name, event_type, vendor,
               MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
-              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,${correlationSelect}
+              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              MAX(${platformId}) AS platform_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
               COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
@@ -45,7 +54,8 @@ export async function GET(req: NextRequest) {
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
     : `SELECT ${displayName} AS event_name, event_type, vendor,
               MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
-              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,${correlationSelect}
+              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              MAX(${platformId}) AS platform_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
               COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,

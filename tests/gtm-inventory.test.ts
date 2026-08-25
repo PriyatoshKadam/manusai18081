@@ -10,11 +10,15 @@ describe('GTM inventory correlation', () => {
       { tagId: '1', name: 'GA4 Login Tag', type: 'gaawe', firingTriggerId: ['10'], parameter: [{ key: 'eventName', value: 'login' }, { key: 'measurementId', value: 'G-TEST' }] },
       { tagId: '2', name: 'Google Ads Signup', type: 'awct', firingTriggerId: ['11'], parameter: [{ key: 'conversionId', value: 'AW-123' }, { key: 'conversionLabel', value: 'SignupLabel' }] },
       { tagId: '3', name: 'Google Ads Remarketing', type: 'sp', firingTriggerId: ['12'], parameter: [{ key: 'conversionId', value: '11078102743' }] },
+      { tagId: '4', name: 'Meta Pixel Base', type: 'html', firingTriggerId: ['13'], parameter: [{ key: 'pixelId', value: '832600056900407' }] },
+      { tagId: '5', name: 'LinkedIn Insight Tag', type: 'html', firingTriggerId: ['14'], parameter: [{ key: 'partnerId', value: '2919002' }] },
     ],
     triggers: [
       { triggerId: '10', name: 'Login event', type: 'customEvent' },
       { triggerId: '11', name: 'Signup event', type: 'customEvent' },
       { triggerId: '12', name: 'All Pages', type: 'pageview' },
+      { triggerId: '13', name: 'Meta All Pages', type: 'pageview' },
+      { triggerId: '14', name: 'LinkedIn All Pages', type: 'pageview' },
     ],
   });
 
@@ -48,6 +52,19 @@ describe('GTM inventory correlation', () => {
     expect(parameterHealth('gads', 'conversion', {}, 'https://www.googleadservices.com/pagead/conversion/11078102743/?label=Dk4NCNjuisQcENfduaIp&en=conversion')).toMatchObject({ parameterStatus: 'complete', missingParameters: [], observedParameters: ['conversion_id', 'label'] });
     expect(parameterHealth('gads', 'gtag.config', {}, 'https://googleads.g.doubleclick.net/pagead/viewthroughconversion/11078102743/?en=gtag.config')).toMatchObject({ parameterStatus: 'not_applicable', missingParameters: [] });
     expect(parameterHealth('gads', 'page_view', {}, null).parameterStatus).toBe('not_applicable');
+    expect(parameterHealth('meta', 'PageView', { id: '832600056900407', ev: 'PageView' }, 'https://www.facebook.com/tr/?id=832600056900407&ev=PageView')).toMatchObject({ parameterStatus: 'complete', missingParameters: [] });
+    expect(parameterHealth('linkedin', 'page_view', { pid: '2919002' }, 'https://px.ads.linkedin.com/collect?v=2&pid=2919002')).toMatchObject({ parameterStatus: 'complete', missingParameters: [] });
+  });
+
+  it('matches Meta Pixel and LinkedIn Insight Tag by platform identifier', () => {
+    const meta = correlateEventWithGtm({ vendor: 'meta', eventName: 'PageView', params: { id: '832600056900407', ev: 'PageView' }, rawUrl: 'https://www.facebook.com/tr/?id=832600056900407&ev=PageView' }, inventory);
+    expect(meta.tagName).toBe('Meta Pixel Base');
+    expect(meta.triggerName).toBe('Meta All Pages');
+    expect(meta.confidence).toBe('configuration_match');
+    const linkedin = correlateEventWithGtm({ vendor: 'linkedin', eventName: 'page_view', params: { pid: '2919002' }, rawUrl: 'https://px.ads.linkedin.com/collect?v=2&pid=2919002' }, inventory);
+    expect(linkedin.tagName).toBe('LinkedIn Insight Tag');
+    expect(linkedin.triggerName).toBe('LinkedIn All Pages');
+    expect(linkedin.confidence).toBe('configuration_match');
   });
 
   it('matches the Google Ads Remarketing tag for view-through configuration requests', () => {

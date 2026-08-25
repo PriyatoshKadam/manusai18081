@@ -124,6 +124,7 @@ export default function SettingsPage() {
             <Field name="gads_conversion_id" label="Google Ads Conversion ID" placeholder="AW-XXXXXXXXX" />
             <Field name="meta_pixel_id" label="Meta Pixel ID" placeholder="1234567890" />
             <Field name="tiktok_pixel_id" label="TikTok Pixel ID" placeholder="CXXXXXXXX" />
+            <Field name="linkedin_partner_id" label="LinkedIn Partner ID" placeholder="2919002" />
             <Field name="first_party_domain" label="First-party domain (optional)" placeholder="analytics.shop.acme.com" />
           </div>
           <button type="submit" disabled={saving} className="bg-ink-950 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-ink-800 disabled:opacity-50">
@@ -144,6 +145,7 @@ export default function SettingsPage() {
                   <Field name="gads_conversion_id" label="Google Ads Conversion ID" defaultValue={s.gads_conversion_id} />
                   <Field name="meta_pixel_id" label="Meta Pixel ID" defaultValue={s.meta_pixel_id} />
                   <Field name="tiktok_pixel_id" label="TikTok Pixel ID" defaultValue={s.tiktok_pixel_id} />
+                  <Field name="linkedin_partner_id" label="LinkedIn Partner ID" defaultValue={s.linkedin_partner_id} />
                   <Field name="first_party_domain" label="First-party domain" defaultValue={s.first_party_domain} placeholder="analytics.yourdomain.com" />
                 </div>
                 <div className="flex gap-2">
@@ -169,6 +171,7 @@ export default function SettingsPage() {
                   <Row label="Google Ads" v={s.gads_conversion_id} />
                   <Row label="Meta Pixel" v={s.meta_pixel_id} />
                   <Row label="TikTok Pixel" v={s.tiktok_pixel_id} />
+                  <Row label="LinkedIn Partner ID" v={s.linkedin_partner_id} />
                   <Row label="First-party domain" v={s.first_party_domain} highlight />
                 </div>
               </div>

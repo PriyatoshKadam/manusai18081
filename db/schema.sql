@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS sites (
   gads_conversion_id TEXT,
   meta_pixel_id TEXT,
   tiktok_pixel_id TEXT,
+  linkedin_partner_id TEXT,
   api_key TEXT NOT NULL UNIQUE,
   first_party_domain TEXT,
   slack_webhook_url TEXT,
@@ -41,6 +42,7 @@ ALTER TABLE sites
   ADD COLUMN IF NOT EXISTS gads_conversion_id TEXT,
   ADD COLUMN IF NOT EXISTS meta_pixel_id TEXT,
   ADD COLUMN IF NOT EXISTS tiktok_pixel_id TEXT,
+  ADD COLUMN IF NOT EXISTS linkedin_partner_id TEXT,
   ADD COLUMN IF NOT EXISTS first_party_domain TEXT,
   ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT;
 

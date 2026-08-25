@@ -158,7 +158,10 @@
   function eventNameFor(vendor, params) {
     if (!params) return null;
     if (vendor === 'gads') return gadsEventName(params);
-    return vendor === 'ga4' ? (params.en || params.event_name || params.event || null) : (params.ev || params.event || params.event_name || params.eventName || params.action || null);
+    if (vendor === 'ga4') return params.en || params.event_name || params.event || null;
+    if (vendor === 'meta') return params.ev || params.event || params.event_name || params.eventName || params.action || 'PageView';
+    if (vendor === 'linkedin') return params.ev || params.event || params.event_name || params.eventName || params.action || 'page_view';
+    return params.ev || params.event || params.event_name || params.eventName || params.action || null;
   }
   function ga4Params(params) {
     var out = merge({}, params || {});
