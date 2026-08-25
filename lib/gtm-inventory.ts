@@ -48,7 +48,7 @@ export type EventEnrichment = {
 
 type RawResource = Record<string, unknown>;
 
-const VALUE_KEYS = new Set(['eventName', 'event_name', 'measurementId', 'measurement_id', 'conversionId', 'conversion_id', 'conversionLabel', 'conversion_label', 'sendTo', 'send_to', 'pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid']);
+const VALUE_KEYS = new Set(['eventName', 'event_name', 'measurementId', 'measurement_id', 'conversionId', 'conversion_id', 'conversionLabel', 'conversion_label', 'sendTo', 'send_to', 'pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid', 'uetTagId', 'uet_tag_id', 'ti']);
 const SENSITIVE_KEYS = /html|script|token|secret|key|password|credential|authorization/i;
 
 function stringValue(value: unknown, max = 240): string | null {
@@ -98,7 +98,7 @@ export function normalizeGtmTag(resource: RawResource): GtmTagRecord | null {
     conversionId: firstValue(values, ['conversionId', 'conversion_id']),
     conversionLabel: firstValue(values, ['conversionLabel', 'conversion_label']),
     sendTo: firstValue(values, ['sendTo', 'send_to']),
-    platformId: firstValue(values, ['pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid']),
+    platformId: firstValue(values, ['pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid', 'uetTagId', 'uet_tag_id', 'ti']),
   };
 }
 
@@ -145,13 +145,15 @@ function containsEventName(value: string | null, eventName: string) {
   const candidate = normalized(value);
   return Boolean(candidate && (candidate === eventName || candidate.includes(eventName) || candidate.includes('{{event}}')));
 }
-function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'meta' | 'linkedin' | 'other' {
+function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'meta' | 'linkedin' | 'bing' | 'snapchat' | 'other' {
   const type = normalized(tag.type);
   if (type.includes('googleads') || type === 'awct' || type === 'sp') return 'gads';
   if (type.includes('googleanalytics') || type === 'gaawe' || type === 'gaawc') return 'ga4';
   const name = normalized(tag.name);
   if (type.includes('linkedin') || name.includes('linkedin') || name.includes('insight tag')) return 'linkedin';
   if (type.includes('facebook') || type.includes('meta') || name.includes('facebook') || name.includes('meta pixel')) return 'meta';
+  if (type.includes('microsoft') || type.includes('bing') || name.includes('bing') || name.includes('uet')) return 'bing';
+  if (type.includes('snapchat') || type.includes('snap') || name.includes('snapchat') || name.includes('snap pixel')) return 'snapchat';
   return 'other';
 }
 
@@ -200,7 +202,11 @@ export function parameterHealth(vendor: string, eventName: string | null, params
         ? [['id', 'pixel_id', 'pixelid'], ['ev', 'event', 'event_name']]
         : normalizedVendor === 'linkedin'
           ? [['pid', 'partner_id', 'partnerid']]
-          : [];
+          : normalizedVendor === 'bing'
+            ? [['ti', 'uet_tag_id', 'uetTagId', 'tag_id']]
+            : normalizedVendor === 'snapchat'
+              ? [['pid', 'pids', 'pixel_id', 'pixelId']]
+              : [];
   if (!required.length) return { missingParameters: [], observedParameters: [], parameterStatus: 'not_applicable' as const };
   const observedParameters: string[] = [];
   const missingParameters: string[] = [];
@@ -225,7 +231,11 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
     ? normalized(eventParams.id || eventParams.pixel_id || eventParams.pixelId)
     : vendor === 'linkedin'
       ? normalized(eventParams.pid || eventParams.partner_id || eventParams.partnerId)
-      : '';
+      : vendor === 'bing'
+        ? normalized(eventParams.ti || eventParams.uet_tag_id || eventParams.uetTagId || eventParams.tag_id)
+        : vendor === 'snapchat'
+          ? normalized(eventParams.pid || eventParams.pids || eventParams.pixel_id || eventParams.pixelId)
+          : '';
   const candidates = inventory.tags.map((tag) => {
     let score = 0;
     const tagType = tagVendor(tag);
@@ -248,12 +258,13 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
   const tied = candidates.filter((candidate) => candidate.score === best.score);
   const triggerIds = best.tag.firingTriggerIds;
   const triggerName = inventory.triggers.find((trigger) => triggerIds.includes(trigger.triggerId))?.name || null;
+  const exactPlatformMatch = Boolean(platformId && normalized(best.tag.platformId) === platformId);
   return {
     tagId: tied.length === 1 ? best.tag.tagId : null,
     tagName: tied.length === 1 ? best.tag.name : null,
     triggerName: tied.length === 1 ? triggerName : null,
     workspaceId: inventory.workspaceId,
-    confidence: tied.length > 1 ? 'ambiguous' : best.score >= 9 ? 'configuration_match' : 'likely_match',
+    confidence: tied.length > 1 ? 'ambiguous' : exactPlatformMatch || best.score >= 8 ? 'configuration_match' : 'likely_match',
     ...health,
   };
 }

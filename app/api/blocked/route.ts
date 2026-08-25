@@ -13,7 +13,7 @@ const MAX_TEXT = 2048;
 
 type BlockerConfidence = 'confirmed' | 'likely' | 'telemetry_gap';
 
-type Vendor = 'ga4' | 'gads' | 'meta' | 'tiktok' | 'linkedin' | 'snapchat' | 'pinterest' | 'reddit' | 'microsoft_ads';
+type Vendor = 'ga4' | 'gads' | 'meta' | 'tiktok' | 'linkedin' | 'snapchat' | 'pinterest' | 'reddit' | 'bing';
 
 const VENDOR_PATTERNS: Record<Vendor, RegExp[]> = {
   ga4: [/google-analytics/i, /analytics\.google/i, /googletagmanager/i, /\/g\/collect/i, /collect\?/i],
@@ -24,7 +24,7 @@ const VENDOR_PATTERNS: Record<Vendor, RegExp[]> = {
   snapchat: [/sc-static/i, /tr\.snapchat/i, /snapchat/i],
   pinterest: [/ct\.pinterest/i, /pintrk/i, /pinterest/i],
   reddit: [/events\.reddit/i, /reddit\.com\/pixel/i, /rdt/i],
-  microsoft_ads: [/bat\.bing/i, /clarity\.ms/i, /bing\.com\/action/i],
+  bing: [/bat\.bing/i, /bing\.com\/action/i],
 };
 
 function corsHeaders(): Record<string, string> {

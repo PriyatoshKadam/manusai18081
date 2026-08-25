@@ -58,6 +58,8 @@ export default function DashboardShell({
       { href: '/dashboard/meta', label: 'Meta Pixel', badge: 'M', badgeColor: 'bg-blue-600' },
       { href: '/dashboard/tiktok', label: 'TikTok Pixel', badge: 'TT', badgeColor: 'bg-ink-950' },
       { href: '/dashboard/linkedin', label: 'LinkedIn Insight', badge: 'in', badgeColor: 'bg-sky-700' },
+      { href: '/dashboard/bing', label: 'Bing UET', badge: 'B', badgeColor: 'bg-cyan-700' },
+      { href: '/dashboard/snapchat', label: 'Snapchat Pixel', badge: 'S', badgeColor: 'bg-yellow-500' },
     ]},
     { section: 'Insights', items: [
       { href: '/dashboard/sessions', label: 'Sessions', icon: iconUsers },
@@ -183,6 +185,8 @@ function pageTitle(path: string) {
     '/dashboard/meta': 'Meta Pixel',
     '/dashboard/tiktok': 'TikTok Pixel',
     '/dashboard/linkedin': 'LinkedIn Insight Tag',
+    '/dashboard/bing': 'Bing UET',
+    '/dashboard/snapchat': 'Snapchat Pixel',
     '/dashboard/sessions': 'Sessions',
     '/dashboard/revenue': 'Revenue impact',
     '/dashboard/vitals': 'Web Vitals',

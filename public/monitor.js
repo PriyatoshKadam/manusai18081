@@ -161,6 +161,8 @@
     if (vendor === 'ga4') return params.en || params.event_name || params.event || null;
     if (vendor === 'meta') return params.ev || params.event || params.event_name || params.eventName || params.action || 'PageView';
     if (vendor === 'linkedin') return params.ev || params.event || params.event_name || params.eventName || params.action || 'page_view';
+    if (vendor === 'bing') return params.evt || params.event || params.event_name || params.eventName || params.action || 'pageLoad';
+    if (vendor === 'snapchat') return params.ev || params.event || params.event_name || params.eventName || params.action || 'PAGE_VIEW';
     return params.ev || params.event || params.event_name || params.eventName || params.action || null;
   }
   function ga4Params(params) {

@@ -8,6 +8,8 @@ export type SiteInput = {
   meta_pixel_id?: string | null;
   tiktok_pixel_id?: string | null;
   linkedin_partner_id?: string | null;
+  bing_uet_tag_id?: string | null;
+  snapchat_pixel_id?: string | null;
   first_party_domain?: string | null;
   slack_webhook_url?: string | null;
 };
@@ -20,6 +22,8 @@ export type NormalizedSiteInput = SiteInput & {
   meta_pixel_id: string | null;
   tiktok_pixel_id: string | null;
   linkedin_partner_id: string | null;
+  bing_uet_tag_id: string | null;
+  snapchat_pixel_id: string | null;
   first_party_domain: string | null;
   slack_webhook_url: string | null;
 };
@@ -278,6 +282,30 @@ export function normalizeSiteInput(
         input.linkedin_partner_id,
         'LinkedIn partner ID',
         /^[0-9]+$/
+      );
+  }
+
+  if (
+    !partial ||
+    'bing_uet_tag_id' in input
+  ) {
+    result.bing_uet_tag_id =
+      identifier(
+        input.bing_uet_tag_id,
+        'Bing UET tag ID',
+        /^[0-9]+$/
+      );
+  }
+
+  if (
+    !partial ||
+    'snapchat_pixel_id' in input
+  ) {
+    result.snapchat_pixel_id =
+      identifier(
+        input.snapchat_pixel_id,
+        'Snapchat Pixel ID',
+        /^[a-f0-9-]{16,64}$/i
       );
   }
 

@@ -14,19 +14,23 @@ function tagSummary(event: any) {
 }
 function missingParameterNames(event: any) {
   const values = Array.isArray(event.missing_parameters) ? event.missing_parameters.flatMap((value: any) => Array.isArray(value) ? value : []) : [];
-  const labels: Record<string, string> = { id: 'pixel_id', ev: 'event_name', pid: 'partner_id', tid: 'conversion_id' };
+  const labels: Record<string, string> = { id: 'pixel_id', ev: 'event_name', pid: 'partner_id', pids: 'pixel_id', ti: 'uet_tag_id', tag_id: 'uet_tag_id', tid: 'conversion_id' };
   return [...new Set(values.filter(Boolean).map((value: string) => labels[value] || value))];
 }
 function eventDisplayName(event: any, vendor: string) {
   if (event.event_name) return event.event_name;
   if (vendor === 'meta') return 'PageView';
   if (vendor === 'linkedin') return 'page_view';
+  if (vendor === 'bing') return 'pageLoad';
+  if (vendor === 'snapchat') return 'PAGE_VIEW';
   if (vendor === 'gads') return event.conversion_label || event.conversion_id ? `${event.conversion_label || 'Conversion'}${event.conversion_id ? ` · ${event.conversion_id}` : ''}` : 'conversion';
   return '(unnamed)';
 }
 function platformIdentifierLabel(vendor: string) {
   if (vendor === 'meta') return 'Pixel ID';
   if (vendor === 'linkedin') return 'Partner ID';
+  if (vendor === 'bing') return 'UET Tag ID';
+  if (vendor === 'snapchat') return 'Pixel ID';
   return 'Platform ID';
 }
 function ParameterHealth({ event }: { event: any }) {
@@ -124,7 +128,7 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
                 const hasAlert = alerts.find((a: any) => a.event_name === e.event_name);
                 return (
                   <tr key={i} className="hover:bg-white/[.04]">
-                    <td className="px-4 py-3 mono">{eventDisplayName(e, vendor)} {vendor === 'gads' && e.event_name && (e.conversion_label || e.conversion_id) ? <span className="block text-[10px] text-slate-500 not-italic">{e.conversion_label || 'Conversion'}{e.conversion_id ? ` · ${e.conversion_id}` : ''}</span> : null}{(vendor === 'meta' || vendor === 'linkedin') && e.platform_id ? <span className="block text-[10px] text-slate-500 not-italic">{platformIdentifierLabel(vendor)}: {e.platform_id}</span> : null}</td>
+                    <td className="px-4 py-3 mono">{eventDisplayName(e, vendor)} {vendor === 'gads' && e.event_name && (e.conversion_label || e.conversion_id) ? <span className="block text-[10px] text-slate-500 not-italic">{e.conversion_label || 'Conversion'}{e.conversion_id ? ` · ${e.conversion_id}` : ''}</span> : null}{(['meta', 'linkedin', 'bing', 'snapchat'].includes(vendor)) && e.platform_id ? <span className="block text-[10px] text-slate-500 not-italic">{platformIdentifierLabel(vendor)}: {e.platform_id}</span> : null}</td>
                     <td className="px-4 py-3 text-slate-400 capitalize">{e.event_type || 'unknown'}</td>
                     <td className="px-4 py-3"><div className="max-w-[190px] truncate" title={tagSummary(e)}>{tagSummary(e)}</div>{e.gtm_trigger_names?.length ? <div className="text-[10px] text-slate-500 truncate max-w-[190px]" title={e.gtm_trigger_names.join(', ')}>Trigger: {e.gtm_trigger_names.join(', ')}</div> : null}</td>
                     <td className="px-4 py-3"><ParameterHealth event={e} /></td>
