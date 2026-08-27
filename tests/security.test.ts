@@ -46,7 +46,10 @@ describe('security hardening', () => {
     expect(read('lib/synthetic.ts')).toContain('s.user_id = $3');
     expect(read('app/api/synthetic/route.ts')).toContain('userId: Number(session.uid)');
     expect(read('public/monitor.js')).toContain('try { parsed = network(url, body,');
-    expect(read('public/monitor.js')).toContain('return original.apply(this, arguments);');
+    const monitor = read('public/monitor.js');
+    expect(monitor).toContain('return original.apply(this, arguments);');
+    expect(monitor).toContain("var opaque = parsed.statusCode === 0 && response.type === 'opaque'");
+    expect(monitor).toContain('if (!response.ok && !opaque)');
   });
 
   it('enforces same-origin unsafe API requests while exempting telemetry paths', () => {

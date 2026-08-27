@@ -144,7 +144,7 @@ The blocked endpoint validates the site API key, checks the registered telemetry
 
 ### 6.2 What is not a blocker
 
-A vendor endpoint returning **HTTP 200 or 204 is a successful response**, not a blocked request. A resource error, HTTP error, CORS failure, CSP problem, timeout, or missing correlation record may have many causes. Unless the browser supplies explicit block evidence, GAfix should display it as transport failure, correlation gap, or telemetry gap—not as a confirmed ad blocker.
+A vendor endpoint returning **HTTP 200 or 204 is a successful response**, not a blocked request. A resource error, HTTP error, CORS failure, CSP problem, timeout, or missing correlation record may have many causes. Fetch responses with status `0` require an additional distinction: an opaque cross-origin response can hide the status and body even when the request was sent, so GAfix retains it as an observation without promoting it to an `http_0` delivery failure. Non-opaque status-zero failures and explicit browser failure reasons remain transport evidence. Unless the browser supplies explicit block evidence, GAfix should display the result as transport failure, correlation gap, or telemetry gap—not as a confirmed ad blocker.
 
 The Ad-blocker page counts confirmed blocker events/sessions separately from correlation and telemetry gaps. Its actionable “recent” list contains confirmed/likely evidence; its “Monitor delivery health” or telemetry list contains gap evidence and explicitly warns that those rows are not proof of an ad blocker. Internal lifecycle noise such as GTM, Termly, and `userPrefUpdate` correlation callbacks is excluded from blocker analytics so CMP/GTM housekeeping does not inflate the result.[9][10] Signals without explicit blocker wording are also written to a tenant-scoped **blocker pattern review queue** with bounded vendor/signal/count/timestamp evidence. Recurring candidates are review material, not automatically promoted blocker rules.
 
@@ -389,7 +389,7 @@ GAfix redacts sensitive parameter keys and URL fields, but privacy compliance re
 
 | Do not infer | Correct interpretation |
 |---|---|
-| “The vendor returned an error, so an ad blocker caused it.” | It is a transport/resource failure until explicit browser-block evidence exists. |
+| “The vendor returned an error, so an ad blocker caused it.” | It is a transport/resource failure until explicit browser-block evidence exists; status `0` can also be an opaque browser response. |
 | “The vendor returned 200/204, so the event was blocked.” | 200/204 is successful HTTP delivery evidence. |
 | “`gcs=G111` means GA4 failed or analytics storage was denied.” | `G111` indicates both storage signals are granted; `G110` is the two-bit state with analytics storage denied. Neither state alone is a blocker verdict. |
 | “A GTM inventory candidate is the exact runtime tag.” | It is a configuration match with a confidence state. Exact identity is not guaranteed by a network request alone. |
