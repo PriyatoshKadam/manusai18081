@@ -56,10 +56,28 @@ export default function GtmConnectPage() {
       const response = await fetch('/api/gtm/containers', { credentials: 'include', cache: 'no-store' });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Unable to load GTM containers');
-      setConnected(Boolean(data.connected));
-      setGoogleEmail(data.googleEmail || null);
-      setAccounts(data.accounts || []);
-      if (!accountId && data.accounts?.[0]) setAccountId(data.accounts[0].accountId);
+      setConnected(Boolean(data?.connected));
+      setGoogleEmail(typeof data?.googleEmail === 'string' ? data.googleEmail : null);
+      const normalizedAccounts: Account[] = Array.isArray(data?.accounts) ? data.accounts.map((account: any) => {
+        const containers: Container[] = Array.isArray(account?.containers) ? account.containers
+          .filter((container: any) => container && typeof container === 'object')
+          .map((container: any) => ({
+            accountId: typeof container.accountId === 'string' ? container.accountId : typeof account?.accountId === 'string' ? account.accountId : '',
+            containerId: typeof container.containerId === 'string' ? container.containerId : '',
+            name: typeof container.name === 'string' ? container.name : 'Unnamed container',
+            publicId: typeof container.publicId === 'string' ? container.publicId : null,
+            usageContext: Array.isArray(container.usageContext) ? container.usageContext.filter((value: any) => typeof value === 'string') : [],
+            domainName: Array.isArray(container.domainName) ? container.domainName.filter((value: any) => typeof value === 'string') : [],
+          }))
+          .filter((container: Container) => container.containerId) : [];
+        return {
+          accountId: typeof account?.accountId === 'string' ? account.accountId : '',
+          name: typeof account?.name === 'string' ? account.name : 'Unnamed account',
+          containers,
+        };
+      }).filter((account: Account) => account.accountId) : [];
+      setAccounts(normalizedAccounts);
+      if (!accountId && normalizedAccounts[0]) setAccountId(normalizedAccounts[0].accountId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load GTM containers');
     } finally {
@@ -69,7 +87,7 @@ export default function GtmConnectPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { setSites(data.sites || []); setSelectedSiteId((current) => current || String(data.sites?.[0]?.id || '')); } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
+    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { const nextSites = Array.isArray(data?.sites) ? data.sites.filter((item: any) => item && Number.isSafeInteger(Number(item.id))).map((item: any) => ({ id: Number(item.id), domain: typeof item.domain === 'string' ? item.domain : 'Unnamed site', api_key: typeof item.api_key === 'string' ? item.api_key : '' })) : []; setSites(nextSites); setSelectedSiteId((current) => current || String(nextSites[0]?.id || '')); } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
     loadContainers();
     if (status === 'connected') setNotice('Google Tag Manager is connected. Select a container to continue.');
     if (status === 'not_configured') setError('GTM Connect is not enabled on this deployment yet. The GAfix owner must add the Google OAuth settings once in Render; customers do not need to create backend settings for their own connection.');
@@ -93,7 +111,7 @@ export default function GtmConnectPage() {
     setLoadingWorkspaces(true);
     fetch(`/api/gtm/workspaces?accountId=${encodeURIComponent(accountId)}&containerId=${encodeURIComponent(containerId)}`, { credentials: 'include', cache: 'no-store' })
       .then((response) => response.json().then((data) => ({ response, data })))
-      .then(({ response, data }) => { if (cancelled) return; if (!response.ok) throw new Error(data?.error || 'Unable to load GTM workspaces'); setWorkspaces(data.workspaces || []); setWorkspaceId((current) => current || data.workspaces?.[0]?.workspaceId || ''); })
+      .then(({ response, data }) => { if (cancelled) return; if (!response.ok) throw new Error(data?.error || 'Unable to load GTM workspaces'); const nextWorkspaces: Workspace[] = Array.isArray(data?.workspaces) ? data.workspaces.filter((workspace: any) => workspace && typeof workspace === 'object' && typeof workspace.workspaceId === 'string').map((workspace: any) => ({ workspaceId: workspace.workspaceId, name: typeof workspace.name === 'string' ? workspace.name : `Workspace ${workspace.workspaceId}`, description: typeof workspace.description === 'string' ? workspace.description : null, updateTime: typeof workspace.updateTime === 'string' ? workspace.updateTime : null })) : []; setWorkspaces(nextWorkspaces); setWorkspaceId((current) => current || nextWorkspaces[0]?.workspaceId || ''); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load GTM workspaces'); })
       .finally(() => { if (!cancelled) setLoadingWorkspaces(false); });
     return () => { cancelled = true; };

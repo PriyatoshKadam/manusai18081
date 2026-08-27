@@ -89,6 +89,9 @@ describe('security hardening', () => {
     const page = read('app/dashboard/gtm-connect/page.tsx');
     const boundary = read('app/dashboard/gtm-connect/error.tsx');
     expect(page).toContain('Configure NEXT_PUBLIC_MONITOR_ORIGIN as a valid absolute HTTPS URL');
+    expect(page).toContain('const normalizedAccounts: Account[]');
+    expect(page).toContain('const nextWorkspaces: Workspace[]');
+    expect(page).toContain('const nextSites = Array.isArray(data?.sites)');
     expect(boundary).toContain('GTM connection interrupted');
     expect(boundary).toContain('Do not paste OAuth secrets or API keys');
     expect(boundary).not.toContain('{error.message}');
