@@ -25,10 +25,10 @@ describe('Slack and repeated-event regressions', () => {
 
   it('exposes a customer-facing action center and delivery status', () => {
     const page = read('app/dashboard/page.tsx');
-    expect(page).toContain('Action center');
-    expect(page).toContain('Delivery health');
+    expect(page).toContain('Your action list');
+    expect(page).toContain('Alert delivery');
     expect(page).toContain('/api/alert-deliveries');
-    expect(page).toContain('Live event pulse');
+    expect(page).toContain('Recent tracking actions');
     expect(page).toContain('collapseActionItems');
     expect(page).toContain('Triggered');
     expect(page).toContain('Last seen');

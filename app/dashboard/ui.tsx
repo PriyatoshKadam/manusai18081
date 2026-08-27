@@ -1,6 +1,7 @@
 'use client';
 
 export function SeverityChip({ severity }: { severity: string }) {
+  const displaySeverity = severity === 'critical' ? 'Needs attention now' : severity === 'warning' ? 'Worth checking' : 'Information';
   const cls = severity === 'critical'
     ? 'bg-[#ff718d]/10 text-[#ff9aae] border border-[#ff718d]/20'
     : severity === 'warning'
@@ -10,7 +11,7 @@ export function SeverityChip({ severity }: { severity: string }) {
   return (
     <span className={`pill ${cls}`}>
       <span className={`dot ${dot}`}></span>
-      {severity[0].toUpperCase() + severity.slice(1)}
+      {displaySeverity}
     </span>
   );
 }

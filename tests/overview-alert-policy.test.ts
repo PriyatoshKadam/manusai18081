@@ -16,7 +16,7 @@ describe('overview and alert policy contract', () => {
 
   it('exposes a testable Slack configuration path and resilient overview loading', () => {
     expect(read('app/api/alert-deliveries/test/route.ts')).toContain('SLACK_WEBHOOK_URL');
-    expect(read('app/dashboard/integrations/page.tsx')).toContain('Send test message to Slack');
+    expect(read('app/dashboard/integrations/page.tsx')).toContain('Send a test to Slack');
     const overview = read('app/dashboard/page.tsx');
     expect(overview).toContain('fetchJson');
     expect(overview).not.toContain('useMemo');
@@ -24,7 +24,7 @@ describe('overview and alert policy contract', () => {
 
   it('documents synthetic and Ads identity for customers', () => {
     expect(read('app/dashboard/synthetic/page.tsx')).toContain('Create a synthetic HTTP journey');
-    expect(read('app/dashboard/health/page.tsx')).toContain('actual visitors');
+    expect(read('app/dashboard/health/page.tsx')).toContain('real visitor data');
     expect(read('app/dashboard/vendor-view.tsx')).toContain('conversion_label');
     expect(read('app/api/events/route.ts')).toContain('google_conversion_label');
   });

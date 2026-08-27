@@ -53,31 +53,31 @@ export default function DashboardShell({
   const nav = [
     { section: 'Monitoring', items: [
       { href: '/dashboard', label: 'Overview', icon: iconGrid },
-      { href: '/dashboard/ga4', label: 'Google Analytics 4', badge: 'GA', badgeColor: 'bg-orange-500' },
+      { href: '/dashboard/ga4', label: 'Google Analytics', badge: 'GA', badgeColor: 'bg-orange-500' },
       { href: '/dashboard/ads', label: 'Google Ads', badge: 'Ad', badgeColor: 'bg-blue-500' },
-      { href: '/dashboard/meta', label: 'Meta Pixel', badge: 'M', badgeColor: 'bg-blue-600' },
-      { href: '/dashboard/tiktok', label: 'TikTok Pixel', badge: 'TT', badgeColor: 'bg-ink-950' },
-      { href: '/dashboard/linkedin', label: 'LinkedIn Insight', badge: 'in', badgeColor: 'bg-sky-700' },
-      { href: '/dashboard/bing', label: 'Bing UET', badge: 'B', badgeColor: 'bg-cyan-700' },
-      { href: '/dashboard/snapchat', label: 'Snapchat Pixel', badge: 'S', badgeColor: 'bg-yellow-500' },
+      { href: '/dashboard/meta', label: 'Meta tracking', badge: 'M', badgeColor: 'bg-blue-600' },
+      { href: '/dashboard/tiktok', label: 'TikTok tracking', badge: 'TT', badgeColor: 'bg-ink-950' },
+      { href: '/dashboard/linkedin', label: 'LinkedIn tracking', badge: 'in', badgeColor: 'bg-sky-700' },
+      { href: '/dashboard/bing', label: 'Microsoft Ads tracking', badge: 'B', badgeColor: 'bg-cyan-700' },
+      { href: '/dashboard/snapchat', label: 'Snapchat tracking', badge: 'S', badgeColor: 'bg-yellow-500' },
     ]},
     { section: 'Insights', items: [
-      { href: '/dashboard/sessions', label: 'Sessions', icon: iconUsers },
-      { href: '/dashboard/revenue', label: 'Revenue impact', icon: iconChart },
-      { href: '/dashboard/vitals', label: 'Web Vitals', icon: iconPulse },
+      { href: '/dashboard/sessions', label: 'Visitor sessions', icon: iconUsers },
+      { href: '/dashboard/revenue', label: 'Purchase impact', icon: iconChart },
+      { href: '/dashboard/vitals', label: 'Website speed', icon: iconPulse },
     ]},
     { section: 'Diagnostics', items: [
-      { href: '/dashboard/audit', label: 'Runtime audit', icon: iconShield },
-      { href: '/dashboard/health', label: 'Tag health', icon: iconShield },
-      { href: '/dashboard/duplicates', label: 'Duplicate events', icon: iconLayers },
-      { href: '/dashboard/gtm', label: 'GTM diagnostics', icon: iconLayers },
-      { href: '/dashboard/adblock', label: 'Ad-blocker impact', icon: iconShield },
-      { href: '/dashboard/consent', label: 'Consent Mode', icon: iconLock },
-      { href: '/dashboard/compliance', label: 'Compliance', icon: iconShield },
+      { href: '/dashboard/audit', label: 'Tracking check', icon: iconShield },
+      { href: '/dashboard/health', label: 'Tracking health', icon: iconShield },
+      { href: '/dashboard/duplicates', label: 'Possible repeats', icon: iconLayers },
+      { href: '/dashboard/gtm', label: 'Tag Manager checks', icon: iconLayers },
+      { href: '/dashboard/adblock', label: 'When tracking was blocked', icon: iconShield },
+      { href: '/dashboard/consent', label: 'Privacy choices', icon: iconLock },
+      { href: '/dashboard/compliance', label: 'Website safety', icon: iconShield },
     ]},
     { section: 'Setup', items: [
-      { href: '/dashboard/install', label: 'Script installation', icon: iconCode, highlight: true },
-      { href: '/dashboard/integrations', label: 'Integrations & exports', icon: iconLink },
+      { href: '/dashboard/install', label: 'Install GAfix', icon: iconCode, highlight: true },
+      { href: '/dashboard/integrations', label: 'Alerts and data', icon: iconLink },
       { href: '/dashboard/settings', label: 'Settings', icon: iconGear },
     ]},
   ];
@@ -138,7 +138,7 @@ export default function DashboardShell({
               </div>
             ))}
           </nav>
-          <div className="m-3 rounded-xl border border-[#a8f06a]/15 bg-[#a8f06a]/[.05] p-3"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#b9f57e]"><span className="dot bg-[#a8f06a]" /> Collector active</div><div className="mt-1 text-[10px] leading-relaxed text-slate-500">Real-user events, delivery paths, and failures are being correlated.</div></div>
+          <div className="m-3 rounded-xl border border-[#a8f06a]/15 bg-[#a8f06a]/[.05] p-3"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#b9f57e]"><span className="dot bg-[#a8f06a]" /> Collector active</div><div className="mt-1 text-[10px] leading-relaxed text-slate-500">GAfix is watching visitor actions and checking whether tracking gets through.</div></div>
           <div className="p-3 border-t border-white/[.07] flex items-center gap-2">
             <div className="w-9 h-9 rounded-full bg-[#2f6bff] text-white font-bold text-sm flex items-center justify-center">
               {email.charAt(0).toUpperCase()}
@@ -155,7 +155,7 @@ export default function DashboardShell({
             <div className="flex items-center gap-3">
               <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#86a8ff]">GAfix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
               {currentSite && (
-                <><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> <strong>Live</strong> · 24h evidence window</span><span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">
+                <><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> <strong>Live</strong> · last 24 hours</span><span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">
                   <span className="dot bg-green-500"></span>Live
                 </span></>
               )}
@@ -179,26 +179,26 @@ export default function DashboardShell({
 function pageTitle(path: string) {
   const titles: Record<string, string> = {
     '/dashboard': 'Overview',
-    '/dashboard/ga4': 'Google Analytics 4',
+    '/dashboard/ga4': 'Google Analytics',
     '/dashboard/ads': 'Google Ads',
-    '/dashboard/meta': 'Meta Pixel',
-    '/dashboard/tiktok': 'TikTok Pixel',
-    '/dashboard/linkedin': 'LinkedIn Insight Tag',
-    '/dashboard/bing': 'Bing UET',
-    '/dashboard/snapchat': 'Snapchat Pixel',
-    '/dashboard/sessions': 'Sessions',
-    '/dashboard/revenue': 'Revenue impact',
-    '/dashboard/vitals': 'Web Vitals',
-    '/dashboard/audit': 'Runtime audit',
-    '/dashboard/health': 'Tag health',
-    '/dashboard/duplicates': 'Duplicate events',
-    '/dashboard/gtm': 'GTM diagnostics',
-    '/dashboard/adblock': 'Ad-blocker impact',
-    '/dashboard/consent': 'Consent Mode',
-    '/dashboard/compliance': 'Compliance',
-    '/dashboard/install': 'Script installation',
-    '/dashboard/gtm-connect': 'Connect GTM',
-    '/dashboard/integrations': 'Integrations & exports',
+    '/dashboard/meta': 'Meta tracking',
+    '/dashboard/tiktok': 'TikTok tracking',
+    '/dashboard/linkedin': 'LinkedIn tracking',
+    '/dashboard/bing': 'Microsoft Ads tracking',
+    '/dashboard/snapchat': 'Snapchat tracking',
+    '/dashboard/sessions': 'Visitor sessions',
+    '/dashboard/revenue': 'Purchase impact',
+    '/dashboard/vitals': 'Website speed',
+    '/dashboard/audit': 'Tracking check',
+    '/dashboard/health': 'Tracking health',
+    '/dashboard/duplicates': 'Possible repeats',
+    '/dashboard/gtm': 'Tag Manager checks',
+    '/dashboard/adblock': 'When tracking was blocked',
+    '/dashboard/consent': 'Privacy choices',
+    '/dashboard/compliance': 'Website safety',
+    '/dashboard/install': 'Install GAfix',
+    '/dashboard/gtm-connect': 'Connect Tag Manager',
+    '/dashboard/integrations': 'Alerts and data',
     '/dashboard/settings': 'Settings',
   };
   return titles[path] || 'Dashboard';

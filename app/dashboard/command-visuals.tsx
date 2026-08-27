@@ -1,6 +1,7 @@
 'use client';
 
 import { formatTime } from './ui';
+import { eventDisplayName, plainAlertMessage } from './plain-language';
 
 function number(value: unknown) {
   return Number(value || 0).toLocaleString();
@@ -11,7 +12,7 @@ function pct(value: number, max: number) {
 }
 
 export function DashboardSection({ eyebrow, title, description, action }: { eyebrow?: string; title: string; description?: string; action?: React.ReactNode }) {
-  return <div className="dashboard-section-head"><div><div className="dashboard-eyebrow">{eyebrow || 'Live evidence'}</div><h2>{title}</h2>{description ? <p>{description}</p> : null}</div>{action ? <div>{action}</div> : null}</div>;
+  return <div className="dashboard-section-head"><div><div className="dashboard-eyebrow">{eyebrow || 'Recent activity'}</div><h2>{title}</h2>{description ? <p>{description}</p> : null}</div>{action ? <div>{action}</div> : null}</div>;
 }
 
 export function CommandKpi({ label, value, note, tone = 'blue', trend }: { label: string; value: React.ReactNode; note: string; tone?: 'blue' | 'lime' | 'amber' | 'rose' | 'violet'; trend?: number[] }) {
@@ -39,9 +40,9 @@ export function MiniTrend({ values, tone = 'blue', height = 34 }: { values: numb
 export function EventHeatmap({ events }: { events: any[] }) {
   const rows = [...events].sort((a, b) => Number(b.cnt || 0) - Number(a.cnt || 0)).slice(0, 8);
   const max = Math.max(...rows.map((row) => Number(row.cnt || 0)), 1);
-  return <div className="event-heatmap">{rows.length ? rows.map((row, index) => { const count = Number(row.cnt || 0); const sessions = Number(row.sessions || 0); return <div key={`${row.event_name}-${index}`} className="event-heat-row"><div className="event-heat-label"><span className="event-heat-rank">0{index + 1}</span><span className="truncate mono">{row.event_name || '(unnamed)'}</span></div><div className="event-heat-track"><div className="event-heat-fill" style={{ width: pct(count, max) }} /><span className="event-heat-session" style={{ left: pct(sessions, max) }} /></div><div className="event-heat-count">{number(count)}</div><div className="event-heat-sessions">{number(sessions)} sessions</div></div>; }) : <div className="empty-visual">No event volume has arrived yet.</div>}</div>;
+  return <div className="event-heatmap">{rows.length ? rows.map((row, index) => { const count = Number(row.cnt || 0); const sessions = Number(row.sessions || 0); return <div key={`${row.event_name}-${index}`} className="event-heat-row"><div className="event-heat-label"><span className="event-heat-rank">0{index + 1}</span><span className="truncate mono">{eventDisplayName(row.event_name)}</span></div><div className="event-heat-track"><div className="event-heat-fill" style={{ width: pct(count, max) }} /><span className="event-heat-session" style={{ left: pct(sessions, max) }} /></div><div className="event-heat-count">{number(count)}</div><div className="event-heat-sessions">{number(sessions)} visitor sessions</div></div>; }) : <div className="empty-visual">No tracking activity has arrived yet.</div>}</div>;
 }
 
 export function EvidenceRail({ items }: { items: any[] }) {
-  return <div className="evidence-rail">{items.length ? items.slice(0, 6).map((item, index) => <div className="evidence-rail-item" key={`${item.id || item.event_name}-${index}`}><span className={`evidence-rail-dot ${item.severity === 'critical' ? 'is-critical' : item.sourceType === 'derived_gtm_fanout' ? 'is-violet' : 'is-lime'}`} /><div className="min-w-0 flex-1"><div className="evidence-rail-title">{item.event_name || item.vendor || 'Telemetry signal'}</div><div className="evidence-rail-copy truncate">{item.message || item.root_cause || 'Evidence captured from a real visitor.'}</div><div className="evidence-rail-copy">Triggered {formatTime(item.created_at || item.first_seen || item.last_seen)}{item.last_seen && item.last_seen !== (item.created_at || item.first_seen) ? ` · last seen ${formatTime(item.last_seen)}` : ''}</div></div><span className="evidence-rail-time">{item.occurrence_count || item.count || 1}×</span></div>) : <div className="empty-visual">No active evidence requiring attention.</div>}</div>;
+  return <div className="evidence-rail">{items.length ? items.slice(0, 6).map((item, index) => <div className="evidence-rail-item" key={`${item.id || item.event_name}-${index}`}><span className={`evidence-rail-dot ${item.severity === 'critical' ? 'is-critical' : item.sourceType === 'derived_gtm_fanout' ? 'is-violet' : 'is-lime'}`} /><div className="min-w-0 flex-1"><div className="evidence-rail-title">{eventDisplayName(item.event_name || item.vendor || 'Tracking activity')}</div><div className="evidence-rail-copy truncate">{plainAlertMessage(item)}</div><div className="evidence-rail-copy">Found {formatTime(item.created_at || item.first_seen || item.last_seen)}{item.last_seen && item.last_seen !== (item.created_at || item.first_seen) ? ` · last seen ${formatTime(item.last_seen)}` : ''}</div></div><span className="evidence-rail-time">{item.occurrence_count || item.count || 1}×</span></div>) : <div className="empty-visual">Nothing needs your attention right now.</div>}</div>;
 }

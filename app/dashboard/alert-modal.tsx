@@ -1,6 +1,7 @@
 'use client';
 
 import { formatDateTime } from './ui';
+import { eventDisplayName, plainAlertCause, plainAlertMessage, plainFixSteps, vendorDisplayName } from './plain-language';
 
 type AlertDetail = {
   severity: string;
@@ -28,9 +29,9 @@ export default function AlertModal({ alert, onClose }: { alert: AlertDetail | nu
   const chipBg = color === 'red' ? 'bg-[#ff718d]/10 text-[#ff9aae] border border-[#ff718d]/20' : color === 'amber' ? 'bg-[#f6b94c]/10 text-[#ffd27a] border border-[#f6b94c]/20' : 'bg-[#2f6bff]/10 text-[#86a8ff] border border-[#2f6bff]/20';
   const causeBg = color === 'red' ? 'bg-[#ff718d]/[.08] border-[#ff718d]/20' : color === 'amber' ? 'bg-[#f6b94c]/[.08] border-[#f6b94c]/20' : 'bg-[#2f6bff]/[.08] border-[#2f6bff]/20';
 
-  const steps: string[] = Array.isArray(alert.fix_steps) ? alert.fix_steps : (() => {
-    try { return typeof alert.fix_steps === 'string' ? JSON.parse(alert.fix_steps) : []; } catch { return []; }
-  })();
+  const steps: string[] = plainFixSteps(alert);
+  const simpleMessage = plainAlertMessage(alert);
+  const simpleCause = plainAlertCause(alert);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
@@ -42,10 +43,11 @@ export default function AlertModal({ alert, onClose }: { alert: AlertDetail | nu
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
-          <h2 className="text-xl font-bold text-white">{alert.message}</h2>
+          <h2 className="text-xl font-bold text-white">{simpleMessage}</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-400">{simpleCause}</p>
           <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-400">
-            {alert.vendor && <span>Vendor: <span className="mono text-slate-200">{alert.vendor}</span></span>}
-            {alert.event_name && <span>Event: <span className="mono text-slate-200">{alert.event_name}</span></span>}
+            {alert.vendor && <span>Tracking tool: <span className="text-slate-200">{vendorDisplayName(alert.vendor)}</span></span>}
+            {alert.event_name && <span>Event: <span className="text-slate-200">{eventDisplayName(alert.event_name)}</span> <span className="mono text-slate-500">({alert.event_name})</span></span>}
           </div>
           <div className="mt-4 grid gap-2 rounded-xl border border-white/[.08] bg-white/[.035] p-3 text-xs sm:grid-cols-3">
             <div><span className="block uppercase tracking-[.12em] text-slate-500">Triggered</span><strong className="mt-1 block text-slate-100">{formatDateTime(alert.created_at || alert.first_seen || alert.last_seen)}</strong></div>
@@ -58,15 +60,15 @@ export default function AlertModal({ alert, onClose }: { alert: AlertDetail | nu
         <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
           {alert.root_cause && (
             <div>
-              <div className="text-xs font-semibold uppercase text-slate-500 mb-2">Likely root cause</div>
+              <div className="text-xs font-semibold uppercase text-slate-500 mb-2">What this means</div>
               <div className={`p-4 rounded-lg border ${causeBg}`}>
-                <p className="text-sm text-slate-200 leading-relaxed">{alert.root_cause}</p>
+                <p className="text-sm text-slate-200 leading-relaxed">{simpleCause}</p>
               </div>
             </div>
           )}
           {steps.length > 0 && (
             <div>
-              <div className="text-xs font-semibold uppercase text-slate-500 mb-2">How to fix</div>
+              <div className="text-xs font-semibold uppercase text-slate-500 mb-2">What to do next</div>
               <ol className="space-y-2 text-sm text-slate-200">
                 {steps.map((s, i) => (
                   <li key={i} className="flex gap-3">
@@ -79,7 +81,7 @@ export default function AlertModal({ alert, onClose }: { alert: AlertDetail | nu
           )}
           {alert.page_url && (
             <div className="pt-3 border-t border-white/[.08]">
-              <div className="text-xs font-semibold uppercase text-slate-500 mb-2">Detected on</div>
+              <div className="text-xs font-semibold uppercase text-slate-500 mb-2">Page where this happened</div>
               <p className="text-xs mono text-slate-400 bg-white/[.04] p-3 rounded-lg break-all">{alert.page_url}</p>
             </div>
           )}

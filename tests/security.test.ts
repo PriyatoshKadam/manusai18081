@@ -90,7 +90,7 @@ describe('security hardening', () => {
 
   it('keeps GTM setup failures recoverable and does not expose raw runtime errors', () => {
     const page = read('app/dashboard/gtm-connect/page.tsx');
-    expect(page).toContain('Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service');
+    expect(page).toContain('The GAfix owner must configure the monitor address');
     expect(page).toContain('setAccounts(data.accounts || [])');
     expect(page).toContain('setWorkspaces(data.workspaces || [])');
     expect(page).not.toContain('window.history.replaceState');
@@ -100,7 +100,7 @@ describe('security hardening', () => {
   it('downgrades non-live GTM inventory matches instead of claiming runtime identity', () => {
     const inventory = read('lib/gtm-inventory.ts');
     expect(inventory).toContain("inventory.snapshotStale && baseConfidence === 'configuration_match' ? 'likely_match'");
-    expect(read('app/dashboard/gtm-connect/page.tsx')).toContain('Choose a workspace to read tag, trigger, and variable metadata.');
+    expect(read('app/dashboard/gtm-connect/page.tsx')).toContain('Choose a workspace so GAfix can read its tag, rule, and variable details.');
   });
 
   it('keeps read endpoints side-effect free and neutralizes CSV formulas', () => {

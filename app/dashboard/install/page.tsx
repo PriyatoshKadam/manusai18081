@@ -265,7 +265,7 @@ export default function InstallPage() {
           setError(
             err instanceof Error
               ? err.message
-              : 'Unable to load site information.'
+              : 'We could not load this website information.'
           );
         }
       } finally {
@@ -285,7 +285,7 @@ export default function InstallPage() {
   if (!siteId) {
     return (
       <div className="text-ink-400 text-sm">
-        Select a site to see its install snippet.
+        Select a website to see its GAfix installation.
       </div>
     );
   }
@@ -293,7 +293,7 @@ export default function InstallPage() {
   if (loading) {
     return (
       <div className="text-ink-400 text-sm">
-        Loading site configuration…
+        Loading website setup…
       </div>
     );
   }
@@ -303,7 +303,7 @@ export default function InstallPage() {
       <div className="max-w-2xl">
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
           <h3 className="font-semibold text-red-900 mb-1">
-            Unable to load site
+            We could not load this website
           </h3>
 
           <p className="text-sm text-red-700">
@@ -326,7 +326,7 @@ export default function InstallPage() {
   if (!site) {
     return (
       <div className="text-ink-400 text-sm">
-        Site not found.
+        Website not found.
       </div>
     );
   }
@@ -346,7 +346,7 @@ export default function InstallPage() {
       <div className="max-w-2xl">
         <div className="bg-red-50 border border-red-200 rounded-xl p-5">
           <h3 className="font-semibold text-red-900 mb-1">
-            Monitor origin is not configured
+            GAfix monitor address is not configured
           </h3>
 
           <p className="text-sm text-red-700 leading-relaxed">
@@ -467,29 +467,29 @@ export default function InstallPage() {
 
       <div className="mb-6">
         <h2 className="text-lg font-semibold text-ink-950">
-          Install through Google Tag Manager for {site.domain}
+          Install GAfix on {site.domain}
         </h2>
 
         <p className="text-sm text-ink-500 mt-0.5">
-          Choose one installation path: Connect GTM automatically, or add the same Custom HTML tag manually. Do not install both.
+          Choose one method: connect Google Tag Manager automatically, or add the same tag yourself. Never use both methods.
         </p>
       </div>
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6">
         <div className="text-xs font-semibold text-amber-900 uppercase tracking-wide mb-1">
-          Recommended: Connect GTM
+          Recommended: Connect Google Tag Manager
         </div>
         <p className="text-sm text-amber-900 leading-relaxed">
-          Use <b>Connect GTM</b> to authorize GAfix, create the monitor tag in a reviewable workspace, and publish it safely. If you cannot authorize GTM, use the manual Custom HTML option below. Both options install the same single monitor script; never use both.
+          Use <b>Connect Google Tag Manager</b> to let GAfix prepare the monitor tag for review and publishing. If you cannot connect it, use the manual option below. Both methods install the same single monitoring script—never use both.
         </p>
-        <a href={`/dashboard/gtm-connect?siteId=${encodeURIComponent(String(site.id))}`} className="mt-3 inline-block rounded-lg bg-ink-950 px-4 py-2 text-sm font-semibold text-white hover:bg-ink-800">Connect GTM (recommended)</a>
+        <a href={`/dashboard/gtm-connect?siteId=${encodeURIComponent(String(site.id))}`} className="mt-3 inline-block rounded-lg bg-ink-950 px-4 py-2 text-sm font-semibold text-white hover:bg-ink-800">Connect Google Tag Manager (recommended)</a>
       </div>
 
-      {/* Monitor origin */}
+      {/* Where monitoring is loaded from */}
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
         <div className="text-xs font-semibold text-blue-900 uppercase tracking-wide mb-1">
-          Monitor origin
+          Where monitoring is loaded from
         </div>
 
         <code className="text-sm text-blue-950 break-all">
@@ -497,9 +497,7 @@ export default function InstallPage() {
         </code>
 
         <div className="mt-2 text-xs text-blue-800">
-          monitor.js will load from this origin,
-          and telemetry will be sent to the same
-          origin.
+          The GAfix monitoring script loads from this address, and monitoring information is sent there too.
         </div>
       </div>
 
@@ -511,11 +509,11 @@ export default function InstallPage() {
 
           <div>
             <h3 className="font-semibold text-ink-950">
-              Your snippet
+              Your GAfix installation code
             </h3>
 
             <p className="text-xs text-ink-500 mt-0.5">
-              This is the same tag created by Connect GTM. Add it manually only if you cannot use the automatic connection.
+              This is the same tag that automatic Google Tag Manager connection creates. Add it yourself only when automatic connection is not possible.
             </p>
           </div>
 
@@ -529,7 +527,7 @@ export default function InstallPage() {
           >
             {copied
               ? '✓ Copied!'
-              : 'Copy snippet'}
+              : 'Copy installation code'}
           </button>
 
         </div>
@@ -547,7 +545,7 @@ export default function InstallPage() {
       <div className="bg-white rounded-xl border border-ink-200 p-6 mb-6">
 
         <h3 className="font-semibold text-ink-950 mb-4">
-          Manual fallback: add the same tag in Google Tag Manager
+          Manual option: add the same tag in Google Tag Manager
         </h3>
 
         <ol className="space-y-4 text-sm text-ink-800">
@@ -563,41 +561,27 @@ export default function InstallPage() {
               >
                 tagmanager.google.com
               </a>{' '}
-              and open your container.
+              and open the container for this website.
             </>,
 
             <>
-              Click <b>Tags</b> in the left
-              sidebar, then <b>New</b>.
+              Choose <b>Tags</b> in the left menu, then choose <b>New</b>.
             </>,
 
             <>
-              Choose tag type{' '}
-              <b>Custom HTML</b>, then paste the one snippet above into the HTML box. Do not paste it into the website head as well.
+              Choose <b>Custom HTML</b>, then paste the one code block above into the HTML box. Do not also paste it into the website’s code or page head.
             </>,
 
             <>
-              Set the trigger to{' '}
-              <b>All Pages</b>. Under Advanced
-              Settings, set{' '}
-              <b>Tag firing priority</b> to{' '}
-              <span className="mono">
-                1000
-              </span>{' '}
-              so it loads before other tags.
+              Set the trigger to <b>All Pages</b>. Under Advanced Settings, set <b>Tag firing priority</b> to <span className="mono">1000</span> so GAfix starts early.
             </>,
 
             <>
-              Name the tag{' '}
-              <span className="mono">
-                GAfix Monitor
-              </span>
-              , click <b>Save</b>, then use GTM Preview to verify it once before{' '}
-              <b>Submit</b> → <b>Publish</b>.
+              Name the tag <span className="mono">GAfix Monitor</span>, click <b>Save</b>, then use Preview to check it once before <b>Submit</b> → <b>Publish</b>.
             </>,
 
             <>
-              Return here — events should appear on the Overview tab within seconds. If you use Connect GTM, do not repeat this manual installation.
+              Return here—tracking activity should appear on Overview within seconds. If you used automatic Google Tag Manager connection, do not repeat this manual installation.
             </>,
           ].map(
             (step, index) => (
@@ -620,7 +604,7 @@ export default function InstallPage() {
 
       </div>
 
-      {/* First-party domain */}
+      {/* Your own monitoring address */}
 
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-6">
 
@@ -637,13 +621,11 @@ export default function InstallPage() {
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6-8 10-8 10z" />
           </svg>
 
-          First-party domain
+          Your own monitoring address
         </h3>
 
         <p className="text-sm text-blue-900 mb-3">
-          For the best ad-blocker detection,
-          serve monitor.js and the telemetry
-          endpoint from your own subdomain.
+          For the clearest blocker information, load the GAfix monitor and send its monitoring information through a subdomain that you control.
         </p>
 
         <ol className="space-y-2 text-sm text-blue-900 mb-3">
@@ -656,59 +638,55 @@ export default function InstallPage() {
           </li>
 
           <li>
-            2. Point the CNAME to your Render
-            monitoring service.
+            2. Point that CNAME to your GAfix monitoring service.
           </li>
 
           <li>
-            3. Add the custom domain in Render.
+            3. Add the custom domain in your hosting settings.
           </li>
 
           <li>
-            4. Enter the hostname under
-            Settings → First-party domain.
+            4. Enter the hostname under Settings → Your own monitoring address.
           </li>
 
           <li>
-            5. Re-copy the install snippet.
+            5. Copy the installation code again.
           </li>
 
         </ol>
 
         <div className="mt-4 rounded-lg border border-blue-200 bg-white/70 px-3 py-3 text-xs leading-relaxed text-blue-950">
 
-          <b>Current CSP origin:</b>
+          <b>Monitoring address to allow:</b>
 
           <div className="mono mt-1 break-all">
             {monitorOrigin}
           </div>
 
           <div className="mt-2">
-            If the customer has a CSP, this exact
-            origin must be allowed in both:
+            If your website has a browser security policy, allow this exact address in both places below:
           </div>
 
           <div className="mono mt-2">
-            script-src
+            Scripts allowed to load from
           </div>
 
           <div className="mono">
-            connect-src
+            Connections allowed to send to
           </div>
 
         </div>
 
         {site.first_party_domain ? (
           <div className="mt-4 text-sm text-green-800 bg-green-100 border border-green-200 rounded-lg px-3 py-2 inline-block">
-            ✓ Currently using:{' '}
+            ✓ Using this address:{' '}
             <span className="mono">
               {site.first_party_domain}
             </span>
           </div>
         ) : (
           <div className="mt-4 text-sm text-amber-800 bg-amber-100 border border-amber-200 rounded-lg px-3 py-2 inline-block">
-            Not configured — using the GAfix
-            monitoring deployment.
+            Not set up yet—using the standard GAfix monitoring address.
           </div>
         )}
 

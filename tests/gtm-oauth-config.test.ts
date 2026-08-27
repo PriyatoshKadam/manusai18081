@@ -18,8 +18,8 @@ describe('GTM OAuth configuration guidance', () => {
 
   it('explains the one-time owner setup to customers in GTM Connect', () => {
     const page = read('app/dashboard/gtm-connect/page.tsx');
-    expect(page).toContain('each customer simply authorizes their own Google account');
-    expect(page).toContain('do not add backend variables');
-    expect(page).toContain('must never be entered into GTM or exposed in the browser');
+    expect(page).toContain('You only approve your own Google account here');
+    expect(page).toContain('do not add server settings');
+    expect(page).toContain('never enter those private settings into Tag Manager or share them in the browser');
   });
 });
