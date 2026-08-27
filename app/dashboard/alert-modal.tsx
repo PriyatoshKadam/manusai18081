@@ -16,6 +16,9 @@ type AlertDetail = {
   last_seen?: string;
   occurrence_count?: number;
   distinct_pushes?: number;
+  distinct_sessions?: number;
+  distinct_pages?: number;
+  raw?: Record<string, unknown>;
 };
 
 export default function AlertModal({ alert, onClose }: { alert: AlertDetail | null; onClose: () => void }) {
@@ -49,6 +52,7 @@ export default function AlertModal({ alert, onClose }: { alert: AlertDetail | nu
             <div><span className="block uppercase tracking-[.12em] text-slate-500">Last seen</span><strong className="mt-1 block text-slate-100">{formatDateTime(alert.last_seen || alert.created_at || alert.first_seen)}</strong></div>
             <div><span className="block uppercase tracking-[.12em] text-slate-500">Evidence</span><strong className="mt-1 block text-slate-100">{alert.occurrence_count || 1}×{alert.distinct_pushes ? ` · ${alert.distinct_pushes} push` : ''}</strong></div>
           </div>
+          {(alert.distinct_sessions || alert.distinct_pages || (alert.raw && typeof alert.raw === 'object')) && <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-slate-400"><span>Impact: <strong className="text-slate-100">{alert.distinct_sessions || 0} sessions</strong></span><span><strong className="text-slate-100">{alert.distinct_pages || 0} pages</strong></span>{alert.raw && typeof alert.raw === 'object' && 'windowSeconds' in alert.raw && <span>Duplicate window: <strong className="text-slate-100">{String((alert.raw as any).windowSeconds || '—')}s</strong></span>}</div>}
         </div>
 
         <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">

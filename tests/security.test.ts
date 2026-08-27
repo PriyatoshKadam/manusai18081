@@ -65,10 +65,30 @@ describe('security hardening', () => {
     expect(telemetryOriginAllowed('app.other.com', 'www.mokkup.ai', 'www.mokkup.ai')).toBe(false);
   });
 
-  it('keeps telemetry authentication key-based without origin-header rejection', () => {
+  it('keeps telemetry authentication key-based with bounded rotation overlap', () => {
     const ingest = read('app/api/ingest/route.ts');
-    expect(ingest).toContain('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1');
+    const blocked = read('app/api/blocked/route.ts');
+    const sites = read('app/api/sites/[id]/route.ts');
+    expect(ingest).toContain('previous_api_key = $1 AND previous_api_key_expires_at > NOW()');
+    expect(blocked).toContain('previous_api_key = $1 AND previous_api_key_expires_at > NOW()');
+    expect(sites).toContain("body?.action !== 'rotate_api_key'");
+    expect(sites).toContain("INTERVAL '48 hours'");
     expect(ingest).not.toContain('Telemetry origin is not registered for this site');
+  });
+
+  it('records detection failures and recurring blocker candidates without weakening collection auth', () => {
+    expect(read('lib/detection.ts')).toContain('detection_failures');
+    expect(read('app/api/jobs/route.ts')).toContain("job === 'detection'");
+    expect(read('app/api/jobs/route.ts')).toContain("job === 'gtm'");
+    expect(read('lib/gtm-inventory.ts')).toContain('refreshGtmSnapshotFreshness');
+    expect(read('app/api/blocked/route.ts')).toContain('blocker_pattern_candidates');
+    expect(read('app/api/adblock/route.ts')).toContain('candidates: candidates.rows');
+  });
+
+  it('downgrades non-live GTM inventory matches instead of claiming runtime identity', () => {
+    const inventory = read('lib/gtm-inventory.ts');
+    expect(inventory).toContain("inventory.snapshotStale && baseConfidence === 'configuration_match' ? 'likely_match'");
+    expect(read('app/dashboard/gtm-connect/page.tsx')).toContain('Workspace snapshot, not live proof.');
   });
 
   it('keeps read endpoints side-effect free and neutralizes CSV formulas', () => {

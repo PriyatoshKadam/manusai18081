@@ -48,7 +48,9 @@ ALTER TABLE sites
   ADD COLUMN IF NOT EXISTS bing_uet_tag_id TEXT,
   ADD COLUMN IF NOT EXISTS snapchat_pixel_id TEXT,
   ADD COLUMN IF NOT EXISTS first_party_domain TEXT,
-  ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT;
+  ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT,
+  ADD COLUMN IF NOT EXISTS previous_api_key TEXT,
+  ADD COLUMN IF NOT EXISTS previous_api_key_expires_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_sites_user
   ON sites(user_id);
@@ -331,6 +333,21 @@ CREATE TABLE IF NOT EXISTS gtm_config_snapshots (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE gtm_config_snapshots
+  ADD COLUMN IF NOT EXISTS environment TEXT NOT NULL DEFAULT 'workspace',
+  ADD COLUMN IF NOT EXISTS snapshot_version_id TEXT,
+  ADD COLUMN IF NOT EXISTS snapshot_version_name TEXT,
+  ADD COLUMN IF NOT EXISTS live_version_id TEXT,
+  ADD COLUMN IF NOT EXISTS live_version_name TEXT,
+  ADD COLUMN IF NOT EXISTS live_version_updated_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS snapshot_stale BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Existing snapshots were read from workspaces before environment metadata existed;
+-- keep them usable for correlation but never present them as live proof.
+UPDATE gtm_config_snapshots
+   SET environment = 'workspace', snapshot_stale = TRUE
+ WHERE COALESCE(environment, 'workspace') = 'workspace' AND snapshot_stale = FALSE;
+
 CREATE INDEX IF NOT EXISTS idx_gtm_snapshots_user_site
   ON gtm_config_snapshots(user_id, site_id, fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_gtm_snapshots_container
@@ -367,13 +384,20 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS gtm_correlation_confidence TEXT DEFAULT 'unmatched',
   ADD COLUMN IF NOT EXISTS missing_parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
   ADD COLUMN IF NOT EXISTS observed_parameters JSONB NOT NULL DEFAULT '[]'::jsonb,
-  ADD COLUMN IF NOT EXISTS parameter_status TEXT NOT NULL DEFAULT 'not_applicable';
+  ADD COLUMN IF NOT EXISTS parameter_status TEXT NOT NULL DEFAULT 'not_applicable',
+  ADD COLUMN IF NOT EXISTS detection_status TEXT NOT NULL DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS detection_error TEXT,
+  ADD COLUMN IF NOT EXISTS detection_attempts INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS detection_last_attempt_at TIMESTAMPTZ;
 
 ALTER TABLE alerts
   ADD COLUMN IF NOT EXISTS confidence TEXT NOT NULL DEFAULT 'confirmed',
   ADD COLUMN IF NOT EXISTS dedupe_key TEXT,
   ADD COLUMN IF NOT EXISTS last_notified_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS notification_status TEXT NOT NULL DEFAULT 'pending';
+  ADD COLUMN IF NOT EXISTS notification_status TEXT NOT NULL DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS distinct_sessions INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS distinct_pages INT NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS impact_updated_at TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_events_site_revenue
   ON events(site_id, transaction_id, received_at DESC);
@@ -433,6 +457,43 @@ CREATE TABLE IF NOT EXISTS alert_deliveries (
 
 CREATE INDEX IF NOT EXISTS idx_alert_deliveries_due
   ON alert_deliveries(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS detection_failures (
+  id BIGSERIAL PRIMARY KEY,
+  site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  event_id BIGINT NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
+  error TEXT NOT NULL,
+  attempts INT NOT NULL DEFAULT 1,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_detection_failures_due
+  ON detection_failures(resolved_at, next_attempt_at, attempts);
+
+CREATE TABLE IF NOT EXISTS blocker_pattern_candidates (
+  id BIGSERIAL PRIMARY KEY,
+  site_id BIGINT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  detection_method TEXT NOT NULL,
+  vendor TEXT NOT NULL,
+  signal TEXT NOT NULL,
+  sample_count INT NOT NULL DEFAULT 1,
+  first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_page_url TEXT,
+  last_blocked_url TEXT,
+  status TEXT NOT NULL DEFAULT 'candidate',
+  raw_error TEXT,
+  UNIQUE(site_id, detection_method, vendor, signal)
+);
+
+ALTER TABLE blocker_pattern_candidates
+  ADD COLUMN IF NOT EXISTS raw_error TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_blocker_candidates_review
+  ON blocker_pattern_candidates(site_id, status, last_seen DESC);
 
 CREATE TABLE IF NOT EXISTS tag_baselines (
   id BIGSERIAL PRIMARY KEY,

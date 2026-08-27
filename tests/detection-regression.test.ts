@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { classifyEvent, getStrongIdentity, paramsSignature } from '../lib/detection';
 
 describe('duplicate detection regression rules', () => {
-  it('classifies login and sign_up as custom events', () => {
-    expect(classifyEvent('login', 'ga4')).toBe('custom');
-    expect(classifyEvent('sign_up', 'ga4')).toBe('custom');
+  it('classifies GA4 recommended login and sign_up as standard events', () => {
+    expect(classifyEvent('login', 'ga4')).toBe('standard');
+    expect(classifyEvent('sign_up', 'ga4')).toBe('standard');
   });
 
   it('does not manufacture a strong identity for a login without event_id', () => {

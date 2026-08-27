@@ -79,7 +79,7 @@ async function recordBlocked(req: NextRequest, values: {
   signal: string | null;
 }) {
   if (!/^[a-f0-9]{48,64}$/i.test(values.apiKey)) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
-  const siteResult = await query('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1 LIMIT 1', [values.apiKey]);
+  const siteResult = await query('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1 OR (previous_api_key = $1 AND previous_api_key_expires_at > NOW()) ORDER BY CASE WHEN api_key = $1 THEN 0 ELSE 1 END LIMIT 1', [values.apiKey]);
   const site = siteResult.rows[0];
   if (!site) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
   if (!allowedOrigin(req, site)) return json({ ok: false, error: 'Telemetry origin is not registered for this site' }, 403);
@@ -105,6 +105,20 @@ async function recordBlocked(req: NextRequest, values: {
      VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12)`,
     [site.id, method, pageUrl, text(req.headers.get('user-agent'), 500), clientIpHash(req), JSON.stringify(blockedVendors), confidence, sessionId, blockedUrl, eventName, signal, deliveryMode],
   );
+
+  if (confidence === 'telemetry_gap') {
+    const candidateVendors = blockedVendors.length ? blockedVendors : ['unknown'];
+    for (const vendor of candidateVendors) {
+      await query(
+        `INSERT INTO blocker_pattern_candidates (site_id, detection_method, vendor, signal, sample_count, first_seen, last_seen, last_page_url, last_blocked_url, raw_error)
+         VALUES ($1,$2,$3,$4,1,NOW(),NOW(),$5,$6,$7)
+         ON CONFLICT (site_id, detection_method, vendor, signal)
+         DO UPDATE SET sample_count = blocker_pattern_candidates.sample_count + 1,
+                       last_seen = NOW(), last_page_url = EXCLUDED.last_page_url, last_blocked_url = EXCLUDED.last_blocked_url, raw_error = EXCLUDED.raw_error`,
+        [site.id, method, vendor, signal, pageUrl, blockedUrl, `${method}: ${signal}`],
+      );
+    }
+  }
 
   return json({
     ok: true,

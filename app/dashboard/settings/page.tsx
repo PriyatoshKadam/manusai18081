@@ -15,6 +15,7 @@ export default function SettingsPage() {
   const [policySiteId, setPolicySiteId] = useState<number | null>(null);
   const [policy, setPolicy] = useState<any>(null);
   const [policyMessage, setPolicyMessage] = useState('');
+  const [rotationMessage, setRotationMessage] = useState('');
 
   useEffect(() => { load(); }, []);
   async function load() {
@@ -81,6 +82,20 @@ export default function SettingsPage() {
     }
   }
 
+  async function rotateApiKey(id: number) {
+    if (!confirm('Rotate this site API key? The current key will remain valid for 48 hours so you can update the monitor snippet.')) return;
+    setRotationMessage('');
+    try {
+      const res = await fetch(`/api/sites/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'rotate_api_key' }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Unable to rotate API key');
+      setRotationMessage(`API key rotated. Update the monitor snippet before ${new Date(data.oldKeyExpiresAt).toLocaleString()}.`);
+      await load();
+    } catch (err) {
+      setRotationMessage(err instanceof Error ? err.message : 'Unable to rotate API key');
+    }
+  }
+
   async function deleteSite(id: number) {
     if (!confirm('Delete this site and all its data? This cannot be undone.')) return;
     setError('');
@@ -108,6 +123,7 @@ export default function SettingsPage() {
       </div>
 
       {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">{error}</div>}
+      {rotationMessage && <div className="mb-4 rounded-lg border border-brand-200 bg-brand-50 p-3 text-sm text-brand-800" role="status">{rotationMessage}</div>}
 
       {policy && <section className="bg-white rounded-xl border border-ink-200 p-6 mb-6"><div className="flex items-center justify-between gap-3 mb-4"><div><h3 className="font-semibold text-ink-950">Alert policy</h3><p className="text-xs text-ink-500 mt-1">Control what is sent immediately and what is summarized in the daily report. Default: critical incidents in real time, all lower-priority evidence at the configured UTC hour.</p></div><select value={policySiteId || ''} onChange={(e) => setPolicySiteId(Number(e.target.value))} className="border rounded-lg px-3 py-2 text-sm">{sites.map((site) => <option key={site.id} value={site.id}>{site.domain}</option>)}</select></div><div className="grid md:grid-cols-3 gap-4"><PolicyInput label="Failure drift threshold" value={policy.failure_rate_threshold} onChange={(value: string) => setPolicy({ ...policy, failure_rate_threshold: Number(value) })} /><PolicyInput label="Latency multiplier" value={policy.latency_multiplier} onChange={(value: string) => setPolicy({ ...policy, latency_multiplier: Number(value) })} /><PolicyInput label="Alert limit per window" value={policy.flood_limit} onChange={(value: string) => setPolicy({ ...policy, flood_limit: Number(value) })} /></div><div className="grid md:grid-cols-3 gap-4 mt-4"><label className="block"><span className="block text-xs font-medium text-ink-600 mb-1">Realtime minimum severity</span><select value={policy.realtime_min_severity || 'critical'} onChange={(e) => setPolicy({ ...policy, realtime_min_severity: e.target.value })} className="w-full border border-ink-200 rounded-lg px-3 py-2 text-sm"><option value="critical">Critical only</option><option value="warning">Warning and critical</option><option value="info">All alerts</option></select></label><label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={policy.digest_enabled !== false} onChange={(e) => setPolicy({ ...policy, digest_enabled: e.target.checked })} /> Send 24-hour report</label><PolicyInput label="Digest hour (UTC)" value={policy.digest_hour ?? 9} onChange={(value: string) => setPolicy({ ...policy, digest_hour: Number(value) })} /></div><div className="flex items-center gap-4 mt-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={policy.slack_enabled !== false} onChange={(e) => setPolicy({ ...policy, slack_enabled: e.target.checked })} /> Slack</label><label className="flex items-center gap-2"><input type="checkbox" checked={policy.email_enabled === true} onChange={(e) => setPolicy({ ...policy, email_enabled: e.target.checked })} /> Email</label><label className="flex items-center gap-2"><input type="checkbox" checked={policy.webhook_enabled === true} onChange={(e) => setPolicy({ ...policy, webhook_enabled: e.target.checked })} /> Webhook</label></div><div className="flex items-center gap-3 mt-4"><button onClick={savePolicy} className="bg-ink-950 text-white px-4 py-2 rounded-lg text-sm font-medium">Save policy</button>{policyMessage && <span className="text-xs text-ink-500">{policyMessage}</span>}</div></section>}
 
@@ -162,10 +178,11 @@ export default function SettingsPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-ink-950">{s.domain}</h3>
-                    <p className="text-xs text-ink-500 mt-0.5">API key: <span className="mono">{s.api_key.slice(0, 12)}…</span></p>
+                    <p className="text-xs text-ink-500 mt-0.5">API key: <span className="mono">{s.api_key.slice(0, 12)}…</span></p>{s.previous_api_key_expires_at && <p className="text-xs text-amber-700 mt-1">Previous key valid until {new Date(s.previous_api_key_expires_at).toLocaleString()}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setEditing(s.id)} className="border border-ink-200 px-3 py-1 rounded-lg text-xs">Edit</button>
+                    <button onClick={() => rotateApiKey(s.id)} className="border border-amber-200 text-amber-700 px-3 py-1 rounded-lg text-xs">Rotate key</button>
                     <button onClick={() => deleteSite(s.id)} className="border border-red-200 text-red-600 px-3 py-1 rounded-lg text-xs">Delete</button>
                   </div>
                 </div>

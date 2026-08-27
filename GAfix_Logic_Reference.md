@@ -43,15 +43,16 @@ The generated monitor URL uses a configured monitor origin where possible. A cus
 
 ### 3.1 Classification rule
 
-GAfix classifies event type with an allowlist rather than by attempting to reproduce every vendor’s taxonomy. A GTM-vendor observation is `internal`. An event with no name is `unknown`. The built-in automatic-event set is classified as `standard`: `page_view`, `scroll`, `click`, `user_engagement`, `session_start`, `first_visit`, `file_download`, `view_search_results`, `video_start`, `video_progress`, and `video_complete`. Named events outside that set are classified as `custom`.[3]
+GAfix classifies event type with vendor-aware allowlists rather than guessing from arbitrary names. A GTM-vendor observation is `internal`. An event with no name is `unknown`. For GA4, automatic events and the recommended event set are `standard`; this includes events such as `page_view`, `scroll`, `session_start`, `first_visit`, `form_start`, `form_submit`, `video_progress`, `login`, `sign_up`, `search`, `generate_lead`, `purchase`, and the documented commerce events. Meta, TikTok, LinkedIn, Bing, and Snapchat also have supported standard-event families. Named events outside the applicable vendor set are `custom`.[3]
 
 | Example | Current GAfix type | Reason |
 |---|---|---|
 | `page_view` | Standard | In the automatic-event allowlist. |
 | `scroll` or `video_progress` | Standard and naturally repeatable | It is a normal event that may legitimately occur repeatedly. |
-| `login` | Custom | It is not in the current automatic-event allowlist, even though it is a common GA4 recommended event. |
+| `login` | Standard for GA4 | It is in the GA4 recommended-event allowlist, while still remaining a high-sensitivity event for identity and duplicate rules. |
 | `run_audit` | Custom | It is a business/custom event name. |
-| `purchase` | Custom by `event_type`, transaction-sensitive by detection rules | It receives purchase-specific validation and duplicate logic despite the classification label. |
+| `purchase` | Standard for GA4, transaction-sensitive by detection rules | It receives purchase-specific validation and duplicate logic in addition to taxonomy classification. |
+| Meta `Purchase` or Bing `pageLoad` | Standard for the respective vendor | Vendor-specific standard-event names are normalized case-insensitively. |
 | `gtm.js`, `gtm.dom`, `gtm.load` | Internal in the GTM observation path | These are lifecycle/configuration signals, not customer business events. |
 | An unnamed network request | Unknown or displayed as `(unnamed)` | GAfix does not invent an event name from an unrelated field. Vendor-specific display fallbacks may still make the row understandable. |
 
@@ -104,7 +105,7 @@ This is essential for SPAs and multi-user traffic. GAfix scopes candidate compar
 | Same event name and parameters within a session but no identity | Not enough for a real-time confirmed duplicate for high-value events. It may still appear as derived repeat evidence on the Duplicate page. |
 | Same event across different sessions | Not a duplicate. Different visitors can perform the same action. |
 
-Candidate search windows are approximately 180 seconds for transaction/sensitive events, 15 seconds for navigation events, 30 seconds when strong identity or request signature exists, and 8 seconds for other events. Naturally repeatable events are rejected before scoring.[3]
+Candidate search windows retain the same base classes—approximately 180 seconds for transaction/sensitive events, 15 seconds for navigation events, 30 seconds when strong identity or request signature exists, and 8 seconds for other events—but now adapt to the site’s recent P75 latency. GAfix multiplies the base by `clamp(P75 / 800ms, 0.5, 3.0)` and records the chosen window and observed gap in duplicate alert evidence. Naturally repeatable events are rejected before scoring.[3]
 
 ### 5.3 Duplicate root-cause labels
 
@@ -124,7 +125,7 @@ The Duplicate page merges unresolved duplicate alerts with three derived evidenc
 
 Malformed fan-out rows with fewer than two actual network observations are filtered out. Natural repeats are filtered out. Overlapping rows are deduplicated before the final 100-row result is returned.[8]
 
-The practical limitation is important: the **derived repeat-evidence path can show a suspicious repeat pattern even when the real-time engine did not create a confirmed duplicate alert**. For example, two separate `login` occurrences close together may be displayed for investigation, but that alone does not prove one user action was duplicated. The strongest login finding is still one logical occurrence producing at least two network calls, or repeated requests carrying the same explicit identity.
+The practical limitation is important: the **derived repeat-evidence path can show a suspicious repeat pattern even when the real-time engine did not create a confirmed duplicate alert**. For example, two separate `login` occurrences close together may be displayed for investigation, but that alone does not prove one user action was duplicated. Failed-then-successful requests with the same signature inside five seconds are classified separately as **transport retries** and excluded from fan-out scoring. The strongest login finding is still one logical occurrence producing at least two successful network calls, or repeated requests carrying the same explicit identity.
 
 ## 6. Ad-blocker and delivery-blocking logic
 
@@ -145,7 +146,7 @@ The blocked endpoint validates the site API key, checks the registered telemetry
 
 A vendor endpoint returning **HTTP 200 or 204 is a successful response**, not a blocked request. A resource error, HTTP error, CORS failure, CSP problem, timeout, or missing correlation record may have many causes. Unless the browser supplies explicit block evidence, GAfix should display it as transport failure, correlation gap, or telemetry gap—not as a confirmed ad blocker.
 
-The Ad-blocker page counts confirmed blocker events/sessions separately from correlation and telemetry gaps. Its actionable “recent” list contains confirmed/likely evidence; its “Monitor delivery health” or telemetry list contains gap evidence and explicitly warns that those rows are not proof of an ad blocker. Internal lifecycle noise such as GTM, Termly, and `userPrefUpdate` correlation callbacks is excluded from blocker analytics so CMP/GTM housekeeping does not inflate the result.[9][10]
+The Ad-blocker page counts confirmed blocker events/sessions separately from correlation and telemetry gaps. Its actionable “recent” list contains confirmed/likely evidence; its “Monitor delivery health” or telemetry list contains gap evidence and explicitly warns that those rows are not proof of an ad blocker. Internal lifecycle noise such as GTM, Termly, and `userPrefUpdate` correlation callbacks is excluded from blocker analytics so CMP/GTM housekeeping does not inflate the result.[9][10] Signals without explicit blocker wording are also written to a tenant-scoped **blocker pattern review queue** with bounded vendor/signal/count/timestamp evidence. Recurring candidates are review material, not automatically promoted blocker rules.
 
 ### 6.3 Why GAfix cannot detect every blocked request
 
@@ -155,13 +156,13 @@ If a browser extension prevents the request before the monitor can observe a res
 
 The monitor captures consent state alongside observations when it can read the configured CMP or custom consent object. The current supported guidance includes OneTrust, Cookiebot, Iubenda, Usercentrics, and a manual `window.__g4f_consent` object that must exist before the monitor loads.[11]
 
-For GA4 network requests, GAfix reads the `gcs` value and decodes the two storage bits. In the current implementation, `G111` decodes to `ad_storage: granted` and `analytics_storage: denied`. When analytics storage is denied, GAfix creates an **informational consent alert** explaining that the event was sent under denied analytics storage. The alert explicitly says this is a consent state and **not proof of ad blocking or delivery failure**.[3]
+For GA4 network requests, GAfix reads the `gcs` value and decodes its two storage bits generically as `G1<ad_storage><analytics_storage>`, where `1` is granted and `0` is denied. Therefore `G100`, `G101`, `G110`, and `G111` all decode deterministically; specifically, `G111` means both `ad_storage` and `analytics_storage` are granted, while `G110` means analytics storage is denied. When analytics storage is denied, GAfix creates an **informational consent alert** explaining that the event was sent under denied analytics storage. The alert explicitly says this is a consent state and **not proof of ad blocking or delivery failure**.[3][24][25]
 
 The correct interpretation is therefore:
 
 | Observation | Interpretation |
 |---|---|
-| GA4 request with `gcs=G111` | Consent Mode state says ad storage is granted and analytics storage is denied. |
+| GA4 request with `gcs=G111` | Consent Mode state says both ad storage and analytics storage are granted. |
 | GA4 request with HTTP 200/204 and denied storage | A request was delivered under a consent-restricted state; it may be an allowed cookieless/consent-mode request. |
 | Denied storage plus browser block error | Two separate findings may exist: consent state and transport/blocker evidence. One does not prove the other. |
 | No consent state observed | Coverage gap until the CMP/consent object is visible; not automatically a consent violation. |
@@ -184,7 +185,7 @@ This is **destination intelligence**, not a claim about the entire vendor’s in
 
 ## 9. GTM inventory, tag names, triggers, and confidence
 
-GTM Connect retrieves accounts, containers, workspaces, and a tenant-scoped snapshot of tags, triggers, and variables. The snapshot is versioned and stored as configuration evidence. New runtime observations are matched against the most recent snapshot for the observed public container ID.[6][7]
+GTM Connect retrieves accounts, containers, workspaces, and a tenant-scoped snapshot of tags, triggers, and variables. The snapshot records that it came from a workspace, captures available live-version metadata, and is marked stale/non-published for confidence purposes. New runtime observations are matched against the most recent snapshot for the observed public container ID; an exact match from stale workspace inventory is downgraded to `likely_match` rather than presented as live proof.[6][7]
 
 > **GTM limitation:** GAfix does not receive a magical browser-side “this exact GTM tag fired” identifier from the network request. It correlates the observed event with the configured inventory. Therefore the UI must show confidence and must not fabricate a tag name when the match is ambiguous or absent.
 
@@ -296,9 +297,10 @@ Overview refreshes the events, tag-health, duplicates, and alert-delivery APIs e
 |---|---|
 | Overall tag health | Average of event-level `health_score` values returned by Tag health. It is null while evidence is still being collected. |
 | Events/hour | `events_hour` from `/api/events`: distinct occurrence keys observed in the last hour. |
-| Fires/session | Sum of grouped event counts divided by sum of grouped session counts from the current event table. It is a directional dashboard ratio, not a unique cross-vendor visitor metric. |
+| Fires/session | Aggregated fires divided by the backend’s distinct 24-hour session count. It is shown only after the shared 30-session minimum is reached; below that it displays collecting evidence. |
 | Failed fires | Sum of event-level failures from Tag health, where HTTP status is at least 400 or a failure reason exists. |
-| Duplicate evidence | Number of merged duplicate rows returned by the Duplicate API. |
+| Detection coverage | Scored persisted events divided by persisted events in 24 hours. It is null/collecting while fewer than 30 persisted events exist, and failed scoring attempts are visible separately. |
+| Duplicate evidence | Number of merged duplicate rows returned by the Duplicate API; transport retries are returned separately and excluded. |
 | Delivery failures | Failed alert-delivery rows returned by the delivery-status API. |
 | Event intelligence / heatmap | Grouped event volume and session spread from `/api/events`. |
 | Action queue / Action center | First duplicate and unresolved-alert items, collapsed by normalized event/vendor. The UI preserves the newest/oldest timestamps and shows grouped incident counts. |
@@ -323,7 +325,7 @@ Revenue is currently a visualization of `revenue_reconciliations` returned throu
 
 ### 13.5 Tag health
 
-Tag health groups retained events by vendor and event name over 24 hours. For each group it calculates fires, successes, failures, average latency, P75 latency, consent-denied count, and last seen. The health score is:
+Tag health groups retained events by vendor and event name over 24 hours. For each group it calculates fires, successes, failures, average latency, P75 latency, consent-denied count, and last seen. Success rate and health score are intentionally null until the group reaches the shared 30-fire minimum, preventing very small samples from being presented as reliable percentages. Once sufficient evidence exists, the health score is:
 
 ```text
 health_score = max(0, round(successes / max(1, fires) × 100 - min(30, failures × 2)))
@@ -347,7 +349,7 @@ The Duplicate page is the evidence laboratory described in Section 5. It display
 
 ### 13.9 Ad-blocker Impact
 
-The Ad-blocker page polls the adblock API and calculates its headline confirmed-rate KPI as confirmed blocked sessions divided by total observed sessions. It separates actionable confirmed/likely blocker rows from telemetry/correlation gaps. The vendor breakdown is based on the vendor families inferred from blocked URLs/signals, not on an independent vendor-side report.[9]
+The Ad-blocker page polls the adblock API and calculates its headline confirmed-rate KPI as confirmed blocked sessions divided by total observed sessions only after the shared 30-session minimum is reached. Below that threshold it displays collecting evidence rather than a potentially misleading percentage. It separates actionable confirmed/likely blocker rows from telemetry/correlation gaps and exposes the recurring pattern review queue. The vendor breakdown is based on the vendor families inferred from blocked URLs/signals, not on an independent vendor-side report.[9]
 
 ### 13.10 Consent
 
@@ -369,7 +371,7 @@ GTM publishing is a separate explicit action after a new workspace is created. C
 
 Integrations controls alert policy/channel behavior, Slack testing, signed operational webhooks, exports, and recent delivery records. Slack may come from the site configuration or the deployment-level fallback, but a configured URL is not the same as a delivered alert; delivery status must be checked. Webhooks are validated as safe public HTTPS destinations, may be signed, and are tenant-scoped.[14][22]
 
-Settings/Sites stores the monitored domain, optional first-party domain, vendor IDs, GTM public container ID, and generates the per-site monitor API key. All site APIs verify that the selected site belongs to the authenticated user. The API key is a browser credential and must be rotated by replacing the current snippet if it has been exposed or if a stale historical tag is still installed.[23]
+Settings/Sites stores the monitored domain, optional first-party domain, vendor IDs, GTM public container ID, and generates the per-site monitor API key. All site APIs verify that the selected site belongs to the authenticated user. Key rotation now preserves the previous key for a bounded 48-hour grace period while the new key is placed in the current snippet; the old key then expires hard. The UI exposes only the old-key expiry timestamp, not the old credential. Customers must update the GTM monitor before expiry.[23]
 
 ### 13.14 Synthetic Checks
 
@@ -379,7 +381,7 @@ Synthetic Checks is no longer in the primary sidebar navigation as requested. Th
 
 Dashboard APIs require a valid JWT session and verify site ownership with `site.user_id = session.uid`. Public ingestion uses a per-site API key and does not accept a stale or unknown key. SQL access uses parameterized queries. GTM refresh tokens are encrypted at rest and are never intended for browser exposure. Webhook secrets are encrypted and used to sign outbound payloads. Outbound webhook destinations are restricted to safe public HTTPS URLs.[6][9][22][23]
 
-The browser monitor is intentionally observational. It should not call `preventDefault`, stop propagation, replace vendor network responses, or throw into the host page’s application flow. Its own reporting failures should be swallowed or isolated so a monitoring outage does not break customer tracking. Customers should still use one copy only, keep the monitor in an appropriate GTM tag, and ensure their CSP permits the monitor origin.
+The browser monitor is intentionally observational. It should not call `preventDefault`, stop propagation, replace vendor network responses, or throw into the host page’s application flow. Its own reporting failures should be swallowed or isolated so a monitoring outage does not break customer tracking. Persisted detection now records `scored` or `failed` status; failed scoring is placed in a bounded dead-letter table and can be reprocessed by the protected detection job. Customers should still use one copy only, keep the monitor in an appropriate GTM tag, and ensure their CSP permits the monitor origin.
 
 GAfix redacts sensitive parameter keys and URL fields, but privacy compliance remains a shared responsibility. Customers must configure a lawful consent strategy, avoid sending prohibited personal data, limit access to the dashboard, rotate exposed API keys/secrets, and use an approved first-party/collector domain where required by their privacy and security program.
 
@@ -389,7 +391,7 @@ GAfix redacts sensitive parameter keys and URL fields, but privacy compliance re
 |---|---|
 | “The vendor returned an error, so an ad blocker caused it.” | It is a transport/resource failure until explicit browser-block evidence exists. |
 | “The vendor returned 200/204, so the event was blocked.” | 200/204 is successful HTTP delivery evidence. |
-| “`gcs=G111` means GA4 failed.” | It indicates consent state with analytics storage denied; it is not itself a failure or blocker. |
+| “`gcs=G111` means GA4 failed or analytics storage was denied.” | `G111` indicates both storage signals are granted; `G110` is the two-bit state with analytics storage denied. Neither state alone is a blocker verdict. |
 | “A GTM inventory candidate is the exact runtime tag.” | It is a configuration match with a confidence state. Exact identity is not guaranteed by a network request alone. |
 | “Two login rows always mean one login duplicated.” | Check session, occurrence ID, dataLayer push, network occurrence, request signature, and timing. Separate user actions are possible. |
 | “One dataLayer push always creates one request.” | Multiple tags/triggers can create multiple requests from one push; this is the strongest browser-side fan-out evidence. |
@@ -434,3 +436,8 @@ For a consent finding, inspect the CMP default/update sequence and the consent s
 [21]: https://github.com/PriyatoshKadam/manusai18081/blob/main/lib/compliance.ts "Runtime compliance evidence"
 [22]: https://github.com/PriyatoshKadam/manusai18081/blob/main/app/api/webhooks/route.ts "Tenant-scoped webhook management"
 [23]: https://github.com/PriyatoshKadam/manusai18081/blob/main/app/api/sites/route.ts "Site configuration and API-key management"
+[24]: https://developers.google.com/tag-platform/security/concepts/consent-mode "Google Consent Mode overview"
+[25]: https://support.google.com/tagmanager/answer/13802165?hl=en "Google Tag Manager Consent Mode reference"
+[26]: https://github.com/PriyatoshKadam/manusai18081/blob/main/lib/metrics.ts "Shared sample-size metrics"
+[27]: https://github.com/PriyatoshKadam/manusai18081/blob/main/app/api/jobs/route.ts "Protected operational jobs"
+[28]: https://github.com/PriyatoshKadam/manusai18081/blob/main/db/schema.sql "Idempotent operational schema"

@@ -68,6 +68,10 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
   const totalEvents = events.reduce((sum: number, e: any) => sum + Number(e.cnt || 0), 0);
   const uniqueNames = events.length;
   const errorCount = alerts.length;
+  const parameterRows = events.filter((event: any) => Array.isArray(event.parameter_statuses) && event.parameter_statuses.some((status: string) => ['complete', 'missing'].includes(status)));
+  const parameterSamples = parameterRows.reduce((sum: number, event: any) => sum + Number(event.cnt || 0), 0);
+  const parameterComplete = parameterRows.reduce((sum: number, event: any) => sum + (Array.isArray(event.missing_parameters) && event.missing_parameters.some((item: any) => Array.isArray(item) && item.length) ? 0 : Number(event.cnt || 0)), 0);
+  const parameterHealth = parameterSamples < 30 ? `Collecting (${parameterSamples}/30)` : `${Math.round((parameterComplete / Math.max(1, parameterSamples)) * 1000) / 10}%`;
 
   return (
     <div className="fade-in">
@@ -81,7 +85,7 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4 mb-6">
+      <div className="grid md:grid-cols-4 gap-4 mb-6">
         <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
           <div className="text-xs text-slate-500 uppercase">Events (24h)</div>
           <div className="text-2xl font-semibold mt-1">{totalEvents.toLocaleString()}</div>
@@ -93,6 +97,11 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
         <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
           <div className="text-xs text-slate-500 uppercase">Validation issues</div>
           <div className={`text-2xl font-semibold mt-1 ${errorCount ? 'text-[#ff718d]' : 'text-slate-100'}`}>{errorCount}</div>
+        </div>
+        <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
+          <div className="text-xs text-slate-500 uppercase">Parameter health</div>
+          <div className={`text-2xl font-semibold mt-1 ${parameterSamples < 30 ? 'text-[#8fa8ff]' : parameterComplete === parameterSamples ? 'text-[#a8f06a]' : 'text-[#f6b94c]'}`}>{parameterHealth}</div>
+          <div className="text-xs text-slate-500 mt-1">Weighted by observed fires</div>
         </div>
       </div>
 

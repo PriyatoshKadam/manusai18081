@@ -38,7 +38,9 @@ describe('Slack and repeated-event regressions', () => {
     const detection = read('lib/detection.ts');
     expect(detection).toContain('raw=$5::jsonb');
     expect(detection).toContain('COALESCE($4::text,\'\')');
-    expect(detection).toContain('($6::int*INTERVAL');
+    expect(detection).toContain('($9::int*INTERVAL');
+    expect(detection).toContain('distinct_sessions=$6');
+    expect(detection).toContain('distinct_pages=$7');
     expect(detection).not.toContain('raw = $6::jsonb');
   });
 

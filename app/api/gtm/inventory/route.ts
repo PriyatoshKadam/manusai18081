@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2 LIMIT 1', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const latest = await query(
-    `SELECT id, account_id, container_id, workspace_id, tags, triggers, variables, fetched_at, created_at
+    `SELECT id, account_id, container_id, workspace_id, tags, triggers, variables, fetched_at, created_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale
        FROM gtm_config_snapshots WHERE site_id = $1 AND user_id = $2
       ORDER BY fetched_at DESC LIMIT 1`,
     [siteId, session.uid],
@@ -53,11 +53,16 @@ export async function POST(req: NextRequest) {
     if (!connection) return NextResponse.json({ error: 'Connect a Google account before refreshing GTM inventory' }, { status: 409 });
     const token = await getAccessToken(connection);
     const inventory = await readInventory(accountId, containerId, workspaceId, token);
+    let liveVersion: { versionId?: string; name?: string; updateTime?: string } = {};
+    try {
+      const live = await gtmRequest<{ containerVersion?: { versionId?: string; name?: string; updateTime?: string } }>(`accounts/${encodeURIComponent(accountId)}/containers/${encodeURIComponent(containerId)}/versions/live`, token);
+      liveVersion = live.containerVersion || {};
+    } catch { /* Live metadata is advisory; workspace inventory remains usable with a stale banner. */ }
     const inserted = await query(
-      `INSERT INTO gtm_config_snapshots (user_id, site_id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,NOW())
-       RETURNING id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, created_at`,
-      [session.uid, siteId, inventory.accountId, inventory.containerId, containerPublicId || null, inventory.workspaceId, JSON.stringify(inventory.tags), JSON.stringify(inventory.triggers), JSON.stringify(inventory.variables)],
+      `INSERT INTO gtm_config_snapshots (user_id, site_id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8::jsonb,$9::jsonb,NOW(),'workspace',$10,$11,$12,$13,$14::timestamptz,TRUE)
+       RETURNING id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, created_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale`,
+      [session.uid, siteId, inventory.accountId, inventory.containerId, containerPublicId || null, inventory.workspaceId, JSON.stringify(inventory.tags), JSON.stringify(inventory.triggers), JSON.stringify(inventory.variables), null, null, liveVersion.versionId || null, liveVersion.name || null, liveVersion.updateTime || null],
     );
     return NextResponse.json({ snapshot: inserted.rows[0] }, { status: 201 });
   } catch (error) {

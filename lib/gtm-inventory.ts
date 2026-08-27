@@ -33,6 +33,13 @@ export type GtmInventory = {
   tags: GtmTagRecord[];
   triggers: GtmTriggerRecord[];
   variables: GtmVariableRecord[];
+  environment?: 'workspace' | 'live' | 'version';
+  snapshotVersionId?: string | null;
+  snapshotVersionName?: string | null;
+  liveVersionId?: string | null;
+  liveVersionName?: string | null;
+  liveVersionUpdatedAt?: string | null;
+  snapshotStale?: boolean;
 };
 
 export type EventEnrichment = {
@@ -47,6 +54,9 @@ export type EventEnrichment = {
 };
 
 type RawResource = Record<string, unknown>;
+
+import { query } from './db';
+import { getAccessToken, getConnection, gtmRequest } from './gtm';
 
 const VALUE_KEYS = new Set(['eventName', 'event_name', 'measurementId', 'measurement_id', 'conversionId', 'conversion_id', 'conversionLabel', 'conversion_label', 'sendTo', 'send_to', 'pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid', 'uetTagId', 'uet_tag_id', 'ti']);
 const SENSITIVE_KEYS = /html|script|token|secret|key|password|credential|authorization/i;
@@ -234,6 +244,29 @@ export function parameterHealth(vendor: string, eventName: string | null, params
   return { missingParameters, observedParameters, parameterStatus: missingParameters.length ? 'missing' as const : 'complete' as const };
 }
 
+export async function refreshGtmSnapshotFreshness(limit = 50) {
+  const snapshots = await query(`SELECT DISTINCT ON (site_id, container_id) id, user_id, account_id, container_id, environment, snapshot_version_id, live_version_id FROM gtm_config_snapshots ORDER BY site_id, container_id, fetched_at DESC LIMIT $1`, [Math.max(1, Math.min(100, limit))]);
+  let checked = 0;
+  let updated = 0;
+  for (const snapshot of snapshots.rows) {
+    try {
+      const connection = await getConnection(snapshot.user_id);
+      if (!connection) continue;
+      const token = await getAccessToken(connection);
+      const live = await gtmRequest<{ containerVersion?: { versionId?: string; name?: string; updateTime?: string } }>(`accounts/${encodeURIComponent(snapshot.account_id)}/containers/${encodeURIComponent(snapshot.container_id)}/versions/live`, token);
+      const version = live.containerVersion || {};
+      const liveVersionId = stringValue(version.versionId, 120);
+      const stale = snapshot.environment !== 'live' || Boolean(snapshot.snapshot_version_id && liveVersionId && snapshot.snapshot_version_id !== liveVersionId);
+      await query(`UPDATE gtm_config_snapshots SET live_version_id=$2, live_version_name=$3, live_version_updated_at=$4::timestamptz, snapshot_stale=$5 WHERE id=$1`, [snapshot.id, liveVersionId, stringValue(version.name, 240), version.updateTime || null, stale]);
+      checked += 1;
+      updated += 1;
+    } catch (error) {
+      console.warn('GTM snapshot freshness check skipped:', error instanceof Error ? error.message : 'provider error');
+    }
+  }
+  return { checked, updated, attempted: snapshots.rows.length };
+}
+
 export function correlateEventWithGtm(event: Record<string, unknown>, inventory: GtmInventory | null): EventEnrichment {
   const health = parameterHealth(String(event.vendor || ''), stringValue(event.eventName, 120), event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {}, stringValue(event.rawUrl, 2048));
   if (!inventory) return { tagId: null, tagName: null, triggerName: null, workspaceId: null, confidence: 'unmatched', ...health };
@@ -282,12 +315,14 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
   const exactPlatformMatch = Boolean(platformId && normalized(best.tag.platformId) === platformId);
   const exactEventMatch = Boolean((best as { eventMatch?: boolean }).eventMatch);
   const baseEventMatch = Boolean((best as { baseEventPlatformMatch?: boolean }).baseEventPlatformMatch);
+  const baseConfidence = tied.length > 1 ? 'ambiguous' : exactEventMatch || baseEventMatch || (vendor === 'gads' && (exactPlatformMatch || best.score >= 8)) ? 'configuration_match' : 'likely_match';
+  const confidence = inventory.snapshotStale && baseConfidence === 'configuration_match' ? 'likely_match' : baseConfidence;
   return {
     tagId: tied.length === 1 ? best.tag.tagId : null,
     tagName: tied.length === 1 ? best.tag.name : null,
     triggerName: tied.length === 1 ? triggerName : null,
     workspaceId: inventory.workspaceId,
-    confidence: tied.length > 1 ? 'ambiguous' : exactEventMatch || baseEventMatch || (vendor === 'gads' && (exactPlatformMatch || best.score >= 8)) ? 'configuration_match' : 'likely_match',
+    confidence,
     ...health,
   };
 }

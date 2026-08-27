@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const [alertRows, networkRows, repeatRows, fanoutRows] = await Promise.all([
+  const [alertRows, networkRows, repeatRows, retryRows, fanoutRows] = await Promise.all([
     query(
       `SELECT id, event_name, vendor, category, code, message, root_cause, fix_steps, raw, occurrence_count, distinct_pushes, page_url, created_at
          FROM alerts WHERE site_id = $1 AND category IN ('analytics','gtm') AND resolved = false
@@ -60,6 +60,33 @@ export async function GET(req: NextRequest) {
         ORDER BY last_seen DESC
         LIMIT 100`,
       [siteId],
+    ),
+    query(
+      `SELECT current.event_name, current.vendor, current.page_url, current.session_id,
+              previous.id AS failed_event_id, current.id AS success_event_id,
+              previous.received_at AS failed_at, current.received_at AS success_at,
+              current.request_signature, EXTRACT(EPOCH FROM (current.received_at - previous.received_at)) * 1000 AS gap_ms
+         FROM events current
+         JOIN events previous ON previous.site_id = current.site_id
+          AND previous.vendor = current.vendor
+          AND previous.event_name = current.event_name
+          AND previous.session_id = current.session_id
+          AND previous.request_signature = current.request_signature
+          AND previous.observation_kind = 'network'
+          AND current.observation_kind = 'network'
+          AND current.received_at > previous.received_at
+          AND current.received_at <= previous.received_at + INTERVAL '5 seconds'
+        WHERE current.site_id = $1
+          AND current.session_id IS NOT NULL
+          AND current.request_signature IS NOT NULL
+          AND (current.status_code IS NULL OR current.status_code < 400)
+          AND current.failure_reason IS NULL
+          AND (previous.status_code >= 400 OR previous.failure_reason IS NOT NULL)
+          AND LOWER(COALESCE(current.event_name, '')) <> ALL($2::text[])
+          AND current.received_at > NOW() - INTERVAL '24 hours'
+        ORDER BY current.received_at DESC
+        LIMIT 100`,
+      [siteId, NATURALLY_REPEATABLE_EVENTS],
     ),
     query(
       `WITH raw AS (
@@ -109,6 +136,25 @@ export async function GET(req: NextRequest) {
     last_seen: row.last_seen || row.created_at,
     sourceType: 'alert',
     duplicateKey: `${row.code}:${row.vendor || ''}:${row.event_name || ''}:${row.message || ''}`,
+  }));
+  const retries = retryRows.rows.map((row: any) => ({
+    id: `retry-${row.success_event_id}`,
+    event_name: row.event_name,
+    vendor: row.vendor,
+    category: 'transport',
+    code: 'transport_retry',
+    message: `${row.event_name || `${row.vendor || 'Vendor'} event`} retried successfully after a failed request (${Math.round(Number(row.gap_ms) || 0)} ms later).`,
+    root_cause: 'The same normalized request signature failed before a subsequent matching request succeeded. This is retry evidence, not duplicate GTM fan-out.',
+    fix_steps: ['Inspect the first request status and failure reason in the Network panel.', 'Check whether the vendor or application transport automatically retries failed requests.', 'Do not count this pair as two successful conversions unless both requests were accepted by the vendor.'],
+    raw: { sessionId: row.session_id, requestSignature: row.request_signature, failedEventId: row.failed_event_id, successEventId: row.success_event_id, failedAt: row.failed_at, successAt: row.success_at, gapMs: row.gap_ms },
+    occurrence_count: 2,
+    distinct_pushes: null,
+    page_url: row.page_url,
+    first_seen: row.failed_at,
+    last_seen: row.success_at,
+    created_at: row.success_at,
+    sourceType: 'transport_retry',
+    duplicateKey: `retry:${row.session_id}:${row.request_signature}:${row.success_event_id}`,
   }));
   const derivedNetwork = networkRows.rows.map((row: any) => ({
     id: `network-${row.event_ids?.[0] || row.last_seen}`,
@@ -186,5 +232,5 @@ export async function GET(req: NextRequest) {
     return true;
   }).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 100);
 
-  return NextResponse.json({ duplicates });
+  return NextResponse.json({ duplicates, retries });
 }

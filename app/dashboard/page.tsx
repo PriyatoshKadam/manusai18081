@@ -56,16 +56,20 @@ export default function OverviewPage() {
   const alerts = data.alerts || [];
   const health = data.health || [];
   const duplicates = data.duplicates || [];
+  const retries = data.retries || [];
   const deliveries = data.deliveries || [];
   const events = data.events || [];
-  const avgHealth = health.length ? Math.round(health.reduce((sum: number, row: any) => sum + Number(row.health_score || 0), 0) / health.length) : null;
+  const scoredHealth = health.filter((row: any) => row.health_score !== null && row.health_score !== undefined);
+  const avgHealth = scoredHealth.length ? Math.round(scoredHealth.reduce((sum: number, row: any) => sum + Number(row.health_score), 0) / scoredHealth.length) : null;
   const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0);
   const deliveryFailures = deliveries.filter((item: any) => item.status === 'failed').length;
   const repeated = duplicates.filter((item: any) => ['login', 'run_audit'].includes(String(item.event_name || '').toLowerCase()));
   const actions = collapseActionItems([...duplicates.slice(0, 12), ...alerts.slice(0, 12)]).slice(0, 4);
-  const totalSessions = events.reduce((sum: number, row: any) => sum + Number(row.sessions || 0), 0);
+  const totalSessions = Number(stats.sessions_24h || 0);
   const totalFires = events.reduce((sum: number, row: any) => sum + Number(row.cnt || 0), 0);
-  const avgEventsPerSession = totalSessions ? (totalFires / totalSessions).toFixed(1) : '—';
+  const minSampleSize = 30;
+  const avgEventsPerSession = totalSessions >= minSampleSize ? (totalFires / totalSessions).toFixed(1) : '—';
+  const detectionCoverage = stats.detection_coverage_pct == null ? 'Collecting' : `${Number(stats.detection_coverage_pct).toFixed(1)}%`;
 
   return <div className="fade-in mx-auto max-w-[1500px] space-y-7">
     <section className="relative overflow-hidden rounded-[1.35rem] border border-white/[.08] bg-[#111a28] p-6 shadow-2xl shadow-black/20 lg:p-8">
@@ -79,11 +83,12 @@ export default function OverviewPage() {
 
     {error && <div className="rounded-xl border border-amber-400/20 bg-amber-400/10 p-3 text-sm text-amber-200">Live refresh issue: {error}</div>}
 
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
       <CommandKpi label="Events / hour" value={number(stats.events_hour)} note={`${number(stats.events_24h)} observed in 24h`} tone="blue" />
-      <CommandKpi label="Fires / session" value={avgEventsPerSession} note="Across observed sessions" tone="violet" />
+      <CommandKpi label="Fires / session" value={avgEventsPerSession} note={totalSessions < minSampleSize ? `Collecting (${totalSessions}/${minSampleSize} sessions)` : 'Across observed sessions'} tone="violet" />
       <CommandKpi label="Failed fires" value={number(failed)} note="Observed request failures" tone={failed ? 'rose' : 'lime'} />
-      <CommandKpi label="Duplicate evidence" value={number(duplicates.length)} note={`${number(repeated.length)} repeat-sensitive`} tone={duplicates.length ? 'amber' : 'lime'} />
+      <CommandKpi label="Duplicate evidence" value={number(duplicates.length)} note={`${number(repeated.length)} repeat-sensitive · ${number(retries.length)} retries excluded`} tone={duplicates.length ? 'amber' : 'lime'} />
+      <CommandKpi label="Detection coverage" value={detectionCoverage} note={`${number(stats.detection_failures_24h)} failed scoring attempts`} tone={stats.detection_failures_24h ? 'rose' : 'blue'} />
       <CommandKpi label="Delivery failures" value={number(deliveryFailures)} note="Alert channels" tone={deliveryFailures ? 'rose' : 'lime'} />
     </div>
 

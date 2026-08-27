@@ -35,7 +35,12 @@ export async function GET(req: NextRequest) {
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false) AS active_alerts,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false AND severity = 'critical') AS critical_alerts,
        (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
-       (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS events_24h`,
+       (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS events_24h,
+       (SELECT COUNT(DISTINCT NULLIF(session_id, '')) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS sessions_24h,
+       (SELECT COUNT(*) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS persisted_events_24h,
+       (SELECT COUNT(*) FROM events WHERE site_id = $1 AND detection_status = 'scored' AND received_at > NOW() - INTERVAL '24 hours') AS scored_events_24h,
+       (SELECT COUNT(*) FROM events WHERE site_id = $1 AND detection_status = 'failed' AND received_at > NOW() - INTERVAL '24 hours') AS detection_failures_24h,
+       (SELECT CASE WHEN COUNT(*) < 30 THEN NULL ELSE ROUND(100.0 * COUNT(*) FILTER (WHERE detection_status = 'scored') / COUNT(*), 1) END FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS detection_coverage_pct`,
     [siteId],
   );
   const correlationSelect = `
@@ -89,7 +94,7 @@ export async function GET(req: NextRequest) {
     [siteId],
   );
   const [alerts, sources] = await Promise.all([
-    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at, last_seen, occurrence_count, distinct_pushes, confidence, dedupe_key FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
+    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at, last_seen, occurrence_count, distinct_pushes, confidence, dedupe_key, distinct_sessions, distinct_pages, impact_updated_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
     query(`SELECT event_name, source, observation_kind, COUNT(*)::int AS count
            FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
            GROUP BY event_name, source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),

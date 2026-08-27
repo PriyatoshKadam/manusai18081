@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../lib/db';
-import { classifyEvent, ParsedEvent, runDetection } from '../../../lib/detection';
+import { classifyEvent, ParsedEvent, processPersistedEvent } from '../../../lib/detection';
 import { assertBodySize, parseIngestBody } from '../../../lib/ingest-validation';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { recordComplianceEvidence } from '../../../lib/compliance';
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   try {
     assertBodySize(req.headers.get('content-length'));
     const body = parseIngestBody(await req.text());
-    const siteResult = await query('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1 LIMIT 1', [body.apiKey]);
+    const siteResult = await query('SELECT id, domain, first_party_domain FROM sites WHERE api_key = $1 OR (previous_api_key = $1 AND previous_api_key_expires_at > NOW()) ORDER BY CASE WHEN api_key = $1 THEN 0 ELSE 1 END LIMIT 1', [body.apiKey]);
     const site = siteResult.rows[0];
     if (!site) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
 
@@ -51,14 +51,14 @@ export async function POST(req: NextRequest) {
           if (inventoryCache.has(publicContainerId)) inventory = inventoryCache.get(publicContainerId) || null;
           else {
             const snapshot = await query(
-              `SELECT account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at
+              `SELECT account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale
                  FROM gtm_config_snapshots
                 WHERE site_id = $1 AND (container_public_id = $2 OR container_id = $2)
                 ORDER BY fetched_at DESC LIMIT 1`,
               [site.id, publicContainerId],
             );
             const row = snapshot.rows[0];
-            inventory = row ? { accountId: row.account_id, containerId: row.container_id, workspaceId: row.workspace_id, fetchedAt: row.fetched_at, tags: row.tags || [], triggers: row.triggers || [], variables: row.variables || [] } : null;
+            inventory = row ? { accountId: row.account_id, containerId: row.container_id, workspaceId: row.workspace_id, fetchedAt: row.fetched_at, tags: row.tags || [], triggers: row.triggers || [], variables: row.variables || [], environment: row.environment, snapshotVersionId: row.snapshot_version_id, snapshotVersionName: row.snapshot_version_name, liveVersionId: row.live_version_id, liveVersionName: row.live_version_name, liveVersionUpdatedAt: row.live_version_updated_at, snapshotStale: row.snapshot_stale === true } : null;
             inventoryCache.set(publicContainerId, inventory);
           }
         }
@@ -90,7 +90,7 @@ export async function POST(req: NextRequest) {
           gtmTagId: enrichment.tagId, gtmTagName: enrichment.tagName, gtmTriggerName: enrichment.triggerName, gtmWorkspaceId: enrichment.workspaceId, gtmCorrelationConfidence: enrichment.confidence, missingParameters: enrichment.missingParameters, observedParameters: enrichment.observedParameters, parameterStatus: enrichment.parameterStatus,
         };
         void recordComplianceEvidence(parsed, { domain: site.domain, firstPartyDomain: site.first_party_domain });
-        await runDetection(parsed);
+        await processPersistedEvent(parsed);
         processedCount += 1;
       } catch (error) {
         console.error('ingest event processing error:', error);

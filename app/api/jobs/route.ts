@@ -6,6 +6,8 @@ import { refreshBaselines, runAnomalySweep } from '../../../lib/anomaly';
 import { reconcileRevenue } from '../../../lib/revenue';
 import { runEnabledSyntheticJourneys } from '../../../lib/synthetic';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
+import { reprocessDetectionFailures } from '../../../lib/detection';
+import { refreshGtmSnapshotFreshness } from '../../../lib/gtm-inventory';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,7 +29,13 @@ export async function POST(req: NextRequest) {
   if (contentLength > 4096) return NextResponse.json({ error: 'Request body too large' }, { status: 413 });
   const body = await req.json().catch(() => ({}));
   const job = String(body?.job || 'all');
-  if (!['all', 'deliveries', 'anomaly', 'synthetic', 'revenue', 'digest'].includes(job)) return NextResponse.json({ error: 'Unsupported job' }, { status: 400 });
+  if (!['all', 'deliveries', 'anomaly', 'synthetic', 'revenue', 'digest', 'detection', 'gtm'].includes(job)) return NextResponse.json({ error: 'Unsupported job' }, { status: 400 });
+  if (job === 'detection') {
+    return NextResponse.json({ ok: true, job, result: await reprocessDetectionFailures(100) });
+  }
+  if (job === 'gtm') {
+    return NextResponse.json({ ok: true, job, result: await refreshGtmSnapshotFreshness(50) });
+  }
   if (job === 'deliveries') {
     await processPendingDeliveries(100);
     return NextResponse.json({ ok: true, job });
@@ -50,7 +58,7 @@ export async function POST(req: NextRequest) {
       (results.revenue as any[]).push({ siteId: Number(site.id), findings: findings.length });
     }
   }
-  if (job === 'all') { await processPendingDeliveries(100); await processDailyDigests(100); }
+  if (job === 'all') { await reprocessDetectionFailures(100); await refreshGtmSnapshotFreshness(50); await processPendingDeliveries(100); await processDailyDigests(100); }
   if (job === 'digest') await processDailyDigests(100);
   return NextResponse.json({ ok: true, job, results });
 }
