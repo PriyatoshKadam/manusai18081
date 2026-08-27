@@ -92,6 +92,9 @@ describe('security hardening', () => {
     expect(page).toContain('const normalizedAccounts: Account[]');
     expect(page).toContain('const nextWorkspaces: Workspace[]');
     expect(page).toContain('const nextSites = Array.isArray(data?.sites)');
+    expect(page).toContain('const requestedSiteExists');
+    expect(page).toContain('router.replace(`${nextUrl.pathname}${nextUrl.search}`)');
+    expect(page).toContain('The previous site link no longer exists');
     expect(boundary).toContain('GTM connection interrupted');
     expect(boundary).toContain('Do not paste OAuth secrets or API keys');
     expect(boundary).not.toContain('{error.message}');
