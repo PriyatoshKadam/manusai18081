@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 
 type Site = { id: number | string; domain: string; api_key: string };
 type Container = { accountId: string; containerId: string; name: string; publicId: string | null; usageContext: string[]; domainName: string[] };
@@ -10,7 +10,6 @@ type Installation = { installationId: number | string; status: string; workspace
 type Workspace = { workspaceId: string; name: string; description: string | null; updateTime: string | null };
 
 export default function GtmConnectPage() {
-  const router = useRouter();
   const search = useSearchParams();
   const siteId = search.get('siteId') || '';
   const status = search.get('gtm');
@@ -89,7 +88,7 @@ export default function GtmConnectPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { const nextSites = Array.isArray(data?.sites) ? data.sites.filter((item: any) => item && Number.isSafeInteger(Number(item.id))).map((item: any) => ({ id: Number(item.id), domain: typeof item.domain === 'string' ? item.domain : 'Unnamed site', api_key: typeof item.api_key === 'string' ? item.api_key : '' })) : []; const requestedSiteExists = siteId && nextSites.some((item: Site) => String(item.id) === String(siteId)); const nextSiteId = requestedSiteExists ? String(siteId) : String(nextSites[0]?.id || ''); setSites(nextSites); setSelectedSiteId(nextSiteId); if (nextSiteId && nextSiteId !== siteId) { const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('siteId', nextSiteId); router.replace(`${nextUrl.pathname}${nextUrl.search}`); } } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
+    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { const nextSites = Array.isArray(data?.sites) ? data.sites.filter((item: any) => item && Number.isSafeInteger(Number(item.id))).map((item: any) => ({ id: Number(item.id), domain: typeof item.domain === 'string' ? item.domain : 'Unnamed site', api_key: typeof item.api_key === 'string' ? item.api_key : '' })) : []; const requestedSiteExists = siteId && nextSites.some((item: Site) => String(item.id) === String(siteId)); const nextSiteId = requestedSiteExists ? String(siteId) : String(nextSites[0]?.id || '');       setSites(nextSites); setSelectedSiteId(nextSiteId); if (nextSiteId && nextSiteId !== siteId) { const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('siteId', nextSiteId); window.history.replaceState(null, '', `${nextUrl.pathname}${nextUrl.search}`); } } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
     loadContainers();
     if (status === 'connected') setNotice('Google Tag Manager is connected. Select a container to continue.');
     if (status === 'not_configured') setError('GTM Connect is not enabled on this deployment yet. The GAfix owner must add the Google OAuth settings once in Render; customers do not need to create backend settings for their own connection.');
@@ -99,7 +98,7 @@ export default function GtmConnectPage() {
     return () => { cancelled = true; };
     // The initial load intentionally runs once for this dashboard page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, siteId, router]);
+  }, [status, siteId]);
 
   useEffect(() => {
     setContainerId('');
