@@ -85,6 +85,15 @@ describe('security hardening', () => {
     expect(read('app/api/adblock/route.ts')).toContain('candidates: candidates.rows');
   });
 
+  it('keeps GTM setup failures recoverable and does not expose raw runtime errors', () => {
+    const page = read('app/dashboard/gtm-connect/page.tsx');
+    const boundary = read('app/dashboard/gtm-connect/error.tsx');
+    expect(page).toContain('Configure NEXT_PUBLIC_MONITOR_ORIGIN as a valid absolute HTTPS URL');
+    expect(boundary).toContain('GTM connection interrupted');
+    expect(boundary).toContain('Do not paste OAuth secrets or API keys');
+    expect(boundary).not.toContain('{error.message}');
+  });
+
   it('downgrades non-live GTM inventory matches instead of claiming runtime identity', () => {
     const inventory = read('lib/gtm-inventory.ts');
     expect(inventory).toContain("inventory.snapshotStale && baseConfidence === 'configuration_match' ? 'likely_match'");

@@ -38,11 +38,15 @@ export default function GtmConnectPage() {
     const configuredOrigin = process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '';
     const origin = (configuredOrigin || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
     if (!site) return 'Create a monitored site in GAfix before generating the monitor tag preview.';
-    if (!origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service to preview the monitor tag.';
-    const url = new URL('/monitor.js', origin);
-    url.searchParams.set('apiKey', site.api_key);
-    if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', selectedContainer.publicId);
-    return `<script src="${url.toString()}" async></script>`;
+    if (!origin || !site.api_key) return 'Configure the monitored site and a valid monitor origin before generating the monitor tag preview.';
+    try {
+      const url = new URL('/monitor.js', origin);
+      url.searchParams.set('apiKey', String(site.api_key));
+      if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', String(selectedContainer.publicId));
+      return `<script src="${url.toString()}" async></script>`;
+    } catch {
+      return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN as a valid absolute HTTPS URL on the deployed service.';
+    }
   }, [site, selectedContainer]);
 
   async function loadContainers() {
@@ -159,7 +163,7 @@ export default function GtmConnectPage() {
           <label className="text-sm text-ink-700">GTM account<select value={accountId} onChange={(event) => setAccountId(event.target.value)} disabled={!connected || loadingContainers} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">Select an account</option>{accounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.name} ({account.accountId})</option>)}</select></label>
           <label className="text-sm text-ink-700 md:col-span-2">GTM container<select value={containerId} onChange={(event) => setContainerId(event.target.value)} disabled={!selectedAccount} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">Select a container</option>{selectedAccount?.containers.map((container) => <option key={container.containerId} value={container.containerId}>{container.name}{container.publicId ? ` · ${container.publicId}` : ''}</option>)}</select></label>
         </div>
-        {selectedContainer && <div className="rounded-lg bg-ink-50 px-4 py-3 text-xs text-ink-600">Selected <strong>{selectedContainer.name}</strong>{selectedContainer.publicId ? ` (${selectedContainer.publicId})` : ''}. Usage: {selectedContainer.usageContext.join(', ') || 'web'}.</div>}
+        {selectedContainer && <div className="rounded-lg bg-ink-50 px-4 py-3 text-xs text-ink-600">Selected <strong>{selectedContainer.name}</strong>{selectedContainer.publicId ? ` (${selectedContainer.publicId})` : ''}. Usage: {Array.isArray(selectedContainer.usageContext) && selectedContainer.usageContext.length ? selectedContainer.usageContext.join(', ') : 'web'}.</div>}
       </section>
 
       {selectedContainer && <section className="card p-5 space-y-4"><div><h3 className="font-semibold text-ink-950">3. Snapshot GTM configuration</h3><p className="text-sm text-ink-500 mt-1">Choose a workspace to read tag, trigger, and variable metadata. GAfix stores a versioned snapshot and uses it only as configuration evidence; the browser monitor remains the source of runtime event evidence.</p></div><label className="text-sm text-ink-700">Workspace<select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={loadingWorkspaces} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">{loadingWorkspaces ? 'Loading workspaces…' : 'Select a workspace'}</option>{workspaces.map((workspace) => <option key={workspace.workspaceId} value={workspace.workspaceId}>{workspace.name}</option>)}</select></label><button onClick={refreshInventory} disabled={!workspaceId || loadingInventory} className="rounded-lg border border-brand-300 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:border-ink-200 disabled:text-ink-300">{loadingInventory ? 'Refreshing inventory…' : 'Refresh tag inventory'}</button>{inventory && <div className="grid gap-3 sm:grid-cols-3 text-sm"><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Tags</div><div className="font-medium text-ink-800 mt-1">{Array.isArray(inventory.tags) ? inventory.tags.length : 0}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Triggers</div><div className="font-medium text-ink-800 mt-1">{Array.isArray(inventory.triggers) ? inventory.triggers.length : 0}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Fetched</div><div className="font-medium text-ink-800 mt-1">{inventory.fetched_at ? new Date(inventory.fetched_at).toLocaleString() : 'Just now'}</div></div></div>}{inventory.snapshot_stale && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"><strong>Workspace snapshot, not live proof.</strong> This inventory was read from a GTM workspace and matches are downgraded until the workspace is published. {inventory.live_version_id ? `Current live version: ${inventory.live_version_id}.` : 'Live container version metadata was unavailable during refresh.'}</div>}<p className="text-xs text-ink-400">Exact runtime tag identity is shown only when the observed event matches one unique configured tag. Ambiguous or unmatched events remain explicitly labeled.</p></section>}
