@@ -20,6 +20,7 @@ describe('Slack and repeated-event regressions', () => {
     expect(duplicates).toContain("'run_audit'");
     expect(duplicates).toContain('occurrence_id');
     expect(duplicates).toContain('occurrence_count > 1');
+    expect(duplicates).toContain("'gtm_and_direct_implementation'");
   });
 
   it('exposes a customer-facing action center and delivery status', () => {
