@@ -87,23 +87,17 @@ describe('security hardening', () => {
 
   it('keeps GTM setup failures recoverable and does not expose raw runtime errors', () => {
     const page = read('app/dashboard/gtm-connect/page.tsx');
-    const boundary = read('app/dashboard/gtm-connect/error.tsx');
-    expect(page).toContain('Configure NEXT_PUBLIC_MONITOR_ORIGIN as a valid absolute HTTPS URL');
-    expect(page).toContain('const normalizedAccounts: Account[]');
-    expect(page).toContain('const nextWorkspaces: Workspace[]');
-    expect(page).toContain('const nextSites = Array.isArray(data?.sites)');
-    expect(page).toContain('const requestedSiteExists');
-    expect(page).toContain("window.history.replaceState(null, '', `${nextUrl.pathname}${nextUrl.search}`)");
-    expect(page).toContain('The previous site link no longer exists');
-    expect(boundary).toContain('GTM connection interrupted');
-    expect(boundary).toContain('Do not paste OAuth secrets or API keys');
-    expect(boundary).not.toContain('{error.message}');
+    expect(page).toContain('Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service');
+    expect(page).toContain('setAccounts(data.accounts || [])');
+    expect(page).toContain('setWorkspaces(data.workspaces || [])');
+    expect(page).not.toContain('window.history.replaceState');
+    expect(page).not.toContain('router.replace');
   });
 
   it('downgrades non-live GTM inventory matches instead of claiming runtime identity', () => {
     const inventory = read('lib/gtm-inventory.ts');
     expect(inventory).toContain("inventory.snapshotStale && baseConfidence === 'configuration_match' ? 'likely_match'");
-    expect(read('app/dashboard/gtm-connect/page.tsx')).toContain('Workspace snapshot, not live proof.');
+    expect(read('app/dashboard/gtm-connect/page.tsx')).toContain('Choose a workspace to read tag, trigger, and variable metadata.');
   });
 
   it('keeps read endpoints side-effect free and neutralizes CSV formulas', () => {

@@ -32,22 +32,17 @@ export default function GtmConnectPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [installation, setInstallation] = useState<Installation | null>(null);
   const site = sites.find((item) => String(item.id) === String(selectedSiteId)) || sites[0];
-  const staleSiteId = Boolean(siteId && site && String(site.id) !== String(siteId));
   const selectedAccount = accounts.find((item) => item.accountId === accountId);
   const selectedContainer = selectedAccount?.containers.find((item) => item.containerId === containerId);
   const preview = useMemo(() => {
     const configuredOrigin = process.env.NEXT_PUBLIC_MONITOR_ORIGIN || process.env.NEXT_PUBLIC_APP_URL || '';
     const origin = (configuredOrigin || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/$/, '');
     if (!site) return 'Create a monitored site in GAfix before generating the monitor tag preview.';
-    if (!origin || !site.api_key) return 'Configure the monitored site and a valid monitor origin before generating the monitor tag preview.';
-    try {
-      const url = new URL('/monitor.js', origin);
-      url.searchParams.set('apiKey', String(site.api_key));
-      if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', String(selectedContainer.publicId));
-      return `<script src="${url.toString()}" async></script>`;
-    } catch {
-      return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN as a valid absolute HTTPS URL on the deployed service.';
-    }
+    if (!origin) return 'Configure NEXT_PUBLIC_MONITOR_ORIGIN on the deployed service to preview the monitor tag.';
+    const url = new URL('/monitor.js', origin);
+    url.searchParams.set('apiKey', site.api_key);
+    if (selectedContainer?.publicId) url.searchParams.set('gtmContainerId', selectedContainer.publicId);
+    return `<script src="${url.toString()}" async></script>`;
   }, [site, selectedContainer]);
 
   async function loadContainers() {
@@ -57,28 +52,10 @@ export default function GtmConnectPage() {
       const response = await fetch('/api/gtm/containers', { credentials: 'include', cache: 'no-store' });
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || 'Unable to load GTM containers');
-      setConnected(Boolean(data?.connected));
-      setGoogleEmail(typeof data?.googleEmail === 'string' ? data.googleEmail : null);
-      const normalizedAccounts: Account[] = Array.isArray(data?.accounts) ? data.accounts.map((account: any) => {
-        const containers: Container[] = Array.isArray(account?.containers) ? account.containers
-          .filter((container: any) => container && typeof container === 'object')
-          .map((container: any) => ({
-            accountId: typeof container.accountId === 'string' ? container.accountId : typeof account?.accountId === 'string' ? account.accountId : '',
-            containerId: typeof container.containerId === 'string' ? container.containerId : '',
-            name: typeof container.name === 'string' ? container.name : 'Unnamed container',
-            publicId: typeof container.publicId === 'string' ? container.publicId : null,
-            usageContext: Array.isArray(container.usageContext) ? container.usageContext.filter((value: any) => typeof value === 'string') : [],
-            domainName: Array.isArray(container.domainName) ? container.domainName.filter((value: any) => typeof value === 'string') : [],
-          }))
-          .filter((container: Container) => container.containerId) : [];
-        return {
-          accountId: typeof account?.accountId === 'string' ? account.accountId : '',
-          name: typeof account?.name === 'string' ? account.name : 'Unnamed account',
-          containers,
-        };
-      }).filter((account: Account) => account.accountId) : [];
-      setAccounts(normalizedAccounts);
-      if (!accountId && normalizedAccounts[0]) setAccountId(normalizedAccounts[0].accountId);
+      setConnected(Boolean(data.connected));
+      setGoogleEmail(data.googleEmail || null);
+      setAccounts(data.accounts || []);
+      if (!accountId && data.accounts?.[0]) setAccountId(data.accounts[0].accountId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to load GTM containers');
     } finally {
@@ -88,7 +65,7 @@ export default function GtmConnectPage() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { const nextSites = Array.isArray(data?.sites) ? data.sites.filter((item: any) => item && Number.isSafeInteger(Number(item.id))).map((item: any) => ({ id: Number(item.id), domain: typeof item.domain === 'string' ? item.domain : 'Unnamed site', api_key: typeof item.api_key === 'string' ? item.api_key : '' })) : []; const requestedSiteExists = siteId && nextSites.some((item: Site) => String(item.id) === String(siteId)); const nextSiteId = requestedSiteExists ? String(siteId) : String(nextSites[0]?.id || '');       setSites(nextSites); setSelectedSiteId(nextSiteId); if (nextSiteId && nextSiteId !== siteId) { const nextUrl = new URL(window.location.href); nextUrl.searchParams.set('siteId', nextSiteId); window.history.replaceState(null, '', `${nextUrl.pathname}${nextUrl.search}`); } } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
+    fetch('/api/sites', { credentials: 'include', cache: 'no-store' }).then((response) => response.json().then((data) => ({ response, data }))).then(({ response, data }) => { if (!response.ok) throw new Error(data?.error || 'Unable to load monitored sites'); if (!cancelled) { setSites(data.sites || []); setSelectedSiteId((current) => current || String(data.sites?.[0]?.id || '')); } }).catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load monitored sites'); });
     loadContainers();
     if (status === 'connected') setNotice('Google Tag Manager is connected. Select a container to continue.');
     if (status === 'not_configured') setError('GTM Connect is not enabled on this deployment yet. The GAfix owner must add the Google OAuth settings once in Render; customers do not need to create backend settings for their own connection.');
@@ -98,7 +75,7 @@ export default function GtmConnectPage() {
     return () => { cancelled = true; };
     // The initial load intentionally runs once for this dashboard page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, siteId]);
+  }, [status]);
 
   useEffect(() => {
     setContainerId('');
@@ -112,7 +89,7 @@ export default function GtmConnectPage() {
     setLoadingWorkspaces(true);
     fetch(`/api/gtm/workspaces?accountId=${encodeURIComponent(accountId)}&containerId=${encodeURIComponent(containerId)}`, { credentials: 'include', cache: 'no-store' })
       .then((response) => response.json().then((data) => ({ response, data })))
-      .then(({ response, data }) => { if (cancelled) return; if (!response.ok) throw new Error(data?.error || 'Unable to load GTM workspaces'); const nextWorkspaces: Workspace[] = Array.isArray(data?.workspaces) ? data.workspaces.filter((workspace: any) => workspace && typeof workspace === 'object' && typeof workspace.workspaceId === 'string').map((workspace: any) => ({ workspaceId: workspace.workspaceId, name: typeof workspace.name === 'string' ? workspace.name : `Workspace ${workspace.workspaceId}`, description: typeof workspace.description === 'string' ? workspace.description : null, updateTime: typeof workspace.updateTime === 'string' ? workspace.updateTime : null })) : []; setWorkspaces(nextWorkspaces); setWorkspaceId((current) => current || nextWorkspaces[0]?.workspaceId || ''); })
+      .then(({ response, data }) => { if (cancelled) return; if (!response.ok) throw new Error(data?.error || 'Unable to load GTM workspaces'); setWorkspaces(data.workspaces || []); setWorkspaceId((current) => current || data.workspaces?.[0]?.workspaceId || ''); })
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load GTM workspaces'); })
       .finally(() => { if (!cancelled) setLoadingWorkspaces(false); });
     return () => { cancelled = true; };
@@ -163,7 +140,6 @@ export default function GtmConnectPage() {
         <p className="text-sm text-ink-500 mt-2 max-w-3xl">Authorize GAfix to add one monitor tag and one page-view trigger to a reviewable GTM workspace. Publishing is a separate, explicit action.</p>
       </div>
 
-      {staleSiteId && <div className="rounded-lg border border-amber-200 bg-amber-50 text-amber-900 px-4 py-3 text-sm">The previous site link no longer exists because that site was deleted. GAfix switched this page to the current recreated site.</div>}
       {error && <div className="rounded-lg border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm">{error}</div>}
       {notice && <div className="rounded-lg border border-green-200 bg-green-50 text-green-800 px-4 py-3 text-sm">{notice}</div>}
 
@@ -183,10 +159,10 @@ export default function GtmConnectPage() {
           <label className="text-sm text-ink-700">GTM account<select value={accountId} onChange={(event) => setAccountId(event.target.value)} disabled={!connected || loadingContainers} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">Select an account</option>{accounts.map((account) => <option key={account.accountId} value={account.accountId}>{account.name} ({account.accountId})</option>)}</select></label>
           <label className="text-sm text-ink-700 md:col-span-2">GTM container<select value={containerId} onChange={(event) => setContainerId(event.target.value)} disabled={!selectedAccount} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">Select a container</option>{selectedAccount?.containers.map((container) => <option key={container.containerId} value={container.containerId}>{container.name}{container.publicId ? ` · ${container.publicId}` : ''}</option>)}</select></label>
         </div>
-        {selectedContainer && <div className="rounded-lg bg-ink-50 px-4 py-3 text-xs text-ink-600">Selected <strong>{selectedContainer.name}</strong>{selectedContainer.publicId ? ` (${selectedContainer.publicId})` : ''}. Usage: {Array.isArray(selectedContainer.usageContext) && selectedContainer.usageContext.length ? selectedContainer.usageContext.join(', ') : 'web'}.</div>}
+        {selectedContainer && <div className="rounded-lg bg-ink-50 px-4 py-3 text-xs text-ink-600">Selected <strong>{selectedContainer.name}</strong>{selectedContainer.publicId ? ` (${selectedContainer.publicId})` : ''}. Usage: {selectedContainer.usageContext.join(', ') || 'web'}.</div>}
       </section>
 
-      {selectedContainer && <section className="card p-5 space-y-4"><div><h3 className="font-semibold text-ink-950">3. Snapshot GTM configuration</h3><p className="text-sm text-ink-500 mt-1">Choose a workspace to read tag, trigger, and variable metadata. GAfix stores a versioned snapshot and uses it only as configuration evidence; the browser monitor remains the source of runtime event evidence.</p></div><label className="text-sm text-ink-700">Workspace<select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={loadingWorkspaces} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">{loadingWorkspaces ? 'Loading workspaces…' : 'Select a workspace'}</option>{workspaces.map((workspace) => <option key={workspace.workspaceId} value={workspace.workspaceId}>{workspace.name}</option>)}</select></label><button onClick={refreshInventory} disabled={!workspaceId || loadingInventory} className="rounded-lg border border-brand-300 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:border-ink-200 disabled:text-ink-300">{loadingInventory ? 'Refreshing inventory…' : 'Refresh tag inventory'}</button>{inventory && <div className="grid gap-3 sm:grid-cols-3 text-sm"><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Tags</div><div className="font-medium text-ink-800 mt-1">{Array.isArray(inventory.tags) ? inventory.tags.length : 0}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Triggers</div><div className="font-medium text-ink-800 mt-1">{Array.isArray(inventory.triggers) ? inventory.triggers.length : 0}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Fetched</div><div className="font-medium text-ink-800 mt-1">{inventory.fetched_at ? new Date(inventory.fetched_at).toLocaleString() : 'Just now'}</div></div></div>}{inventory.snapshot_stale && <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900"><strong>Workspace snapshot, not live proof.</strong> This inventory was read from a GTM workspace and matches are downgraded until the workspace is published. {inventory.live_version_id ? `Current live version: ${inventory.live_version_id}.` : 'Live container version metadata was unavailable during refresh.'}</div>}<p className="text-xs text-ink-400">Exact runtime tag identity is shown only when the observed event matches one unique configured tag. Ambiguous or unmatched events remain explicitly labeled.</p></section>}
+      {selectedContainer && <section className="card p-5 space-y-4"><div><h3 className="font-semibold text-ink-950">3. Snapshot GTM configuration</h3><p className="text-sm text-ink-500 mt-1">Choose a workspace to read tag, trigger, and variable metadata. GAfix stores a versioned snapshot and uses it only as configuration evidence; the browser monitor remains the source of runtime event evidence.</p></div><label className="text-sm text-ink-700">Workspace<select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)} disabled={loadingWorkspaces} className="mt-1 w-full rounded-lg border border-ink-200 bg-white px-3 py-2 text-sm"><option value="">{loadingWorkspaces ? 'Loading workspaces…' : 'Select a workspace'}</option>{workspaces.map((workspace) => <option key={workspace.workspaceId} value={workspace.workspaceId}>{workspace.name}</option>)}</select></label><button onClick={refreshInventory} disabled={!workspaceId || loadingInventory} className="rounded-lg border border-brand-300 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-not-allowed disabled:border-ink-200 disabled:text-ink-300">{loadingInventory ? 'Refreshing inventory…' : 'Refresh tag inventory'}</button>{inventory && <div className="grid gap-3 sm:grid-cols-3 text-sm"><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Tags</div><div className="font-medium text-ink-800 mt-1">{Array.isArray(inventory.tags) ? inventory.tags.length : 0}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Triggers</div><div className="font-medium text-ink-800 mt-1">{Array.isArray(inventory.triggers) ? inventory.triggers.length : 0}</div></div><div className="rounded-lg bg-ink-50 p-3"><div className="text-xs text-ink-400">Fetched</div><div className="font-medium text-ink-800 mt-1">{inventory.fetched_at ? new Date(inventory.fetched_at).toLocaleString() : 'Just now'}</div></div></div>}<p className="text-xs text-ink-400">Exact runtime tag identity is shown only when the observed event matches one unique configured tag. Ambiguous or unmatched events remain explicitly labeled.</p></section>}
 
       <section className="card p-5 space-y-4">
         <div><h3 className="font-semibold text-ink-950">3. Review the monitor tag</h3><p className="text-sm text-ink-500 mt-1">GAfix creates a compact Custom HTML tag with an All Pages trigger. The tag observes real-user network, dataLayer, consent, performance, console, and ad-block evidence.</p></div>
