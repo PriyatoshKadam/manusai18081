@@ -26,20 +26,26 @@ export function classifyDeliveryOutcome(event: DeliveryEvidence): DeliveryOutcom
   if (event.beaconAccepted === false || event.failureReason === 'beacon_rejected') return 'beacon_rejected';
   const reason = String(event.failureReason || '').trim().toLowerCase();
   if (/blocked|err_blocked_by_client|tracker_block/.test(reason)) return 'blocked';
-  if (event.statusCode !== null && event.statusCode !== undefined && Number(event.statusCode) >= 200 && Number(event.statusCode) < 400 && !reason) return 'delivered';
-  if (event.statusCode !== null && event.statusCode !== undefined && Number(event.statusCode) >= 400) return 'http_error';
+  const status = Number(event.statusCode);
+  if (Number.isFinite(status) && status >= 200 && status < 400 && !reason) return 'delivered';
+  if (Number.isFinite(status) && status >= 400) return 'http_error';
   if (reason === 'network_error' || reason === 'cors_error' || reason === 'failed_to_fetch') return 'network_error';
   if (reason === 'aborted' || reason === 'aborterror') return 'aborted';
   if (reason === 'timeout' || reason === 'timed_out') return 'timeout';
   return 'unknown';
 }
 
+/** Only direct rejection evidence counts as a confirmed delivery failure. */
 export function isConfirmedDeliveryFailure(outcome: DeliveryOutcome) {
-  return outcome === 'http_error' || outcome === 'network_error' || outcome === 'aborted' || outcome === 'timeout' || outcome === 'blocked' || outcome === 'beacon_rejected';
+  return outcome === 'http_error' || outcome === 'blocked' || outcome === 'beacon_rejected';
 }
 
 export function isTransportAnomaly(outcome: DeliveryOutcome) {
   return outcome === 'network_error' || outcome === 'aborted' || outcome === 'timeout' || outcome === 'unknown';
+}
+
+export function isSuccessfulDelivery(outcome: DeliveryOutcome) {
+  return outcome === 'delivered';
 }
 
 export function deliveryOutcomeLabel(outcome: DeliveryOutcome) {

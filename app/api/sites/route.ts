@@ -16,8 +16,12 @@ export async function GET() {
 
   const result = await query(
     `SELECT id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id,
-            meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id, snapchat_pixel_id, first_party_domain, vendor_routing_policy, previous_api_key_expires_at, created_at
-     FROM sites WHERE user_id = $1 ORDER BY created_at DESC`,
+            meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id,
+            snapchat_pixel_id, first_party_domain, vendor_routing_policy,
+            api_key, previous_api_key_expires_at, created_at
+       FROM sites
+      WHERE user_id = $1
+      ORDER BY created_at DESC`,
     [session.uid]
   );
   return NextResponse.json({ sites: result.rows });
@@ -46,7 +50,9 @@ export async function POST(req: NextRequest) {
     const result = await query(
       `INSERT INTO sites
          (user_id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id,
-          meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id, snapchat_pixel_id, first_party_domain, vendor_routing_policy, slack_webhook_url, api_key)
+          meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id,
+          snapchat_pixel_id, first_party_domain, vendor_routing_policy,
+          slack_webhook_url, api_key)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id, api_key, domain`,
       [

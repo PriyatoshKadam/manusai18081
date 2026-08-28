@@ -10,8 +10,15 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 describe('accuracy contracts', () => {
   it('does not call a dataLayer-only observation a successful delivery', () => {
     const source = read('app/api/tag-health/route.ts');
-    expect(source).toContain("const successfulDelivery = `${networkObservation} AND (delivery_outcome = 'delivered'");
-    expect(source).toContain("sample_basis: 'network_delivery_outcomes'");
+    expect(source).toContain("const successfulDelivery=`${networkObservation} AND delivery_outcome='delivered'`");
+    expect(source).toContain("sample_basis:'confirmed_network_delivery_outcomes'");
+  });
+
+  it('distinguishes confirmed failures from transport anomalies', () => {
+    const source = read('app/api/tag-health/route.ts');
+    expect(source).toContain("delivery_outcome IN ('http_error','blocked','beacon_rejected')");
+    expect(source).toContain("delivery_outcome IN('network_error','aborted','timeout','unknown')");
+    expect(source).not.toContain("delivery_outcome IN('http_error','network_error','aborted','timeout','blocked','beacon_rejected')");
   });
 
   it('distinguishes missing tools, mismatched currencies, and matching records', () => {
