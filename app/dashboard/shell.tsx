@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-type Site = { id: number; domain: string; api_key: string; first_party_domain?: string | null };
+type Site = { id: number; domain: string; api_key?: string; first_party_domain?: string | null };
 
 export default function DashboardShell({
   children, email, sites,

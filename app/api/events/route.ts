@@ -4,6 +4,8 @@ import { query } from '../../../lib/db';
 import { INTERNAL_CORRELATION_NOISE_SQL } from '../../../lib/adblock-evidence';
 
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
+const networkObservation = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
+const failedDelivery = `${networkObservation} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL)`;
 const displayName = `(CASE
   WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', ''), 'conversion')
   WHEN vendor = 'meta' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'ev', ''), NULLIF(params->>'event', ''), 'PageView')
@@ -34,9 +36,11 @@ export async function GET(req: NextRequest) {
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '1 hour') AS events_hour,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false) AS active_alerts,
        (SELECT COUNT(*) FROM alerts WHERE site_id = $1 AND resolved = false AND severity = 'critical') AS critical_alerts,
-       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
+       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'confirmed' AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours') AS confirmed_blockers_24h,
+       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'confirmed' AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours') AS adblock_24h,
+       (SELECT COUNT(*) FROM adblock_events WHERE site_id = $1 AND confidence = 'likely' AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours') AS likely_blocker_signals_24h,
        (SELECT COUNT(DISTINCT ${occurrenceKey}) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS events_24h,
-       (SELECT COUNT(DISTINCT NULLIF(session_id, '')) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS sessions_24h,
+       (SELECT COUNT(DISTINCT COALESCE(NULLIF(session_id, ''), NULLIF(client_id, ''))) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS sessions_24h,
        (SELECT COUNT(*) FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours') AS persisted_events_24h,
        (SELECT COUNT(*) FROM events WHERE site_id = $1 AND detection_status = 'scored' AND received_at > NOW() - INTERVAL '24 hours') AS scored_events_24h,
        (SELECT COUNT(*) FROM events WHERE site_id = $1 AND detection_status = 'failed' AND received_at > NOW() - INTERVAL '24 hours') AS detection_failures_24h,
@@ -56,9 +60,9 @@ export async function GET(req: NextRequest) {
               MAX(${platformId}) AS platform_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
-              COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
-              SUM(CASE WHEN (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL THEN 1 ELSE 0 END)::int AS failed,
-              SUM(CASE WHEN event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false) THEN 1 ELSE 0 END)::int AS err
+              COALESCE(ROUND(AVG(latency_ms) FILTER (WHERE ${networkObservation}))::int, 0) AS avg_latency_ms,
+              COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failed,
+              COUNT(*) FILTER (WHERE ${networkObservation} AND event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false))::int AS err
        FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
     : `SELECT ${displayName} AS event_name, event_type, vendor,
@@ -67,37 +71,37 @@ export async function GET(req: NextRequest) {
               MAX(${platformId}) AS platform_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
-              COALESCE(ROUND(AVG(latency_ms))::int, 0) AS avg_latency_ms,
-              SUM(CASE WHEN (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL THEN 1 ELSE 0 END)::int AS failed,
+              COALESCE(ROUND(AVG(latency_ms) FILTER (WHERE ${networkObservation}))::int, 0) AS avg_latency_ms,
+              COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failed,
               0 AS err
        FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
   const eventsRes = vendor ? await query(eventsQ, [siteId, vendor]) : await query(eventsQ, [siteId]);
   const flow = await query(
-    `SELECT COALESCE(NULLIF(delivery_mode, ''), 'unknown') AS delivery_mode,
+    `SELECT CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END AS delivery_mode,
             COUNT(DISTINCT ${occurrenceKey})::int AS events,
-            COUNT(DISTINCT session_id)::int AS sessions,
-            COUNT(*) FILTER (WHERE (status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL)::int AS failures,
+            COUNT(DISTINCT COALESCE(NULLIF(session_id,''), NULLIF(client_id,'')))::int AS sessions,
+            COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
             COUNT(DISTINCT resource_domain)::int AS destinations,
             ARRAY_REMOVE(ARRAY_AGG(DISTINCT resource_domain), NULL) AS domains
        FROM events
       WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
-      GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')
+      GROUP BY CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END
       ORDER BY events DESC`,
     [siteId],
   );
   const blockedFlow = await query(
-    `SELECT COALESCE(NULLIF(delivery_mode, ''), 'unknown') AS delivery_mode, COUNT(*)::int AS blocked
+    `SELECT CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END AS delivery_mode, COUNT(*)::int AS blocked
        FROM adblock_events
       WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours'
-      GROUP BY COALESCE(NULLIF(delivery_mode, ''), 'unknown')`,
+      GROUP BY CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END`,
     [siteId],
   );
   const [alerts, sources] = await Promise.all([
     query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at, last_seen, occurrence_count, distinct_pushes, confidence, dedupe_key, distinct_sessions, distinct_pages, impact_updated_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
-    query(`SELECT event_name, source, observation_kind, COUNT(*)::int AS count
+    query(`SELECT event_name, source, origin_source, observation_kind, COUNT(*)::int AS count
            FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
-           GROUP BY event_name, source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),
+           GROUP BY event_name, source, origin_source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),
   ]);
   return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows, flow: flow.rows, blockedFlow: blockedFlow.rows, sources: sources.rows });
 }

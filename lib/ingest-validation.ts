@@ -67,6 +67,7 @@ export type NormalizedTelemetryEvent = {
   rawUrl: string | null;
   dlPushIndex: number | null;
   source: string | null;
+  originSource: string | null;
   observationKind: string;
   sessionId: string | null;
   occurrenceId: string | null;
@@ -81,11 +82,12 @@ export type NormalizedTelemetryEvent = {
   consentState: Record<string, unknown>;
   webVitals: Record<string, unknown>;
   revenueValue: number | null;
+  revenueValueStatus: 'missing' | 'valid' | 'invalid';
   revenueCurrency: string | null;
   transactionId: string | null;
   resourceDomain: string | null;
   resourceType: string | null;
-  deliveryMode: 'client_side' | 'server_side' | 'unknown';
+  deliveryMode: 'first_party' | 'third_party' | 'unknown';
   isSynthetic: boolean;
 };
 
@@ -108,7 +110,14 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
   const rawLatencyMs = Number(event.latencyMs);
   const rawConsent = cleanValue(event.consentState || {}, 0);
   const rawVitals = cleanValue(event.webVitals || {}, 0);
-  const rawRevenue = Number(event.revenueValue ?? event.revenue_value ?? params.value ?? params['ep.value'] ?? params['epn.value']);
+  const rawRevenueInput = event.revenueValue ?? event.revenue_value ?? params.value ?? params['ep.value'] ?? params['epn.value'];
+  const hasRevenueInput = rawRevenueInput !== undefined && rawRevenueInput !== null && String(rawRevenueInput).trim() !== '';
+  const rawRevenue = hasRevenueInput ? Number(rawRevenueInput) : NaN;
+  const revenueValueStatus: 'missing' | 'valid' | 'invalid' = !hasRevenueInput
+    ? 'missing'
+    : Number.isFinite(rawRevenue) && rawRevenue >= -1000000000 && rawRevenue <= 1000000000
+      ? 'valid'
+      : 'invalid';
   const rawCurrency = boundedString(event.revenueCurrency ?? event.revenue_currency ?? params.currency ?? params['ep.currency'], 12)?.trim().toUpperCase() || null;
   const rawTransaction = boundedString(event.transactionId ?? event.transaction_id ?? params.transaction_id ?? params['ep.transaction_id'], 240)?.trim() || null;
   let resourceDomain: string | null = null;
@@ -125,6 +134,7 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     rawUrl: redactTelemetryUrl(rawUrl),
     dlPushIndex,
     source: safeToken(event.source, 40),
+    originSource: safeToken(event.originSource ?? event.origin_source, 40),
     observationKind,
     sessionId: safeToken(event.sessionId, 128),
     occurrenceId: safeToken(event.occurrenceId, 160),
@@ -138,12 +148,13 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     failureReason: boundedString(event.failureReason, 240),
     consentState: rawConsent && typeof rawConsent === 'object' && !Array.isArray(rawConsent) ? rawConsent as Record<string, unknown> : {},
     webVitals: rawVitals && typeof rawVitals === 'object' && !Array.isArray(rawVitals) ? rawVitals as Record<string, unknown> : {},
-    revenueValue: Number.isFinite(rawRevenue) && rawRevenue >= -1000000000 && rawRevenue <= 1000000000 ? rawRevenue : null,
+    revenueValue: revenueValueStatus === 'valid' ? rawRevenue : null,
+    revenueValueStatus,
     revenueCurrency: rawCurrency && /^[A-Z]{3}$/.test(rawCurrency) ? rawCurrency : null,
     transactionId: rawTransaction,
     resourceDomain,
     resourceType: boundedString(event.resourceType ?? event.resource_type, 80)?.trim() || null,
-    deliveryMode: event.deliveryMode === 'client_side' || event.deliveryMode === 'server_side' ? event.deliveryMode : 'unknown',
+    deliveryMode: event.deliveryMode === 'first_party' || event.deliveryMode === 'third_party' ? event.deliveryMode : 'unknown',
     isSynthetic: event.isSynthetic === true || event.is_synthetic === true,
   };
 }

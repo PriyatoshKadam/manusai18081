@@ -13,17 +13,17 @@ describe('server-side GA4 collection', () => {
     expect(monitor).toContain('var measurement = params.tid || params.measurement_id;');
   });
 
-  it('labels the supplied first-party collection request as server-side', () => {
+  it('labels the supplied collection request as first-party without claiming server-side processing', () => {
     expect(classifyDeliveryMode(sampleRequest, 'https://client.example.com/', {
       domain: 'client.example.com',
       first_party_domain: 'dev-app.gafix.ai',
-    })).toBe('server_side');
+    })).toBe('first_party');
   });
 
-  it('labels direct Google Analytics collection as client-side', () => {
+  it('labels direct Google Analytics collection as a vendor destination', () => {
     expect(classifyDeliveryMode('https://www.google-analytics.com/g/collect?tid=G-6LQSQZ7B5C&en=view_sample_audit_app', 'https://client.example.com/', {
       domain: 'client.example.com',
       first_party_domain: 'dev-app.gafix.ai',
-    })).toBe('client_side');
+    })).toBe('third_party');
   });
 });

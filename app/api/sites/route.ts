@@ -16,7 +16,7 @@ export async function GET() {
 
   const result = await query(
     `SELECT id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id,
-            meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id, snapchat_pixel_id, api_key, first_party_domain, previous_api_key_expires_at, created_at
+            meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id, snapchat_pixel_id, first_party_domain, previous_api_key_expires_at, created_at
      FROM sites WHERE user_id = $1 ORDER BY created_at DESC`,
     [session.uid]
   );

@@ -62,7 +62,7 @@ describe('event identity and classification', () => {
 
   it('explains duplicate root cause from dataLayer and transport evidence', () => {
     expect(classifyDuplicateRootCause(base, { id: 1, dlPushIndex: 3, source: 'gtm', rawUrl: null })).toContain('dataLayer');
-    expect(classifyDuplicateRootCause({ ...base, dlPushIndex: 4, source: 'fetch' }, { id: 1, dlPushIndex: 4, source: 'gtm', rawUrl: null })).toContain('transport');
+    expect(classifyDuplicateRootCause({ ...base, dlPushIndex: 4, source: 'fetch', originSource: 'direct_gtag', transport: 'fetch' }, { id: 1, dlPushIndex: 4, source: 'gtm', originSource: 'gtm', transport: 'gtm', rawUrl: null })).toContain('implementation paths');
   });
 });
 
@@ -100,7 +100,7 @@ describe('GTM Connect helpers', () => {
     const tag = monitorTagPayload({ id: 1, api_key: 'a'.repeat(48) }, 'trigger-1');
     expect(tag.type).toBe('html');
     expect(tag.firingTriggerId).toEqual(['trigger-1']);
-    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?v=12.5&apiKey=');
+    expect(tag.parameter[0].value).toContain('https://monitor.example.com/monitor.js?v=12.6&apiKey=');
     delete process.env.NEXT_PUBLIC_MONITOR_ORIGIN;
   });
 });
@@ -131,6 +131,12 @@ describe('ingest validation', () => {
 
   it('preserves bounded response, latency, consent, and vitals evidence', () => {
     expect(normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'run_audit', statusCode: 204, latencyMs: 87.4, failureReason: null, consentState: { analytics_storage: 'granted' }, webVitals: { lcp: 1234.56 } })).toMatchObject({ statusCode: 204, latencyMs: 87, consentState: { analytics_storage: 'granted' }, webVitals: { lcp: 1234.56 } });
+  });
+
+  it('distinguishes missing, valid, and malformed purchase values', () => {
+    expect(normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'purchase', params: { currency: 'USD' } }).revenueValueStatus).toBe('missing');
+    expect(normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'purchase', params: { value: 125, currency: 'USD' } })).toMatchObject({ revenueValue: 125, revenueValueStatus: 'valid' });
+    expect(normalizeTelemetryEvent({ vendor: 'ga4', eventName: 'purchase', params: { value: 'not-a-number', currency: 'USD' } })).toMatchObject({ revenueValue: null, revenueValueStatus: 'invalid' });
   });
 
   it('rejects unsafe observation kinds and tokens', () => {

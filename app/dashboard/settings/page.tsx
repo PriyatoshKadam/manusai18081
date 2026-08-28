@@ -178,7 +178,7 @@ export default function SettingsPage() {
                 <div className="flex items-start justify-between mb-3">
                   <div>
                     <h3 className="font-semibold text-ink-950">{s.domain}</h3>
-                    <p className="text-xs text-ink-500 mt-0.5">Private monitoring key: <span className="mono">{s.api_key.slice(0, 12)}…</span></p>{s.previous_api_key_expires_at && <p className="text-xs text-amber-700 mt-1">Previous key works until {new Date(s.previous_api_key_expires_at).toLocaleString()}</p>}
+                    <p className="text-xs text-ink-500 mt-0.5">Private monitoring key: protected and never shown here</p>{s.previous_api_key_expires_at && <p className="text-xs text-amber-700 mt-1">Previous key works until {new Date(s.previous_api_key_expires_at).toLocaleString()}</p>}
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => setEditing(s.id)} className="border border-ink-200 px-3 py-1 rounded-lg text-xs">Edit details</button>

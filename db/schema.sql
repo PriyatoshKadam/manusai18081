@@ -50,7 +50,8 @@ ALTER TABLE sites
   ADD COLUMN IF NOT EXISTS first_party_domain TEXT,
   ADD COLUMN IF NOT EXISTS slack_webhook_url TEXT,
   ADD COLUMN IF NOT EXISTS previous_api_key TEXT,
-  ADD COLUMN IF NOT EXISTS previous_api_key_expires_at TIMESTAMPTZ;
+  ADD COLUMN IF NOT EXISTS previous_api_key_expires_at TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS vendor_routing_policy JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS idx_sites_user
   ON sites(user_id);
@@ -90,6 +91,7 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS raw_url TEXT,
   ADD COLUMN IF NOT EXISTS dl_push_index INT,
   ADD COLUMN IF NOT EXISTS source TEXT,
+  ADD COLUMN IF NOT EXISTS origin_source TEXT,
   ADD COLUMN IF NOT EXISTS observation_kind TEXT DEFAULT 'network',
   ADD COLUMN IF NOT EXISTS session_id TEXT,
   ADD COLUMN IF NOT EXISTS occurrence_id TEXT,
@@ -114,12 +116,17 @@ CREATE INDEX IF NOT EXISTS idx_events_site_signature
 
 CREATE INDEX IF NOT EXISTS idx_events_site_observation
   ON events(site_id, observation_kind, received_at DESC);
+CREATE INDEX IF NOT EXISTS idx_events_site_origin
+  ON events(site_id, origin_source, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_time
   ON events(site_id, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_vendor
   ON events(site_id, vendor);
+CREATE INDEX IF NOT EXISTS idx_events_network_delivery
+  ON events(site_id, vendor, event_name, received_at DESC)
+  WHERE observation_kind = 'network';
 
 CREATE INDEX IF NOT EXISTS idx_events_site_failure
   ON events(site_id, vendor, status_code, received_at DESC);
@@ -372,6 +379,7 @@ WHERE detection_method = 'ga4_event_blocked'
 ALTER TABLE events
   ADD COLUMN IF NOT EXISTS revenue_value NUMERIC,
   ADD COLUMN IF NOT EXISTS revenue_currency TEXT,
+  ADD COLUMN IF NOT EXISTS revenue_value_status TEXT NOT NULL DEFAULT 'missing',
   ADD COLUMN IF NOT EXISTS transaction_id TEXT,
   ADD COLUMN IF NOT EXISTS resource_domain TEXT,
   ADD COLUMN IF NOT EXISTS resource_type TEXT,
@@ -530,6 +538,7 @@ CREATE TABLE IF NOT EXISTS revenue_reconciliations (
   vendor_values JSONB NOT NULL DEFAULT '{}'::jsonb,
   vendor_presence JSONB NOT NULL DEFAULT '{}'::jsonb,
   missing_vendors JSONB NOT NULL DEFAULT '[]'::jsonb,
+  vendor_currencies JSONB NOT NULL DEFAULT '{}'::jsonb,
   delta_value NUMERIC,
   status TEXT NOT NULL DEFAULT 'observed',
   first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -604,6 +613,9 @@ CREATE INDEX IF NOT EXISTS idx_anomaly_runs_site_time
   ON anomaly_runs(site_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_revenue_reconciliation_site_time
   ON revenue_reconciliations(site_id, last_seen DESC);
+ALTER TABLE revenue_reconciliations
+  ADD COLUMN IF NOT EXISTS vendor_currencies JSONB NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE INDEX IF NOT EXISTS idx_synthetic_runs_site_time
   ON synthetic_runs(site_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_compliance_site_status

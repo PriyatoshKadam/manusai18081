@@ -14,7 +14,7 @@
   var g = window.__g4f = window.__g4f || {};
   if (g.__monitorInstalled) return;
   g.__monitorInstalled = true;
-  g.version = '12.5';
+  g.version = '12.6';
   g.k = apiKey;
   g.c = gtmContainerId;
   g.q = g.q || [];
@@ -36,7 +36,7 @@
   var counts = Object.create(null);
   var processedGtagObjects = [];
   var consentState = { gpc: !!navigator.globalPrivacyControl, do_not_track: navigator.doNotTrack || null, consent_source: 'browser' };
-  var webVitals = {};
+  var webVitals = {}; var vitalsSentForNavigation = false;
   var MAX_QUEUE = 250;
   var MAX_PENDING = 300;
   var WAIT_MS = 3500;
@@ -98,7 +98,7 @@
   function safeParams(value) { return safeValue(value || {}, 0, []); }
   function captureConsent(value, source) { consentState = merge(consentState, safeParams(value || {})); if (source) consentState.consent_source = source; }
   function consentFromParams(params) { var gcs = String((params && params.gcs) || ''); if (!/^G1[01]{2}$/.test(gcs)) return {}; var bits = gcs.slice(2); return { ad_storage: bits.charAt(0) === '1' ? 'granted' : 'denied', analytics_storage: bits.charAt(1) === '1' ? 'granted' : 'denied', consent_gcs: gcs, consent_source: 'network_gcs' }; }
-  function captureVital(name, value) { if (name && Number.isFinite(Number(value))) webVitals[name] = Math.round(Number(value) * 100) / 100; }
+  function captureVital(name, value) { if (!name || !Number.isFinite(Number(value))) return; var numeric = Number(value); if (name === 'cls') webVitals[name] = Math.round(((Number(webVitals[name]) || 0) + numeric) * 100) / 100; else if (name === 'inp') webVitals[name] = Math.max(Number(webVitals[name]) || 0, Math.round(numeric)); else webVitals[name] = Math.round(numeric * 100) / 100; }
   function diagnostic(name, params) { send({ type: 'diagnostic', vendor: 'browser', eventName: name, params: safeParams(params || {}), pageUrl: pageUrl(), source: 'browser', observationKind: 'diagnostic', sessionId: sessionId, occurrenceId: token('diagnostic'), navigationId: navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() }); }
   function stable(value) {
     if (value === null || value === undefined) return '';
@@ -192,7 +192,9 @@
     } catch (_) {}
     try { if (navigator.sendBeacon) navigator.sendBeacon(ingestUrl, new Blob([body], { type: 'text/plain;charset=UTF-8' })); } catch (_) {}
   }
+  function sendVitalsSnapshot() { if (vitalsSentForNavigation || !Object.keys(webVitals).length) return; vitalsSentForNavigation = true; diagnostic('web_vitals', {}); }
   function flushOnPageExit() {
+    try { sendVitalsSnapshot(); } catch (_) {}
     if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
     if (!queue.length) return;
     var body = JSON.stringify({ apiKey: apiKey, gtmContainerId: gtmContainerId, events: queue.splice(0, queue.length) });
@@ -222,9 +224,10 @@
     var normalizedName = eventNameValue(eventName, null); if (!normalizedName) return null;
     occurrence += 1;
     var safe = safeParams(params);
-    var event = { vendor: vendor || 'ga4', eventName: normalizedName, params: safe, source: source || 'dataLayer', observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), timestamp: Date.now() };
+    var implementationSource = vendor === 'gtm' ? 'gtm' : source === 'gtag' ? 'direct_gtag' : 'dataLayer';
+    var event = { vendor: vendor || 'ga4', eventName: normalizedName, params: safe, source: source || 'dataLayer', originSource: implementationSource, observationKind: kind || 'datalayer', sessionId: sessionId, occurrenceId: 'event-' + occurrence, dlPushIndex: index === undefined ? null : index, navigationId: navigationId, gtmContainerId: gtmContainerId, pageUrl: pageUrl(), requestSignature: signature(safe, normalizedName), timestamp: Date.now() };
     var name = normalize(normalizedName); counts[name] = (counts[name] || 0) + 1;
-    send({ type: kind || 'datalayer', vendor: event.vendor, eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: event.navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: event.timestamp });
+    send({ type: kind || 'datalayer', vendor: event.vendor, eventName: event.eventName, params: event.params, clientId: event.params.cid || event.params.client_id || null, transactionId: transactionId(event.params), pageUrl: event.pageUrl, source: event.source, originSource: event.originSource, observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, navigationId: event.navigationId, gtmContainerId: gtmContainerId, requestSignature: event.requestSignature, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: event.timestamp });
     if (event.vendor !== 'ga4') return event;
     pending.push(event); if (pending.length > MAX_PENDING) pending.shift();
     setTimeout(function () {
@@ -236,7 +239,7 @@
   }
   function wasProcessed(item) { return processedGtagObjects.indexOf(item) !== -1; }
   function rememberProcessed(item) { if (!item) return; processedGtagObjects.push(item); if (processedGtagObjects.length > 200) processedGtagObjects.shift(); }
-  function dataLayerEvent(item) {
+  function dataLayerEvent(item, explicitIndex) {
     if (!item || wasProcessed(item)) return null;
     var name = null, params = item, source = 'dataLayer';
     var vendor = 'ga4';
@@ -248,17 +251,28 @@
     if (name && /^(consent_update|consent)$/i.test(String(name))) { captureConsent(params); return null; }
     if (!name) return null;
     if (/^gtm(?:\.|$)/i.test(String(name))) vendor = 'gtm';
-    return currentEvent(name, params && typeof params === 'object' ? params : {}, source, 'datalayer', pushIndex, vendor);
+    return currentEvent(name, params && typeof params === 'object' ? params : {}, source, 'datalayer', explicitIndex === undefined ? pushIndex : explicitIndex, vendor);
   }
   function matchPending(name, params, ts, requestSig) {
-    var target = normalize(name);
+    var target = normalize(name); var best = null; var bestScore = -1;
     for (var i = 0; i < pending.length; i += 1) {
-      var item = pending[i];
-      if (!item || item.vendor !== 'ga4' || item.networkMatched || normalize(item.eventName) !== target || ts - item.timestamp > MATCH_MS) continue;
-      if (requestSig && requestSig === item.requestSignature) continue;
-      item.networkMatched = true; item.requestSignature = requestSig; item.networkOccurrenceId = 'network-' + (++networkOccurrence); pending.splice(i, 1); return item;
+      var item = pending[i]; if (!item || item.vendor !== 'ga4' || item.networkMatched || normalize(item.eventName) !== target) continue;
+      var age = ts - item.timestamp; if (age < 0 || age > MATCH_MS) continue;
+      var score = 0; var itemParams = item.params || {};
+      if (requestSig && item.requestSignature && requestSig === item.requestSignature) score += 100;
+      var currentTransaction = transactionId(params); var itemTransaction = transactionId(itemParams);
+      if (currentTransaction && itemTransaction && currentTransaction === itemTransaction) score += 90;
+      var currentEventId = params.event_id || params.eventId || params.eventID; var itemEventId = itemParams.event_id || itemParams.eventId || itemParams.eventID;
+      if (currentEventId && itemEventId && String(currentEventId) === String(itemEventId)) score += 90;
+      var currentClient = params.cid || params.client_id; var itemClient = itemParams.cid || itemParams.client_id;
+      if (currentClient && itemClient && String(currentClient) === String(itemClient)) score += 50;
+      if (item.navigationId && item.navigationId === navigationId) score += 30;
+      if (item.pageUrl && item.pageUrl === pageUrl()) score += 20;
+      score += Math.max(0, 20 - Math.floor(age / 300));
+      if (score > bestScore) { bestScore = score; best = item; }
     }
-    return null;
+    if (!best || bestScore < 30) return null;
+    best.networkMatched = true; best.requestSignature = requestSig; best.networkOccurrenceId = 'network-' + (++networkOccurrence); pending.splice(pending.indexOf(best), 1); return best;
   }
   function network(url, body, transport, failed, deferSend) {
     if (!url || ownUrl(url)) return null;
@@ -278,19 +292,19 @@
     var recentKey = vendor + '|' + String(name || '') + '|' + navigationId;
     var recent = recentNetworkEvents[recentKey];
     var rapidFanout = !match && vendor === 'ga4' && recent && Date.now() - recent.timestamp <= 750;
-    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: match ? match.source : rapidFanout ? recent.source : transport || 'network', observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : rapidFanout ? recent.occurrenceId : null, networkOccurrenceId: match ? match.networkOccurrenceId : 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : rapidFanout ? recent.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
-    recentNetworkEvents[recentKey] = { timestamp: event.timestamp, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, source: event.source };
+    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: transport || 'network', originSource: match ? match.originSource : rapidFanout ? recent.originSource : null, observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : rapidFanout ? recent.occurrenceId : null, networkOccurrenceId: 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : rapidFanout ? recent.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
+    recentNetworkEvents[recentKey] = { timestamp: event.timestamp, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, source: event.source, originSource: event.originSource };
     if (!deferSend) send(event);
     if (failed) reportBlocked(vendor + '_transport_blocked', { eventName: name, blockedUrl: url, sessionId: sessionId, signal: vendor + '_transport' });
     return event;
   }
   function patchDataLayer() {
-    for (var i = 0; i < dataLayer.length; i += 1) { try { dataLayerEvent(dataLayer[i]); } catch (_) {} }
+    for (var i = 0; i < dataLayer.length; i += 1) { try { dataLayerEvent(dataLayer[i], i); } catch (_) {} }
     var original = dataLayer.push;
-    dataLayer.push = function () { for (var j = 0; j < arguments.length; j += 1) { try { pushIndex += 1; if (!wasProcessed(arguments[j])) dataLayerEvent(arguments[j]); } catch (_) {} } return original.apply(this, arguments); };
+    dataLayer.push = function () { for (var j = 0; j < arguments.length; j += 1) { try { pushIndex += 1; if (!wasProcessed(arguments[j])) dataLayerEvent(arguments[j], pushIndex); } catch (_) {} } return original.apply(this, arguments); };
     if (typeof window.gtag === 'function') {
       var originalGtag = window.gtag;
-      window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}, 'datalayer'); } } catch (_) {} return originalGtag.apply(this, arguments); };
+      window.gtag = function () { try { if (arguments[0] === 'event') { pushIndex += 1; dataLayerEvent(arguments, pushIndex); rememberProcessed(arguments); } else if (arguments[0] === 'consent') { captureConsent(arguments[2] || {}, 'datalayer'); } } catch (_) {} return originalGtag.apply(this, arguments); };
     }
   }
   function recordVendorFunction(vendor, method, args) {
@@ -299,7 +313,7 @@
     var eventName = eventNameValue(objectArg && (objectArg.event || objectArg.event_name || objectArg.action) || values[1] || values[0] || method || 'call', method || 'call');
     var candidate = values[2] && typeof values[2] === 'object' ? values[2] : objectArg || {};
     var params = safeParams(candidate);
-    send({ type: 'function', vendor: vendor, eventName: eventName, params: params, clientId: text(params.cid || params.client_id, 160), transactionId: transactionId(params), pageUrl: pageUrl(), source: method, observationKind: 'function', transport: 'function', sessionId: sessionId, occurrenceId: token('function'), networkOccurrenceId: null, requestSignature: signature(params, eventName), dlPushIndex: null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() });
+    send({ type: 'function', vendor: vendor, eventName: eventName, params: params, clientId: text(params.cid || params.client_id, 160), transactionId: transactionId(params), pageUrl: pageUrl(), source: method, originSource: 'vendor_sdk', observationKind: 'function', transport: 'function', sessionId: sessionId, occurrenceId: token('function'), networkOccurrenceId: null, requestSignature: signature(params, eventName), dlPushIndex: null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() });
   }
   function wrapVendorGlobal(name, vendor) {
     try {
@@ -347,8 +361,9 @@
     } catch (_) {}
   }
   function patchHistory() {
-    ['pushState', 'replaceState'].forEach(function (method) { var original = history[method]; history[method] = function () { var result = original.apply(this, arguments); navigationId = token('nav'); return result; }; });
-    window.addEventListener('popstate', function () { navigationId = token('nav'); });
+    function nextNavigation() { navigationId = token('nav'); webVitals = {}; vitalsSentForNavigation = false; }
+    ['pushState', 'replaceState'].forEach(function (method) { var original = history[method]; history[method] = function () { var result = original.apply(this, arguments); nextNavigation(); return result; }; });
+    window.addEventListener('popstate', nextNavigation);
   }
   function scanPerformance() {
     try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false); } catch (_) {} }); } catch (_) {}
@@ -361,9 +376,9 @@
   try { setInterval(scanPerformance, 1000); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.name === 'first-paint') captureVital('fcp', entry.startTime); }); }).observe({ type: 'paint', buffered: true }); } } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('lcp', entry.startTime); }); }).observe({ type: 'largest-contentful-paint', buffered: true }); } } catch (_) {}
-  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('cls', entry.value || 0); }); }).observe({ type: 'layout-shift', buffered: true }); } } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (!entry.hadRecentInput) captureVital('cls', entry.value || 0); }); }).observe({ type: 'layout-shift', buffered: true }); } } catch (_) {}
   try { var navEntry = performance.getEntriesByType('navigation')[0]; if (navEntry) captureVital('ttfb', navEntry.responseStart || 0); } catch (_) {}
-  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.interactionId || entry.duration) captureVital('inp', entry.duration || 0); }); }).observe({ type: 'event', buffered: true, durationThreshold: 40 }); } } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.interactionId) captureVital('inp', entry.duration || 0); }); }).observe({ type: 'event', buffered: true, durationThreshold: 40 }); } } catch (_) {}
   try { window.addEventListener('error', function (event) { var target = event.target; var url = target && (target.src || target.href); if (url && vendorFor(url, {})) { reportBlocked('resource_error', { blockedUrl: url, sessionId: sessionId, signal: 'resource_error' }); diagnostic('resource_error', { blockedUrl: text(url, 2048), target: text(target.tagName, 40) }); } else if (!target) diagnostic('console_error', { message: text(event.message || 'Unhandled window error', 512), filename: text(event.filename, 2048), line: event.lineno || null }); }, true); } catch (_) {}
   try { window.addEventListener('unhandledrejection', function (event) { diagnostic('unhandled_rejection', { reason: text(event.reason && event.reason.message ? event.reason.message : event.reason, 512) }); }); } catch (_) {}
   try { var originalConsoleError = console.error; console.error = function () { var args = Array.prototype.slice.call(arguments); diagnostic('console_error', { message: text(args.map(function (value) { return typeof value === 'string' ? value : stable(safeParams(value)); }).join(' '), 1024) }); return originalConsoleError.apply(this, arguments); }; } catch (_) {}
