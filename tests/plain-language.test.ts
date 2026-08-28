@@ -54,10 +54,10 @@ describe('plain-language dashboard copy', () => {
 
 describe('critical plain-language UI contracts', () => {
   it('keeps the dashboard routes and key customer phrases present', () => {
-    const read = (path: string) => readFileSync(path, 'utf8');
-    const shell = read('/home/ubuntu/manusai18081/app/dashboard/shell.tsx');
-    const install = read('/home/ubuntu/manusai18081/app/dashboard/install/page.tsx');
-    const adblock = read('/home/ubuntu/manusai18081/app/dashboard/adblock/page.tsx');
+    const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+    const shell = read('app/dashboard/shell.tsx');
+    const install = read('app/dashboard/install/page.tsx');
+    const adblock = read('app/dashboard/adblock/page.tsx');
     expect(shell).toContain("label: 'Possible repeats'");
     expect(shell).toContain("label: 'Website speed'");
     expect(install).toContain('Never use both methods.');
