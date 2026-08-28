@@ -78,6 +78,8 @@ CREATE TABLE IF NOT EXISTS events (
   raw_url TEXT,
   dl_push_index INT,
   source TEXT,
+  beacon_accepted BOOLEAN,
+  delivery_outcome TEXT DEFAULT 'unknown',
   received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -104,6 +106,8 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS status_code INT,
   ADD COLUMN IF NOT EXISTS latency_ms INT,
   ADD COLUMN IF NOT EXISTS failure_reason TEXT,
+  ADD COLUMN IF NOT EXISTS beacon_accepted BOOLEAN,
+  ADD COLUMN IF NOT EXISTS delivery_outcome TEXT DEFAULT 'unknown',
   ADD COLUMN IF NOT EXISTS consent_state JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS web_vitals JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
@@ -130,6 +134,9 @@ CREATE INDEX IF NOT EXISTS idx_events_network_delivery
 
 CREATE INDEX IF NOT EXISTS idx_events_site_failure
   ON events(site_id, vendor, status_code, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_outcome
+  ON events(site_id, vendor, delivery_outcome, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_name
   ON events(site_id, event_name);

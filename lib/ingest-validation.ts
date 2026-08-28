@@ -1,4 +1,5 @@
-import crypto from 'node:crypto';
+import crypto from 'crypto';
+import { classifyDeliveryOutcome, type DeliveryOutcome } from './delivery-outcome';
 
 const MAX_BODY_BYTES = 512 * 1024;
 export const MAX_EVENTS_PER_REQUEST = 100;
@@ -79,6 +80,8 @@ export type NormalizedTelemetryEvent = {
   statusCode: number | null;
   latencyMs: number | null;
   failureReason: string | null;
+  beaconAccepted: boolean | null;
+  deliveryOutcome: DeliveryOutcome;
   consentState: Record<string, unknown>;
   webVitals: Record<string, unknown>;
   revenueValue: number | null;
@@ -113,17 +116,21 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
   const rawRevenueInput = event.revenueValue ?? event.revenue_value ?? params.value ?? params['ep.value'] ?? params['epn.value'];
   const hasRevenueInput = rawRevenueInput !== undefined && rawRevenueInput !== null && String(rawRevenueInput).trim() !== '';
   const rawRevenue = hasRevenueInput ? Number(rawRevenueInput) : NaN;
-  const revenueValueStatus: 'missing' | 'valid' | 'invalid' = !hasRevenueInput
-    ? 'missing'
-    : Number.isFinite(rawRevenue) && rawRevenue >= -1000000000 && rawRevenue <= 1000000000
-      ? 'valid'
-      : 'invalid';
+  const normalizedEventName = eventName?.trim().toLowerCase() || '';
+  const valueWithinBounds = Number.isFinite(rawRevenue) && rawRevenue >= -1000000000 && rawRevenue <= 1000000000;
+  const eventValueIsValid = normalizedEventName === 'purchase' ? rawRevenue >= 0 : normalizedEventName === 'refund' ? rawRevenue <= 0 : true;
+  const revenueValueStatus: 'missing' | 'valid' | 'invalid' = !hasRevenueInput ? 'missing' : valueWithinBounds && eventValueIsValid ? 'valid' : 'invalid';
   const rawCurrency = boundedString(event.revenueCurrency ?? event.revenue_currency ?? params.currency ?? params['ep.currency'], 12)?.trim().toUpperCase() || null;
   const rawTransaction = boundedString(event.transactionId ?? event.transaction_id ?? params.transaction_id ?? params['ep.transaction_id'], 240)?.trim() || null;
   let resourceDomain: string | null = null;
   try { resourceDomain = rawUrl ? new URL(String(rawUrl)).hostname.toLowerCase().slice(0, 255) : null; } catch {}
   const observationKind = safeToken(rawObservationKind, 32) || '';
-  const allowedKinds = new Set(['network', 'datalayer', 'gtm', 'function', 'monitor_ready', 'diagnostic']);
+  const beaconAccepted = typeof event.beaconAccepted === 'boolean' ? event.beaconAccepted : null;
+  const failureReason = boundedString(event.failureReason, 240);
+  const transport = safeToken(event.transport, 40);
+  const statusCode = Number.isInteger(rawStatusCode) && rawStatusCode >= 0 && rawStatusCode <= 999 ? rawStatusCode : null;
+  const deliveryOutcome = classifyDeliveryOutcome({ observationKind, transport, statusCode, failureReason, beaconAccepted, explicitBlockSignal: event.explicitBlockSignal === true });
+  const allowedKinds = new Set(['network', 'resource', 'datalayer', 'gtm', 'function', 'monitor_ready', 'diagnostic']);
   if (!allowedKinds.has(observationKind)) throw new Error('Invalid observation kind');
   return {
     vendor: (boundedString(event.vendor, 40)?.trim().toLowerCase() || 'unknown').replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'unknown',
@@ -140,12 +147,14 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     occurrenceId: safeToken(event.occurrenceId, 160),
     networkOccurrenceId: safeToken(event.networkOccurrenceId, 160),
     requestSignature: boundedString(event.requestSignature, 512),
-    transport: safeToken(event.transport, 40),
+    transport,
+    beaconAccepted,
+    deliveryOutcome,
     gtmContainerId: safeToken(event.gtmContainerId, 40),
     navigationId: safeToken(event.navigationId, 160),
-    statusCode: Number.isInteger(rawStatusCode) && rawStatusCode >= 0 && rawStatusCode <= 999 ? rawStatusCode : null,
+    statusCode,
     latencyMs: Number.isFinite(rawLatencyMs) && rawLatencyMs >= 0 && rawLatencyMs <= 120000 ? Math.round(rawLatencyMs) : null,
-    failureReason: boundedString(event.failureReason, 240),
+    failureReason,
     consentState: rawConsent && typeof rawConsent === 'object' && !Array.isArray(rawConsent) ? rawConsent as Record<string, unknown> : {},
     webVitals: rawVitals && typeof rawVitals === 'object' && !Array.isArray(rawVitals) ? rawVitals as Record<string, unknown> : {},
     revenueValue: revenueValueStatus === 'valid' ? rawRevenue : null,

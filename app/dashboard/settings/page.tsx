@@ -144,6 +144,7 @@ export default function SettingsPage() {
             <Field name="bing_uet_tag_id" label="Microsoft Ads ID" placeholder="343007686" />
             <Field name="snapchat_pixel_id" label="Snapchat Pixel ID" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
             <Field name="first_party_domain" label="Your tracking domain (optional)" placeholder="analytics.shop.acme.com" />
+            <Field name="purchase_routing_vendors" label="Tools expected to receive purchases (optional)" placeholder="ga4, meta" />
           </div>
           <button type="submit" disabled={saving} className="bg-ink-950 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-ink-800 disabled:opacity-50">
             {saving ? 'Saving…' : 'Add website'}
@@ -167,6 +168,7 @@ export default function SettingsPage() {
                   <Field name="bing_uet_tag_id" label="Microsoft Ads ID" defaultValue={s.bing_uet_tag_id} />
                   <Field name="snapchat_pixel_id" label="Snapchat Pixel ID" defaultValue={s.snapchat_pixel_id} />
                   <Field name="first_party_domain" label="Your tracking domain" defaultValue={s.first_party_domain} placeholder="analytics.yourdomain.com" />
+                  <Field name="purchase_routing_vendors" label="Tools expected to receive purchases (optional)" defaultValue={purchaseRoutingValue(s)} placeholder="ga4, meta" />
                 </div>
                 <div className="flex gap-2">
                   <button type="submit" disabled={saving} className="bg-ink-950 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50">Save changes</button>
@@ -196,6 +198,7 @@ export default function SettingsPage() {
                   <Row label="Microsoft Ads ID" v={s.bing_uet_tag_id} />
                   <Row label="Snapchat Pixel ID" v={s.snapchat_pixel_id} />
                   <Row label="First-party domain" v={s.first_party_domain} highlight />
+                  <Row label="Purchase routing" v={purchaseRoutingValue(s) || 'Not set — observed tools only'} />
                 </div>
               </div>
             )}
@@ -204,6 +207,11 @@ export default function SettingsPage() {
       </div>
     </div>
   );
+}
+
+function purchaseRoutingValue(site: any) {
+  const values = site?.vendor_routing_policy?.events?.purchase;
+  return Array.isArray(values) ? values.join(', ') : '';
 }
 
 function Field({ name, label, placeholder, defaultValue, required }: any) {

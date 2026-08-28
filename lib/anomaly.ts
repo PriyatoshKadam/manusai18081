@@ -4,7 +4,10 @@ import { MIN_SAMPLE_SIZE } from './metrics';
 
 const logicalOccurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
 const networkObservation = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
-const failedDelivery = `${networkObservation} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IS NOT NULL)`;
+const legacyOutcome = `(delivery_outcome IS NULL OR delivery_outcome = 'unknown')`;
+const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','network_error','aborted','timeout','blocked','beacon_rejected') OR (${legacyOutcome} AND (status_code IS NOT NULL AND status_code >= 400 OR failure_reason IN ('network_error','aborted','timeout','blocked','beacon_rejected'))))`;
+const successfulDelivery = `${networkObservation} AND (delivery_outcome = 'delivered' OR (${legacyOutcome} AND status_code BETWEEN 200 AND 399 AND failure_reason IS NULL))`;
+const knownDeliveryOutcome = `(${successfulDelivery} OR ${failedDelivery})`;
 
 function severityFor(score: number) { return score >= 3 ? 'critical' : score >= 2 ? 'warning' : 'info'; }
 function pct(value: number) { return `${(value * 100).toFixed(1)}%`; }
@@ -14,20 +17,23 @@ export async function runAnomalySweep(siteId: number) {
     `WITH recent AS (
        SELECT vendor, event_name,
               COUNT(DISTINCT ${logicalOccurrenceKey})::int AS fires,
-              COUNT(*) FILTER (WHERE ${networkObservation})::int AS delivery_attempts,
+              COUNT(*) FILTER (WHERE ${knownDeliveryOutcome})::int AS delivery_attempts,
               COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
-              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation}), 0)::numeric AS avg_latency,
+              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked')), 0)::numeric AS avg_latency,
               COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int AS denied
          FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '15 minutes'
         GROUP BY vendor, event_name
      ), baseline AS (
        SELECT vendor, event_name,
               COUNT(DISTINCT ${logicalOccurrenceKey})::int AS fires,
-              COUNT(*) FILTER (WHERE ${networkObservation})::int AS delivery_attempts,
+              COUNT(*) FILTER (WHERE ${knownDeliveryOutcome})::int AS delivery_attempts,
               COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
-              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation}), 0)::numeric AS avg_latency,
+              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked')), 0)::numeric AS avg_latency,
               COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int AS denied
          FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '7 days' AND received_at < NOW() - INTERVAL '15 minutes'
+           AND EXTRACT(DOW FROM received_at) = EXTRACT(DOW FROM NOW())
+           AND EXTRACT(HOUR FROM received_at) = EXTRACT(HOUR FROM NOW())
+           AND FLOOR(EXTRACT(MINUTE FROM received_at) / 15) = FLOOR(EXTRACT(MINUTE FROM NOW()) / 15)
         GROUP BY vendor, event_name
      )
      SELECT r.vendor, r.event_name, r.fires, r.delivery_attempts, r.failures, r.avg_latency, r.denied,
@@ -76,12 +82,12 @@ export async function refreshBaselines(siteId: number) {
   await query(
     `INSERT INTO tag_baselines (site_id, vendor, event_name, window_start, window_end, sample_count, fire_count, success_count, failure_count, avg_latency_ms, p75_latency_ms, consent_denied_count)
      SELECT $1, vendor, event_name, NOW()-INTERVAL '7 days', NOW(),
-            COUNT(*) FILTER (WHERE ${networkObservation})::int,
+            COUNT(*) FILTER (WHERE ${knownDeliveryOutcome})::int,
             COUNT(DISTINCT ${logicalOccurrenceKey})::int,
-            COUNT(*) FILTER (WHERE ${networkObservation} AND status_code BETWEEN 200 AND 399 AND failure_reason IS NULL)::int,
+            COUNT(*) FILTER (WHERE ${successfulDelivery})::int,
             COUNT(*) FILTER (WHERE ${failedDelivery})::int,
-            AVG(latency_ms) FILTER (WHERE ${networkObservation}),
-            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ${networkObservation}),
+            AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked')),
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked')),
             COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int
        FROM events WHERE site_id = $1 AND received_at >= NOW()-INTERVAL '7 days'
       GROUP BY vendor, event_name

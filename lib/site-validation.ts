@@ -12,6 +12,8 @@ export type SiteInput = {
   snapchat_pixel_id?: string | null;
   first_party_domain?: string | null;
   slack_webhook_url?: string | null;
+  vendor_routing_policy?: unknown;
+  purchase_routing_vendors?: unknown;
 };
 
 export type NormalizedSiteInput = SiteInput & {
@@ -26,6 +28,7 @@ export type NormalizedSiteInput = SiteInput & {
   snapchat_pixel_id: string | null;
   first_party_domain: string | null;
   slack_webhook_url: string | null;
+  vendor_routing_policy: Record<string, unknown>;
 };
 
 function text(
@@ -170,6 +173,34 @@ export function normalizeHostname(
   return parsed.hostname
     .toLowerCase()
     .replace(/\.$/, '');
+}
+
+const ROUTING_VENDORS = new Set(['ga4', 'gads', 'meta', 'tiktok', 'linkedin', 'bing', 'snapchat']);
+function normalizeRoutingPolicy(value: unknown): Record<string, unknown> {
+  if (value === undefined || value === null || value === '') return {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Purchase routing must be an object');
+  const input = value as Record<string, unknown>;
+  if (Object.keys(input).some((key) => !['default', 'events'].includes(key))) throw new Error('Purchase routing contains an unsupported setting');
+  const output: Record<string, unknown> = {};
+  const normalizeList = (candidate: unknown, field: string) => {
+    if (!Array.isArray(candidate) || candidate.length > ROUTING_VENDORS.size) throw new Error(`${field} must be a list of tracking tools`);
+    if (candidate.some((item) => typeof item !== 'string')) throw new Error(`${field} must contain tracking tool names`);
+    const vendors = candidate.map((item) => String(item).trim().toLowerCase());
+    if (vendors.some((vendor) => !ROUTING_VENDORS.has(vendor))) throw new Error(`${field} contains an unsupported tracking tool`);
+    return [...new Set(vendors)];
+  };
+  if ('default' in input) output.default = normalizeList(input.default, 'Purchase routing default');
+  if ('events' in input) {
+    if (!input.events || typeof input.events !== 'object' || Array.isArray(input.events)) throw new Error('Purchase routing events must be an object');
+    const events: Record<string, string[]> = {};
+    for (const [eventName, candidate] of Object.entries(input.events as Record<string, unknown>)) {
+      if (!/^[a-zA-Z0-9_.:-]{1,120}$/.test(eventName)) throw new Error('Purchase routing event name is invalid');
+      events[eventName.trim().toLowerCase()] = normalizeList(candidate, `Purchase routing for ${eventName}`);
+    }
+    output.events = events;
+  }
+  if (!Object.keys(output).length) throw new Error('Purchase routing must include default or events');
+  return output;
 }
 
 function identifier(
@@ -318,6 +349,16 @@ export function normalizeSiteInput(
         input.first_party_domain,
         'First-party domain'
       );
+  }
+
+  if (!partial || 'vendor_routing_policy' in input || 'purchase_routing_vendors' in input) {
+    if ('purchase_routing_vendors' in input) {
+      const rawVendors = text(input.purchase_routing_vendors, 'Purchase routing tools') || '';
+      const vendors = rawVendors ? rawVendors.split(',').map((vendor) => vendor.trim()).filter(Boolean) : [];
+      result.vendor_routing_policy = vendors.length ? normalizeRoutingPolicy({ events: { purchase: vendors } }) : {};
+    } else {
+      result.vendor_routing_policy = normalizeRoutingPolicy(input.vendor_routing_policy);
+    }
   }
 
   if (

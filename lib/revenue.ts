@@ -21,19 +21,6 @@ function money(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function configuredVendors(site: SiteConfig): Vendor[] {
-  const configured: Array<[Vendor, unknown]> = [
-    ['ga4', site.ga4_measurement_id],
-    ['gads', site.gads_conversion_id],
-    ['meta', site.meta_pixel_id],
-    ['tiktok', site.tiktok_pixel_id],
-    ['linkedin', site.linkedin_partner_id],
-    ['bing', site.bing_uet_tag_id],
-    ['snapchat', site.snapchat_pixel_id],
-  ];
-  return configured.filter(([, value]) => typeof value === 'string' && value.trim()).map(([vendor]) => vendor);
-}
-
 function routingPolicy(policy: unknown, eventName: string): Vendor[] | null {
   if (!policy || typeof policy !== 'object' || Array.isArray(policy)) return null;
   const input = policy as Record<string, unknown>;
@@ -49,8 +36,8 @@ function routingPolicy(policy: unknown, eventName: string): Vendor[] | null {
 }
 
 function authoritativeRank(row: any) {
-  const network = row.observation_kind === 'network';
-  const successful = network && Number(row.status_code) >= 200 && Number(row.status_code) <= 399 && !row.failure_reason;
+  const network = row.observation_kind === 'network' && row.transport !== 'performance';
+  const successful = network && row.delivery_outcome === 'delivered';
   const validValue = row.revenue_value_status === 'valid' || (row.revenue_value_status === 'missing' && row.revenue_value !== null);
   return (successful ? 0 : network ? 1 : 2) * 10 + (validValue ? 0 : 1);
 }
@@ -62,9 +49,10 @@ export function classifyRevenueStatus(input: { expectedVendors: string[]; observ
   const max = input.values.length ? Math.max(...input.values) : 0;
   const valueMismatch = input.delta !== null && input.delta > Math.max(1, max * 0.05);
   if (currencyMismatch) return 'currency_mismatch';
-  if (input.invalidValue && input.values.length === 0) return 'invalid_value';
+  if (input.invalidValue) return 'invalid_value';
   if (missing.length > 0) return 'missing_vendor';
   if (valueMismatch) return 'value_mismatch';
+  if (input.expectedVendors.length === 0) return 'observed_unconfigured';
   if (unconfigured) return 'observed_unconfigured';
   if (input.observedVendors.length < 2) return input.expectedVendors.length ? 'single_vendor' : 'observed_unconfigured';
   return 'matched';
@@ -74,9 +62,9 @@ function statusAlert(status: RevenueStatus, item: any, vendors: string[]) {
   if (status === 'missing_vendor') {
     return {
       code: 'revenue_missing_vendor',
-      message: `Purchase ${item.transactionId} was not observed in every enabled tracking tool.`,
-      rootCause: `The purchase was observed in ${vendors.join(', ') || 'one or more tools'}, but the enabled-tool list also expects ${item.missingVendors.join(', ')}. This is an observation gap, not proof that a payment was lost.`,
-      steps: ['Confirm that this purchase should be sent to every enabled tracking tool.', 'Check the purchase trigger and vendor tags in GTM Preview or Tag Assistant.', 'Compare the final network requests after publishing the fix.'],
+      message: `Purchase ${item.transactionId} was not observed in every tool listed in the purchase-routing policy.`,
+      rootCause: `The purchase was observed in ${vendors.join(', ') || 'one or more tools'}, but the explicit purchase-routing policy also expects ${item.missingVendors.join(', ')}. This is an observation gap, not proof that a payment was lost.`,
+      steps: ['Confirm that every tool in the purchase-routing policy should receive this purchase.', 'Check the purchase trigger and vendor tags in GTM Preview or Tag Assistant.', 'Compare the final network requests after publishing the fix.'],
     };
   }
   if (status === 'currency_mismatch') {
@@ -143,7 +131,7 @@ export async function reconcileRevenue(siteId: number) {
               ROW_NUMBER() OVER (
                 PARTITION BY e.site_id, e.transaction_id, e.vendor
                 ORDER BY
-                  CASE WHEN e.observation_kind='network' AND COALESCE(e.transport, '') <> 'performance' AND e.status_code BETWEEN 200 AND 399 AND e.failure_reason IS NULL THEN 0
+                  CASE WHEN e.observation_kind='network' AND COALESCE(e.transport, '') <> 'performance' AND (e.delivery_outcome = 'delivered' OR ((e.delivery_outcome IS NULL OR e.delivery_outcome = 'unknown') AND e.status_code BETWEEN 200 AND 399 AND e.failure_reason IS NULL)) THEN 0
                        WHEN e.observation_kind='network' AND COALESCE(e.transport, '') <> 'performance' THEN 1 ELSE 2 END,
                   CASE WHEN e.revenue_value_status='valid' OR (e.revenue_value_status='missing' AND e.revenue_value IS NOT NULL) THEN 0 ELSE 1 END,
                   e.received_at DESC, e.id DESC
@@ -155,13 +143,12 @@ export async function reconcileRevenue(siteId: number) {
           AND e.received_at > NOW() - INTERVAL '30 days'
      )
      SELECT transaction_id, vendor, revenue_value, revenue_value_status, revenue_currency,
-            observation_kind, status_code, failure_reason, received_at
+            observation_kind, status_code, failure_reason, delivery_outcome, received_at
        FROM ranked WHERE row_rank=1
       ORDER BY received_at DESC`,
     [siteId],
   );
 
-  const expectedDefault = configuredVendors(site);
   const groups = new Map<string, any>();
   for (const row of rows.rows) {
     const transactionId = String(row.transaction_id);
@@ -171,7 +158,7 @@ export async function reconcileRevenue(siteId: number) {
       vendorPresence: {},
       vendorCurrencies: {},
       invalidVendors: [],
-      expectedVendors: routingPolicy(site.vendor_routing_policy, 'purchase') || expectedDefault,
+      expectedVendors: routingPolicy(site.vendor_routing_policy, 'purchase') || [],
     };
     const vendor = String(row.vendor || 'unknown');
     item.vendorPresence[vendor] = true;

@@ -67,14 +67,14 @@ export async function POST(req: NextRequest) {
           `INSERT INTO events
              (site_id, vendor, event_name, event_type, page_url, client_id, params, raw_url, dl_push_index, source,
               observation_kind, session_id, occurrence_id, network_occurrence_id, request_signature, transport, origin_source,
-              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, consent_state, web_vitals, revenue_value, revenue_currency, revenue_value_status, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic, gtm_tag_id, gtm_tag_name, gtm_trigger_name, gtm_workspace_id, gtm_correlation_confidence, missing_parameters, observed_parameters, parameter_status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'observed',$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38::jsonb,$39::jsonb,$40)
+              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, beacon_accepted, delivery_outcome, consent_state, web_vitals, revenue_value, revenue_currency, revenue_value_status, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic, gtm_tag_id, gtm_tag_name, gtm_trigger_name, gtm_workspace_id, gtm_correlation_confidence, missing_parameters, observed_parameters, parameter_status)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'observed',$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40::jsonb,$41::jsonb,$42)
            RETURNING id, received_at`,
           [
             site.id, event.vendor, event.eventName, classifyEvent(event.eventName, event.vendor), event.pageUrl, event.clientId,
             JSON.stringify(event.params), event.rawUrl, event.dlPushIndex, event.source, event.observationKind,
             event.sessionId, event.occurrenceId, event.networkOccurrenceId, event.requestSignature, event.transport, event.originSource,
-            event.gtmContainerId, event.navigationId, event.statusCode, event.latencyMs, event.failureReason,
+            event.gtmContainerId, event.navigationId, event.statusCode, event.latencyMs, event.failureReason, event.beaconAccepted, event.deliveryOutcome,
             JSON.stringify(event.consentState), JSON.stringify(event.webVitals), event.revenueValue, event.revenueCurrency, event.revenueValueStatus, event.transactionId, event.resourceDomain, event.resourceType, deliveryMode, event.isSynthetic,
             enrichment.tagId, enrichment.tagName, enrichment.triggerName, enrichment.workspaceId, enrichment.confidence, JSON.stringify(enrichment.missingParameters), JSON.stringify(enrichment.observedParameters), enrichment.parameterStatus,
           ],
@@ -86,7 +86,7 @@ export async function POST(req: NextRequest) {
           rawUrl: event.rawUrl || '', dlPushIndex: event.dlPushIndex, source: event.source,
           observationKind: event.observationKind, sessionId: event.sessionId, occurrenceId: event.occurrenceId,
           networkOccurrenceId: event.networkOccurrenceId, requestSignature: event.requestSignature, transport: event.transport, originSource: event.originSource,
-          gtmContainerId: event.gtmContainerId, navigationId: event.navigationId, statusCode: event.statusCode, latencyMs: event.latencyMs, failureReason: event.failureReason, consentState: event.consentState, webVitals: event.webVitals, revenueValue: event.revenueValue, revenueValueStatus: event.revenueValueStatus, revenueCurrency: event.revenueCurrency, transactionId: event.transactionId, resourceDomain: event.resourceDomain, resourceType: event.resourceType, deliveryMode,
+          gtmContainerId: event.gtmContainerId, navigationId: event.navigationId, statusCode: event.statusCode, latencyMs: event.latencyMs, failureReason: event.failureReason, beaconAccepted: event.beaconAccepted, deliveryOutcome: event.deliveryOutcome, consentState: event.consentState, webVitals: event.webVitals, revenueValue: event.revenueValue, revenueValueStatus: event.revenueValueStatus, revenueCurrency: event.revenueCurrency, transactionId: event.transactionId, resourceDomain: event.resourceDomain, resourceType: event.resourceType, deliveryMode,
           gtmTagId: enrichment.tagId, gtmTagName: enrichment.tagName, gtmTriggerName: enrichment.triggerName, gtmWorkspaceId: enrichment.workspaceId, gtmCorrelationConfidence: enrichment.confidence, missingParameters: enrichment.missingParameters, observedParameters: enrichment.observedParameters, parameterStatus: enrichment.parameterStatus,
         };
         void recordComplianceEvidence(parsed, { domain: site.domain, firstPartyDomain: site.first_party_domain });

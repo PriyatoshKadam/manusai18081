@@ -20,7 +20,7 @@ describe('plain-language dashboard copy', () => {
 
   it('explains transport status-zero alerts without calling them Google Ads statuses', () => {
     const alert = { vendor: 'gads', event_name: 'page_view', code: 'tag_transport_failure', message: 'gads page_view failed to deliver (http_0).' };
-    expect(plainAlertMessage(alert)).toContain('could not confirm');
+    expect(plainAlertMessage(alert)).toContain('browser delivery problem');
     expect(plainAlertMessage(alert)).not.toContain('http_0');
     expect(plainAlertCause(alert)).toContain('not automatically an ad blocker');
     expect(plainFixSteps(alert)).toHaveLength(3);
@@ -46,7 +46,7 @@ describe('plain-language dashboard copy', () => {
   });
 
   it('maps delivery statuses into customer-facing labels', () => {
-    expect(plainStatus('delivered')).toBe('Working');
+    expect(plainStatus('delivered')).toBe('Delivery observed');
     expect(plainStatus('retrying')).toBe('Trying again');
     expect(plainStatus('ambiguous')).toBe('Several possible matches');
   });

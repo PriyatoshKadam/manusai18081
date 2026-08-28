@@ -36,7 +36,7 @@
   var counts = Object.create(null);
   var processedGtagObjects = [];
   var consentState = { gpc: !!navigator.globalPrivacyControl, do_not_track: navigator.doNotTrack || null, consent_source: 'browser' };
-  var webVitals = {}; var vitalsSentForNavigation = false;
+  var webVitals = {}; var vitalsSentForNavigation = false; var clsSessionValue = 0; var clsSessionStart = 0; var clsLastShift = 0;
   var MAX_QUEUE = 250;
   var MAX_PENDING = 300;
   var WAIT_MS = 3500;
@@ -98,7 +98,7 @@
   function safeParams(value) { return safeValue(value || {}, 0, []); }
   function captureConsent(value, source) { consentState = merge(consentState, safeParams(value || {})); if (source) consentState.consent_source = source; }
   function consentFromParams(params) { var gcs = String((params && params.gcs) || ''); if (!/^G1[01]{2}$/.test(gcs)) return {}; var bits = gcs.slice(2); return { ad_storage: bits.charAt(0) === '1' ? 'granted' : 'denied', analytics_storage: bits.charAt(1) === '1' ? 'granted' : 'denied', consent_gcs: gcs, consent_source: 'network_gcs' }; }
-  function captureVital(name, value) { if (!name || !Number.isFinite(Number(value))) return; var numeric = Number(value); if (name === 'cls') webVitals[name] = Math.round(((Number(webVitals[name]) || 0) + numeric) * 100) / 100; else if (name === 'inp') webVitals[name] = Math.max(Number(webVitals[name]) || 0, Math.round(numeric)); else webVitals[name] = Math.round(numeric * 100) / 100; }
+  function captureVital(name, value) { if (!name || !Number.isFinite(Number(value))) return; var numeric = Number(value); if (name === 'cls') { var now = Date.now(); if (!clsSessionStart || now - clsLastShift > 1000 || now - clsSessionStart > 5000) { clsSessionValue = 0; clsSessionStart = now; } clsSessionValue += numeric; clsLastShift = now; webVitals[name] = Math.round(Math.max(Number(webVitals[name]) || 0, clsSessionValue) * 100) / 100; } else if (name === 'inp') webVitals[name] = Math.max(Number(webVitals[name]) || 0, Math.round(numeric)); else webVitals[name] = Math.round(numeric * 100) / 100; }
   function diagnostic(name, params) { send({ type: 'diagnostic', vendor: 'browser', eventName: name, params: safeParams(params || {}), pageUrl: pageUrl(), source: 'browser', observationKind: 'diagnostic', sessionId: sessionId, occurrenceId: token('diagnostic'), navigationId: navigationId, gtmContainerId: gtmContainerId, consentState: safeParams(consentState), webVitals: safeParams(webVitals), timestamp: Date.now() }); }
   function stable(value) {
     if (value === null || value === undefined) return '';
@@ -274,7 +274,8 @@
     if (!best || bestScore < 30) return null;
     best.networkMatched = true; best.requestSignature = requestSig; best.networkOccurrenceId = 'network-' + (++networkOccurrence); pending.splice(pending.indexOf(best), 1); return best;
   }
-  function network(url, body, transport, failed, deferSend) {
+  function network(url, body, transport, failed, deferSend, observationKindOverride) {
+    var observationKind = observationKindOverride || 'network';
     if (!url || ownUrl(url)) return null;
     var params = merge(paramsFromUrl(url), parseBody(body));
     var networkConsent = consentFromParams(params); if (Object.keys(networkConsent).length) captureConsent(networkConsent, 'network_gcs');
@@ -288,14 +289,14 @@
     var previousNetwork = networkHistory[historyKey];
     if (transport === 'performance' && previousNetwork && previousNetwork.transport !== 'performance' && Date.now() - previousNetwork.timestamp < 5000) return null;
     networkHistory[historyKey] = { transport: transport, timestamp: Date.now() };
-    var match = vendor === 'ga4' ? matchPending(name, normalizedParams, Date.now(), requestSig) : null;
+    var match = observationKind === 'network' && vendor === 'ga4' ? matchPending(name, normalizedParams, Date.now(), requestSig) : null;
     var recentKey = vendor + '|' + String(name || '') + '|' + navigationId;
     var recent = recentNetworkEvents[recentKey];
-    var rapidFanout = !match && vendor === 'ga4' && recent && Date.now() - recent.timestamp <= 750;
-    var event = { type: 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: transport || 'network', originSource: match ? match.originSource : rapidFanout ? recent.originSource : null, observationKind: 'network', transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : rapidFanout ? recent.occurrenceId : null, networkOccurrenceId: 'network-' + (++networkOccurrence), requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : rapidFanout ? recent.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
-    recentNetworkEvents[recentKey] = { timestamp: event.timestamp, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, source: event.source, originSource: event.originSource };
+    var rapidFanout = observationKind === 'network' && !match && vendor === 'ga4' && recent && Date.now() - recent.timestamp <= 750;
+    var event = { type: observationKind === 'resource' ? 'resource' : 'network', vendor: vendor, eventName: text(name, 120), params: normalizedParams, clientId: text(params.cid || params.client_id || params.id, 160), transactionId: transactionId(params), measurementId: params.tid || params.measurement_id || null, pageUrl: pageUrl(), rawUrl: text(url, 10000), source: transport || 'network', originSource: match ? match.originSource : rapidFanout ? recent.originSource : null, observationKind: observationKind, transport: transport, sessionId: sessionId, occurrenceId: match ? match.occurrenceId : rapidFanout ? recent.occurrenceId : null, networkOccurrenceId: observationKind === 'network' ? 'network-' + (++networkOccurrence) : null, requestSignature: requestSig, dlPushIndex: match ? match.dlPushIndex : rapidFanout ? recent.dlPushIndex : null, navigationId: navigationId, gtmContainerId: gtmContainerId, statusCode: null, latencyMs: null, failureReason: null, consentState: safeParams(consentState), webVitals: safeParams(webVitals), startedAt: Date.now(), timestamp: Date.now() };
+    if (observationKind === 'network') recentNetworkEvents[recentKey] = { timestamp: event.timestamp, occurrenceId: event.occurrenceId, dlPushIndex: event.dlPushIndex, source: event.source, originSource: event.originSource };
     if (!deferSend) send(event);
-    if (failed) reportBlocked(vendor + '_transport_blocked', { eventName: name, blockedUrl: url, sessionId: sessionId, signal: vendor + '_transport' });
+    if (failed && observationKind === 'network') reportBlocked(vendor + '_transport_blocked', { eventName: name, blockedUrl: url, sessionId: sessionId, signal: vendor + '_transport' });
     return event;
   }
   function patchDataLayer() {
@@ -357,22 +358,22 @@
     } catch (_) {}
     try {
       var beacon = navigator.sendBeacon;
-      if (beacon) navigator.sendBeacon = function (url, body) { var parsed = null; try { parsed = network(url, body, 'sendBeacon', false); } catch (_) {} var ok = false; try { ok = beacon.call(navigator, url, body); } catch (_) {} if (parsed && !ok) { try { reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } catch (_) {} } return ok; };
+      if (beacon) navigator.sendBeacon = function (url, body) { var parsed = null; try { parsed = network(url, body, 'sendBeacon', false, true); } catch (_) {} var ok = false; try { ok = beacon.call(navigator, url, body); } catch (_) {} if (parsed) { parsed.beaconAccepted = ok; parsed.failureReason = ok ? null : 'beacon_rejected'; send(parsed); if (!ok) { try { reportBlocked(parsed.vendor + '_beacon_rejected', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId, signal: parsed.vendor + '_beacon_rejected' }); } catch (_) {} } } return ok; };
     } catch (_) {}
   }
   function patchHistory() {
-    function nextNavigation() { navigationId = token('nav'); webVitals = {}; vitalsSentForNavigation = false; }
+    function nextNavigation() { navigationId = token('nav'); webVitals = {}; vitalsSentForNavigation = false; clsSessionValue = 0; clsSessionStart = 0; clsLastShift = 0; }
     ['pushState', 'replaceState'].forEach(function (method) { var original = history[method]; history[method] = function () { var result = original.apply(this, arguments); nextNavigation(); return result; }; });
     window.addEventListener('popstate', nextNavigation);
   }
   function scanPerformance() {
-    try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false); } catch (_) {} }); } catch (_) {}
+    try { (performance.getEntriesByType('resource') || []).forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (seenResources[key]) return; seenResources[key] = true; network(entry.name, null, 'performance', false, false, 'resource'); } catch (_) {} }); } catch (_) {}
   }
   patchDataLayer(); patchVendorFunctions(); patchNetwork(); patchHistory();
   try { setInterval(patchVendorFunctions, 1000); } catch (_) {}
   try { window.addEventListener('pagehide', flushOnPageExit); } catch (_) {}
   try { document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') flushOnPageExit(); }); } catch (_) {}
-  try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false); } } catch (_) {} }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
+  try { if (typeof PerformanceObserver !== 'undefined') new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { try { var key = entry.name + '|' + entry.startTime + '|' + entry.duration; if (!seenResources[key]) { seenResources[key] = true; network(entry.name, null, 'performance', false, false, 'resource'); } } catch (_) {} }); }).observe({ type: 'resource', buffered: true }); } catch (_) {}
   try { setInterval(scanPerformance, 1000); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.name === 'first-paint') captureVital('fcp', entry.startTime); }); }).observe({ type: 'paint', buffered: true }); } } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { captureVital('lcp', entry.startTime); }); }).observe({ type: 'largest-contentful-paint', buffered: true }); } } catch (_) {}

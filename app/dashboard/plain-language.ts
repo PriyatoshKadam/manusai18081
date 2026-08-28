@@ -50,8 +50,16 @@ export function plainAlertMessage(alert: any): string {
   if (code === 'duplicate_page_view') return 'The same page view may have been sent more than once.';
   if (code === 'gtm_multiple_tags_or_triggers') return `${event} may be sent by more than one Google Tag Manager tag.`;
   if (code === 'gtm_and_direct_implementation') return `${event} may be sent by both Google Tag Manager and website code.`;
-  if (code === 'tag_http_failure') return `${vendor} returned an error for ${event}.`;
-  if (code === 'tag_transport_failure') return `GAfix could not confirm that ${vendor} received ${event}.`;
+  if (code === 'tag_http_failure') return `${vendor} returned an HTTP error for ${event}.`;
+  if (code === 'tag_beacon_rejected') return `${vendor} could not accept the ${event} beacon for delivery.`;
+  if (code === 'tag_blocked') return `The browser reported that ${vendor} was blocked for ${event}.`;
+  if (code === 'tag_transport_failure') {
+    const outcome = String(alert?.raw?.outcome || '').toLowerCase();
+    if (outcome === 'aborted') return `${vendor} ${event} was stopped by the browser.`;
+    if (outcome === 'timeout') return `${vendor} ${event} took too long and timed out.`;
+    if (outcome === 'network_error') return `The browser had a network problem while sending ${vendor} ${event}.`;
+    return `GAfix saw a browser delivery problem for ${vendor} ${event}.`;
+  }
   if (code === 'duplicate_event') return `${event} may have been sent more than once.`;
   return String(alert?.message || `${vendor} needs attention.`)
     .replace(/\(http_0\)/gi, '(the browser could not confirm a response)')
@@ -61,7 +69,10 @@ export function plainAlertMessage(alert: any): string {
 
 export function plainAlertCause(alert: any): string {
   const code = String(alert?.code || '').toLowerCase();
-  if (code === 'tag_transport_failure' || code === 'tag_http_failure') return 'The browser saw a problem while sending this tracking information. This could be a network, privacy setting, consent rule, security policy, or vendor-connection issue. It is not automatically an ad blocker.';
+  if (code === 'tag_http_failure') return 'The browser received an HTTP error response from the destination. This is different from a confirmed ad blocker.';
+  if (code === 'tag_beacon_rejected') return 'The browser did not accept the beacon for asynchronous delivery, so no vendor response was available.';
+  if (code === 'tag_blocked') return 'The browser supplied explicit evidence that the request was blocked. This is stronger than a generic network failure.';
+  if (code === 'tag_transport_failure') return 'The browser saw a transport problem while sending this tracking information. This could be a network, privacy setting, consent rule, timeout, or security-policy issue. It is not automatically an ad blocker.';
   if (code === 'gads_missing_parameters') return 'Google Ads received or exposed this event, but the request did not contain the conversion details needed to identify it correctly.';
   if (code === 'missing_purchase_currency') return 'GAfix found a purchase, but the currency was not included. Without it, revenue can be reported incorrectly.';
   if (code === 'missing_purchase_transaction_id') return 'GAfix found a purchase, but there was no stable order reference. This makes it harder to prevent the same purchase being counted twice.';
@@ -73,7 +84,7 @@ export function plainAlertCause(alert: any): string {
 
 export function plainFixSteps(alert: any): string[] {
   const code = String(alert?.code || '').toLowerCase();
-  if (code === 'tag_transport_failure' || code === 'tag_http_failure') return ['Open the browser Network panel and check the affected request.', 'Check the website’s privacy consent, security policy, and ad-blocker settings.', 'Check the Google Tag Manager preview to confirm the correct tag fired.'];
+  if (code === 'tag_http_failure' || code === 'tag_beacon_rejected' || code === 'tag_blocked' || code === 'tag_transport_failure') return ['Open the browser Network panel and check the affected request.', 'Check the website’s privacy consent, security policy, and browser extensions.', 'Check the Google Tag Manager preview to confirm the correct tag fired, then test again.'];
   if (code === 'gads_missing_parameters') return ['Open the Google Ads tag in Google Tag Manager.', 'Check that the conversion ID and conversion label or send_to value are filled in.', 'Test the request again and confirm the details appear in the browser Network panel.'];
   if (code === 'missing_purchase_currency') return ['Add the currency to every purchase event.', 'Use a three-letter currency code such as USD, EUR, or INR.', 'Test one purchase in Google Tag Manager Preview before publishing.'];
   if (code === 'missing_purchase_transaction_id') return ['Send one stable order reference with every purchase.', 'Use the same reference if the purchase is retried.', 'Check that the event is not sent by both website code and Google Tag Manager.'];
@@ -84,7 +95,13 @@ export function plainFixSteps(alert: any): string[] {
 
 export function plainStatus(value: unknown): string {
   const status = String(value || '').toLowerCase();
-  if (status === 'delivered') return 'Working';
+  if (status === 'delivered') return 'Delivery observed';
+  if (status === 'http_error') return 'HTTP error';
+  if (status === 'network_error') return 'Browser network problem';
+  if (status === 'aborted') return 'Request stopped';
+  if (status === 'timeout') return 'Timed out';
+  if (status === 'beacon_rejected') return 'Beacon not accepted';
+  if (status === 'blocked') return 'Browser reported blocked';
   if (status === 'failed') return 'Needs attention';
   if (status === 'pending' || status === 'retrying') return 'Trying again';
   if (status === 'healthy') return 'Looks good';
