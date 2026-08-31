@@ -40,6 +40,23 @@ describe('GTM inventory correlation', () => {
     expect(result.confidence).toBe('configuration_match');
   });
 
+  it('extracts Google Ads conversion metadata from a GTM send_to parameter', () => {
+    const configured = normalizeGtmInventory({
+      accountId: '123', containerId: '456', workspaceId: '789',
+      tags: [{ tagId: '20', name: 'Google Ads send_to', type: 'awct', firingTriggerId: ['11'], parameter: [{ key: 'sendTo', value: 'AW-123/SignupLabel' }] }],
+      triggers: [{ triggerId: '11', name: 'Signup event', type: 'customEvent' }],
+    });
+    const result = correlateEventWithGtm({ vendor: 'gads', eventName: 'conversion', params: { tid: 'AW-123', label: 'SignupLabel' } }, configured);
+    expect(result.tagName).toBe('Google Ads send_to');
+    expect(result.confidence).toBe('configuration_match');
+  });
+
+  it('matches LinkedIn using the partner ID present only in the request URL', () => {
+    const result = correlateEventWithGtm({ vendor: 'linkedin', eventName: 'page_view', params: {}, rawUrl: 'https://px.ads.linkedin.com/attribution_trigger?pid=2919002&tm=gtmv2' }, inventory);
+    expect(result.tagName).toBe('LinkedIn Insight Tag');
+    expect(result.confidence).toBe('configuration_match');
+  });
+
   it('reports ambiguity instead of claiming one tag when candidates tie', () => {
     const ambiguous = normalizeGtmInventory({ ...inventory, tags: [
       { tagId: '1', name: 'Login A', type: 'gaawe', firingTriggerId: ['10'], parameter: [{ key: 'eventName', value: 'login' }] },

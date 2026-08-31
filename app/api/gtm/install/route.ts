@@ -7,6 +7,33 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 function validGtmId(value: unknown) { return typeof value === 'string' && /^[A-Za-z0-9_-]{1,80}$/.test(value); }
 
+function installationResponse(row: any) {
+  const details = row.details && typeof row.details === 'object' ? row.details : {};
+  return {
+    installationId: row.id,
+    status: row.status,
+    workspace: { accountId: row.account_id, containerId: row.container_id, workspaceId: row.workspace_id, name: details.workspaceName || null, url: details.workspaceUrl || null },
+    tag: { tagId: row.tag_id, name: details.tagName || null },
+    trigger: { triggerId: row.trigger_id, name: details.triggerName || null },
+    publishRequired: ['tag_added', 'version_created'].includes(String(row.status)),
+  };
+}
+
+export async function GET(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const siteId = Number(new URL(req.url).searchParams.get('siteId'));
+  if (!Number.isSafeInteger(siteId) || siteId <= 0) return NextResponse.json({ error: 'Valid siteId required' }, { status: 400 });
+  const result = await query(
+    `SELECT i.id,i.account_id,i.container_id,i.workspace_id,i.tag_id,i.trigger_id,i.status,i.details
+       FROM gtm_installations i JOIN sites s ON s.id=i.site_id
+      WHERE i.site_id=$1 AND i.user_id=$2 AND s.user_id=$2
+      ORDER BY i.created_at DESC LIMIT 1`,
+    [siteId, session.uid],
+  );
+  return NextResponse.json({ installation: result.rows[0] ? installationResponse(result.rows[0]) : null });
+}
+
 export async function POST(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

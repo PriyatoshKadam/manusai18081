@@ -81,7 +81,9 @@ function parameterMap(resource: RawResource) {
     const key = stringValue(parameter.key, 80);
     if (!key || SENSITIVE_KEYS.test(key)) continue;
     const value = stringValue(parameter.value, 240);
+    const canonical = key.toLowerCase().replace(/[-.]/g, '_');
     if (value && VALUE_KEYS.has(key)) values[key] = value;
+    if (value && ['eventname', 'event_name', 'measurementid', 'measurement_id', 'conversionid', 'conversion_id', 'conversionlabel', 'conversion_label', 'sendto', 'send_to', 'pixelid', 'pixel_id', 'partnerid', 'partner_id', 'pid', 'uettagid', 'uet_tag_id', 'ti'].includes(canonical)) values[key] = value;
   }
   return values;
 }
@@ -97,6 +99,8 @@ export function normalizeGtmTag(resource: RawResource): GtmTagRecord | null {
   const parameters = parametersOf(resource);
   const parameterKeys = parameters.map((parameter) => stringValue(parameter.key, 80)).filter((value): value is string => Boolean(value && !SENSITIVE_KEYS.test(value))).slice(0, 80);
   const values = parameterMap(resource);
+  const sendTo = firstValue(values, ['sendTo', 'send_to']);
+  const sendToParts = sendTo?.split('/').map((part) => part.trim()).filter(Boolean) || [];
   return {
     tagId,
     name: stringValue(resource.name, 200) || `Tag ${tagId}`,
@@ -105,9 +109,9 @@ export function normalizeGtmTag(resource: RawResource): GtmTagRecord | null {
     parameterKeys,
     eventName: firstValue(values, ['eventName', 'event_name']),
     measurementId: firstValue(values, ['measurementId', 'measurement_id']),
-    conversionId: firstValue(values, ['conversionId', 'conversion_id']),
-    conversionLabel: firstValue(values, ['conversionLabel', 'conversion_label']),
-    sendTo: firstValue(values, ['sendTo', 'send_to']),
+    conversionId: firstValue(values, ['conversionId', 'conversion_id']) || (sendToParts[0]?.match(/^AW-[A-Z0-9]+$/i) ? sendToParts[0] : null),
+    conversionLabel: firstValue(values, ['conversionLabel', 'conversion_label']) || (sendToParts.length > 1 ? sendToParts[1] : null),
+    sendTo,
     platformId: firstValue(values, ['pixelId', 'pixel_id', 'partnerId', 'partner_id', 'pid', 'uetTagId', 'uet_tag_id', 'ti']),
   };
 }
@@ -302,7 +306,7 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
     const tagType = tagVendor(tag);
     if (tagType === vendor) score += 4;
     else if (tagType !== 'other') return { tag, score: -1 };
-    const isRemarketingRequest = vendor === 'gads' && /viewthroughconversion|en=gtag\.config|gtag\.config/.test(`${eventName} ${normalized(stringValue(event.rawUrl, 2048))}`);
+    const isRemarketingRequest = vendor === 'gads' && /(?:\/rmkt\/collect|viewthroughconversion|en=gtag\.config|gtag\.config)/.test(`${eventName} ${normalized(stringValue(event.rawUrl, 2048))}`);
     if (isRemarketingRequest && normalized(tag.type) === 'sp') score += 6;
     if (isRemarketingRequest && normalized(tag.type) !== 'sp') return { tag, score: -1 };
     const eventMatch = Boolean(eventName && (containsEventName(tag.eventName, eventName) || triggerMatchesEvent(inventory, tag, eventName)));
