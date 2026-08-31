@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '../../../../lib/auth';
 import { query } from '../../../../lib/db';
-import { getAccessToken, getConnection, gtmRequest } from '../../../../lib/gtm';
+import { getAccessToken, getConnection, gtmRequest, GTM_MONITOR_TAG_NAME } from '../../../../lib/gtm';
 import { normalizeGtmInventory } from '../../../../lib/gtm-inventory';
 
 export const runtime = 'nodejs';
@@ -64,7 +64,28 @@ export async function POST(req: NextRequest) {
        RETURNING id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, created_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale`,
       [session.uid, siteId, inventory.accountId, inventory.containerId, containerPublicId || null, inventory.workspaceId, JSON.stringify(inventory.tags), JSON.stringify(inventory.triggers), JSON.stringify(inventory.variables), null, null, liveVersion.versionId || null, liveVersion.name || null, liveVersion.updateTime || null],
     );
-    return NextResponse.json({ snapshot: inserted.rows[0] }, { status: 201 });
+    const installationResult = await query(
+      `SELECT i.id,i.account_id,i.container_id,i.workspace_id,i.tag_id,i.trigger_id,i.status,i.details
+         FROM gtm_installations i
+        WHERE i.site_id=$1 AND i.user_id=$2 AND i.account_id=$3 AND i.container_id=$4 AND i.status='published'
+        ORDER BY i.created_at DESC LIMIT 1`,
+      [siteId, session.uid, accountId, containerId],
+    );
+    const row = installationResult.rows[0];
+    const detectedTag = inventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id));
+    let detectedInstallation = null;
+    if (row && detectedTag) {
+      const details = row.details && typeof row.details === 'object' ? row.details : {};
+      detectedInstallation = {
+        installationId: row.id,
+        status: row.status,
+        workspace: { accountId: row.account_id, containerId: row.container_id, workspaceId: row.workspace_id, name: details.workspaceName || null, url: details.workspaceUrl || null },
+        tag: { tagId: row.tag_id || detectedTag.tagId, name: detectedTag.name },
+        trigger: { triggerId: row.trigger_id, name: details.triggerName || null },
+        publishRequired: false,
+      };
+    }
+    return NextResponse.json({ snapshot: inserted.rows[0], detectedInstallation }, { status: 201 });
   } catch (error) {
     console.error('GTM inventory refresh error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to refresh GTM inventory' }, { status: 502 });
