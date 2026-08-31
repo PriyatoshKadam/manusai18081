@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const installationId = Number(body?.installationId);
     if (!Number.isSafeInteger(installationId) || installationId <= 0) return NextResponse.json({ error: 'Valid installationId required' }, { status: 400 });
     const installationResult = await query(
-      `SELECT i.id, i.site_id, i.account_id, i.container_id, i.workspace_id, i.tag_id, i.trigger_id, i.version_id, i.status,
+      `SELECT i.id, i.site_id, i.account_id, i.container_id, i.workspace_id, i.tag_id, i.trigger_id, i.version_id, i.status, i.details,
               s.domain
        FROM gtm_installations i JOIN sites s ON s.id = i.site_id
        WHERE i.id = $1 AND i.user_id = $2 AND s.user_id = $2 LIMIT 1`,
@@ -26,13 +26,17 @@ export async function POST(req: NextRequest) {
     );
     const installation = installationResult.rows[0];
     if (!installation) return NextResponse.json({ error: 'GTM installation not found' }, { status: 404 });
-    if (!['tag_added', 'version_created'].includes(String(installation.status))) return NextResponse.json({ error: 'This installation is not ready to publish' }, { status: 409 });
+    if (!['tag_added', 'version_created', 'removal_ready'].includes(String(installation.status))) return NextResponse.json({ error: 'This installation is not ready to publish' }, { status: 409 });
     const connection = await getConnection(session.uid);
     if (!connection) return NextResponse.json({ error: 'GTM connection is missing; connect Google again' }, { status: 409 });
     const token = await getAccessToken(connection);
-    const workspacePath = `accounts/${encodeURIComponent(installation.account_id)}/containers/${encodeURIComponent(installation.container_id)}/workspaces/${encodeURIComponent(installation.workspace_id)}`;
+    const details = installation.details && typeof installation.details === 'object' ? installation.details : {};
+    const isRemoval = String(installation.status) === 'removal_ready';
+    const workspaceId = isRemoval ? String(details.removalWorkspaceId || '').trim() : String(installation.workspace_id || '').trim();
+    if (!workspaceId) throw new Error('GTM workspace is missing for this publication');
+    const workspacePath = `accounts/${encodeURIComponent(installation.account_id)}/containers/${encodeURIComponent(installation.container_id)}/workspaces/${encodeURIComponent(workspaceId)}`;
     let versionResponse: { containerVersion?: { versionId?: string; path?: string; name?: string; fingerprint?: string }; syncStatus?: { mergeConflict?: unknown[] }; compilerError?: boolean; newWorkspacePath?: string } = {};
-    if (String(installation.status) !== 'version_created' || !installation.version_id) {
+    if (!isRemoval && (String(installation.status) !== 'version_created' || !installation.version_id)) {
       versionResponse = await gtmRequest<typeof versionResponse>(
         `${workspacePath}:create_version`,
         token,
@@ -46,14 +50,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'GTM reported a compiler error. The container was not published.', compilerError: true, version: containerVersion || null }, { status: 422 });
     }
     if (!versionId) throw new Error('GTM did not return a container version ID');
-    await query(`UPDATE gtm_installations SET status = 'version_created', version_id = $1, details = details || $2::jsonb WHERE id = $3 AND user_id = $4`, [versionId, JSON.stringify({ versionName: containerVersion?.name || null, versionPath: containerVersion?.path || null }), installationId, session.uid]);
+    if (!isRemoval) await query(`UPDATE gtm_installations SET status = 'version_created', version_id = $1, details = details || $2::jsonb WHERE id = $3 AND user_id = $4`, [versionId, JSON.stringify({ versionName: containerVersion?.name || null, versionPath: containerVersion?.path || null }), installationId, session.uid]);
     const versionPath = `accounts/${encodeURIComponent(installation.account_id)}/containers/${encodeURIComponent(installation.container_id)}/versions/${encodeURIComponent(versionId)}`;
     const published = await gtmRequest<{ containerVersion?: { versionId?: string; name?: string; fingerprint?: string }; compilerError?: boolean }>(`${versionPath}:publish${containerVersion?.fingerprint ? `?fingerprint=${encodeURIComponent(containerVersion.fingerprint)}` : ''}`, token, { method: 'POST', body: '' });
     if (published.compilerError) {
       return NextResponse.json({ error: 'GTM reported a compiler error while publishing. Check the container in GTM.', compilerError: true, version: published.containerVersion || containerVersion }, { status: 422 });
     }
-    await query(`UPDATE gtm_installations SET status = 'published', details = details || $1::jsonb WHERE id = $2 AND user_id = $3`, [JSON.stringify({ publishedAt: new Date().toISOString() }), installationId, session.uid]);
-    return NextResponse.json({ ok: true, status: 'published', installationId, version: published.containerVersion || containerVersion, workspaceClosed: true });
+    const finalStatus = isRemoval ? 'removed' : 'published';
+    await query(`UPDATE gtm_installations SET status = $1, details = details || $2::jsonb WHERE id = $3 AND user_id = $4`, [finalStatus, JSON.stringify({ publishedAt: new Date().toISOString(), removalPublished: isRemoval }), installationId, session.uid]);
+    return NextResponse.json({ ok: true, status: finalStatus, installationId, version: published.containerVersion || containerVersion, workspaceClosed: true });
   } catch (error) {
     console.error('GTM publish error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to publish the GAfix monitor container version' }, { status: 502 });

@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     const result = await query(`SELECT i.id,i.site_id,i.account_id,i.container_id,i.tag_id,i.trigger_id,i.status,i.details,s.domain FROM gtm_installations i JOIN sites s ON s.id=i.site_id WHERE i.id=$1 AND i.user_id=$2 AND s.user_id=$2 LIMIT 1`, [installationId, session.uid]);
     const installation = result.rows[0];
     if (!installation) return NextResponse.json({ error: 'GTM installation not found' }, { status: 404 });
-    if (installation.status !== 'published') return NextResponse.json({ error: 'Only a published GAfix installation can be removed from the live container' }, { status: 409 });
+    if (installation.status !== 'published') return NextResponse.json({ error: 'Only a published GAfix installation can be prepared for removal' }, { status: 409 });
     const connection = await getConnection(session.uid);
     if (!connection) return NextResponse.json({ error: 'GTM connection is missing; connect Google again' }, { status: 409 });
     const token = await getAccessToken(connection);
@@ -47,10 +47,8 @@ export async function POST(req: NextRequest) {
       const versionId=String(versionResponse.containerVersion?.versionId||'').trim();
       if(!validId(versionId))throw new Error('GTM did not return a valid removal version ID');
       const versionPath=`${base}/versions/${encodeURIComponent(versionId)}`;
-      const published=await gtmRequest<{containerVersion?:{versionId?:string;name?:string};compilerError?:boolean}>(`${versionPath}:publish${versionResponse.containerVersion?.fingerprint?`?fingerprint=${encodeURIComponent(versionResponse.containerVersion.fingerprint)}`:''}`,token,{method:'POST',body:''});
-      if(published.compilerError)throw new Error('GTM reported a compiler error while publishing the removal.');
-      await query(`UPDATE gtm_installations SET status='removed',details=details||$1::jsonb WHERE id=$2 AND user_id=$3`,[JSON.stringify({removedAt:new Date().toISOString(),removalWorkspaceId:workspaceId,removalVersionId:versionId}),installationId,session.uid]);
-      return NextResponse.json({ok:true,status:'removed',installationId,workspace:{workspaceId,name:workspace.name||null,url:workspace.tagManagerUrl||null},version:published.containerVersion||versionResponse.containerVersion||null});
+      await query(`UPDATE gtm_installations SET status='removal_ready',version_id=$1,details=details||$2::jsonb WHERE id=$3 AND user_id=$4`,[versionId,JSON.stringify({removalWorkspaceId:workspaceId,removalWorkspaceName:workspace.name||null,removalWorkspaceUrl:workspace.tagManagerUrl||null,removalVersionId:versionId,removalPreparedAt:new Date().toISOString()}),installationId,session.uid]);
+      return NextResponse.json({ok:true,status:'removal_ready',publishRequired:true,installationId,workspace:{workspaceId,name:workspace.name||null,url:workspace.tagManagerUrl||null},version:versionResponse.containerVersion||null});
     }catch(error){console.error('GTM removal failed after workspace creation:',error);throw error;}
   }catch(error){console.error('GTM remove error:',error);return NextResponse.json({error:error instanceof Error?error.message:'Unable to remove the GAfix monitor from GTM'},{status:502});}
 }
