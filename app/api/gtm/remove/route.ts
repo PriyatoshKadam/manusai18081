@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const installationId = Number(body?.installationId);
     if (!Number.isSafeInteger(installationId) || installationId <= 0) return NextResponse.json({ error: 'Valid installationId required' }, { status: 400 });
-    const result = await query(`SELECT i.id,i.site_id,i.account_id,i.container_id,i.tag_id,i.trigger_id,i.status,s.domain FROM gtm_installations i JOIN sites s ON s.id=i.site_id WHERE i.id=$1 AND i.user_id=$2 AND s.user_id=$2 LIMIT 1`, [installationId, session.uid]);
+    const result = await query(`SELECT i.id,i.site_id,i.account_id,i.container_id,i.tag_id,i.trigger_id,i.status,i.details,s.domain FROM gtm_installations i JOIN sites s ON s.id=i.site_id WHERE i.id=$1 AND i.user_id=$2 AND s.user_id=$2 LIMIT 1`, [installationId, session.uid]);
     const installation = result.rows[0];
     if (!installation) return NextResponse.json({ error: 'GTM installation not found' }, { status: 404 });
     if (installation.status !== 'published') return NextResponse.json({ error: 'Only a published GAfix installation can be removed from the live container' }, { status: 409 });
@@ -36,8 +36,9 @@ export async function POST(req: NextRequest) {
       const monitorTriggers=triggers.filter(trigger=>trigger.name==='GA4Fix – All Pages'||trigger.triggerId===installation.trigger_id);
       if(!monitorTags.length)throw new Error('The published GAfix monitor tag could not be found in the current container. Nothing was removed. Refresh GTM and try again.');
       for(const tag of monitorTags){if(validId(tag.tagId))await gtmRequest(`${parent}/tags/${encodeURIComponent(tag.tagId!)}`,token,{method:'DELETE'});}
+      const triggerCreated = installation.details && typeof installation.details === 'object' && installation.details.triggerCreated === true;
       for(const trigger of monitorTriggers){
-        if(!validId(trigger.triggerId))continue;
+        if(!triggerCreated || !validId(trigger.triggerId))continue;
         const stillReferenced=tags.some(tag=>validId(tag.tagId)&&!monitorTags.some(removed=>removed.tagId===tag.tagId)&&Array.isArray(tag.firingTriggerId)&&tag.firingTriggerId.includes(trigger.triggerId!));
         if(!stillReferenced)await gtmRequest(`${parent}/triggers/${encodeURIComponent(trigger.triggerId!)}`,token,{method:'DELETE'});
       }

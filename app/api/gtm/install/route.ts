@@ -63,11 +63,22 @@ export async function POST(req: NextRequest) {
     const parent = `${base}/workspaces/${encodeURIComponent(workspaceId)}`;
 
     try {
-      const trigger = await gtmRequest<{ triggerId?: string; name?: string }>(`${parent}/triggers`, token, { method: 'POST', body: JSON.stringify(monitorTriggerPayload()) });
-      const triggerId = String(trigger.triggerId || '').trim();
-      if (!validGtmId(triggerId)) throw new Error('GTM did not return a trigger ID');
-      const verifiedTrigger = await gtmRequest<{ triggerId?: string; name?: string }>(`${parent}/triggers/${encodeURIComponent(triggerId)}`, token);
-      if (String(verifiedTrigger.triggerId || '') !== triggerId) throw new Error('GTM trigger verification failed');
+      const triggersResponse = await gtmRequest<{ trigger?: Array<{ triggerId?: string; name?: string; type?: string }> }>(`${parent}/triggers`, token);
+      const existingPageView = (triggersResponse.trigger || []).find((item) => validGtmId(item.triggerId) && String(item.type || '').toLowerCase() === 'pageview');
+      let triggerId = String(existingPageView?.triggerId || '').trim();
+      let triggerCreated = false;
+      let verifiedTrigger: { triggerId?: string; name?: string };
+      if (triggerId) {
+        verifiedTrigger = await gtmRequest<{ triggerId?: string; name?: string }>(`${parent}/triggers/${encodeURIComponent(triggerId)}`, token);
+        if (String(verifiedTrigger.triggerId || '') !== triggerId) throw new Error('Existing GTM Page View trigger verification failed');
+      } else {
+        const trigger = await gtmRequest<{ triggerId?: string; name?: string }>(`${parent}/triggers`, token, { method: 'POST', body: JSON.stringify(monitorTriggerPayload()) });
+        triggerId = String(trigger.triggerId || '').trim();
+        triggerCreated = true;
+        if (!validGtmId(triggerId)) throw new Error('GTM did not return a trigger ID');
+        verifiedTrigger = await gtmRequest<{ triggerId?: string; name?: string }>(`${parent}/triggers/${encodeURIComponent(triggerId)}`, token);
+        if (String(verifiedTrigger.triggerId || '') !== triggerId) throw new Error('GTM trigger verification failed');
+      }
 
       const tag = await gtmRequest<{ tagId?: string; name?: string }>(`${parent}/tags`, token, {
         method: 'POST',
@@ -82,9 +93,9 @@ export async function POST(req: NextRequest) {
       const inserted = await query(
         `INSERT INTO gtm_installations (user_id,site_id,account_id,container_id,workspace_id,tag_id,trigger_id,status,details)
          VALUES ($1,$2,$3,$4,$5,$6,$7,'tag_added',$8::jsonb) RETURNING id,created_at`,
-        [session.uid,siteId,accountId,containerId,workspaceId,tagId,triggerId,JSON.stringify({workspaceName:workspace.name||null,workspaceUrl:workspace.tagManagerUrl||null,tagName:verifiedTag.name||null,triggerName:verifiedTrigger.name||null,verified:true})],
+        [session.uid,siteId,accountId,containerId,workspaceId,tagId,triggerId,JSON.stringify({workspaceName:workspace.name||null,workspaceUrl:workspace.tagManagerUrl||null,tagName:verifiedTag.name||null,triggerName:verifiedTrigger.name||null,triggerCreated,verified:true})],
       );
-      return NextResponse.json({ok:true,installationId:inserted.rows[0].id,status:'tag_added',workspace:{accountId,containerId,workspaceId,name:workspace.name||null,url:workspace.tagManagerUrl||null},tag:{tagId,name:verifiedTag.name||null},trigger:{triggerId,name:verifiedTrigger.name||null},publishRequired:true},{status:201});
+      return NextResponse.json({ok:true,installationId:inserted.rows[0].id,status:'tag_added',workspace:{accountId,containerId,workspaceId,name:workspace.name||null,url:workspace.tagManagerUrl||null},tag:{tagId,name:verifiedTag.name||null},trigger:{triggerId,name:verifiedTrigger.name||null,created:triggerCreated,reused:!triggerCreated},publishRequired:true},{status:201});
     } catch (error) {
       console.error('GTM installation failed after workspace creation:', error);
       try { await gtmRequest(`${parent}`, token, { method:'DELETE' }); } catch (cleanupError) { console.error('GTM workspace cleanup failed:', cleanupError); }
