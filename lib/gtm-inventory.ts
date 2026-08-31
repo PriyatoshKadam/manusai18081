@@ -183,6 +183,18 @@ function tagVendor(tag: GtmTagRecord): 'ga4' | 'gads' | 'meta' | 'linkedin' | 'b
   return 'other';
 }
 
+function urlParameter(rawUrl: string | null, names: string[]): string | null {
+  if (!rawUrl) return null;
+  try {
+    const url = new URL(rawUrl);
+    for (const name of names) {
+      const value = url.searchParams.get(name)?.trim();
+      if (value) return value;
+    }
+  } catch {}
+  return null;
+}
+
 function googleAdsPathConversionId(rawUrl: string | null): string | null {
   if (!rawUrl) return null;
   try {
@@ -218,7 +230,7 @@ export function parameterHealth(vendor: string, eventName: string | null, params
   const normalizedVendor = normalized(vendor);
   const name = normalized(eventName);
   const requestText = `${name} ${normalized(rawUrl)}`;
-  const isRemarketingBeacon = normalizedVendor === 'gads' && /viewthroughconversion|en=gtag\.config|gtag\.config/.test(requestText);
+  const isRemarketingBeacon = normalizedVendor === 'gads' && /(?:\/rmkt\/collect|viewthroughconversion|en=gtag\.config|gtag\.config)/.test(`${requestText} ${normalized(rawUrl)}`);
   const gadsConversion = normalizedVendor === 'gads' && !isRemarketingBeacon && /(?:^|[^a-z])conversion|purchase|sign[_ -]?up|lead|submit/i.test(requestText);
   const required = gadsConversion
     ? [['conversion_id', 'google_conversion_id', 'tid'], ['conversion_label', 'google_conversion_label', 'label', 'send_to']]
@@ -275,11 +287,11 @@ export function correlateEventWithGtm(event: Record<string, unknown>, inventory:
   const eventParams = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
   const measurementId = normalized(event.measurementId || eventParams.tid || eventParams.measurement_id);
   const conversionId = normalized(eventParams.conversion_id || eventParams.google_conversion_id || eventParams.tid || googleAdsPathConversionId(stringValue(event.rawUrl, 2048)));
-  const conversionLabel = normalized(eventParams.conversion_label || eventParams.google_conversion_label || eventParams.label);
+  const conversionLabel = normalized(eventParams.conversion_label || eventParams.google_conversion_label || eventParams.label || urlParameter(stringValue(event.rawUrl, 2048), ['conversion_label', 'google_conversion_label', 'label', 'send_to']));
   const platformId = vendor === 'meta'
-    ? normalized(eventParams.id || eventParams.pixel_id || eventParams.pixelId)
+    ? normalized(eventParams.id || eventParams.pixel_id || eventParams.pixelId || urlParameter(stringValue(event.rawUrl, 2048), ['id', 'pixel_id', 'pixelId']))
     : vendor === 'linkedin'
-      ? normalized(eventParams.pid || eventParams.partner_id || eventParams.partnerId)
+      ? normalized(eventParams.pid || eventParams.partner_id || eventParams.partnerId || urlParameter(stringValue(event.rawUrl, 2048), ['pid', 'partner_id', 'partnerId']))
       : vendor === 'bing'
         ? normalized(eventParams.ti || eventParams.uet_tag_id || eventParams.uetTagId || eventParams.tag_id)
         : vendor === 'snapchat'

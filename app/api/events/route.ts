@@ -8,16 +8,18 @@ const networkObservation = `observation_kind = 'network' AND COALESCE(transport,
 const legacyOutcome = `(delivery_outcome IS NULL OR delivery_outcome = 'unknown')`;
 const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','blocked','beacon_rejected') OR (${legacyOutcome} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('blocked','beacon_rejected') OR failure_reason LIKE 'http_%'))) `;
 const transportAnomaly = `${networkObservation} AND (delivery_outcome IN ('network_error','aborted','timeout') OR (${legacyOutcome} AND failure_reason IN ('network_error','aborted','timeout'))) `;
+const conversionId = `COALESCE(NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', ''), NULLIF((regexp_match(COALESCE(raw_url, ''), '/pagead/(conversion|viewthroughconversion)/([^/?]+)'))[2], ''))`;
+const conversionLabel = `COALESCE(NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'label', ''), NULLIF((regexp_match(COALESCE(raw_url, ''), '[?&](?:conversion_label|google_conversion_label|label|send_to)=([^&]+)'))[1], ''))`;
 const displayName = `(CASE
-  WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', ''), 'conversion')
+  WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), ${conversionLabel}, ${conversionId}, 'conversion')
   WHEN vendor = 'meta' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'ev', ''), NULLIF(params->>'event', ''), 'PageView')
   WHEN vendor = 'linkedin' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'event', ''), NULLIF(params->>'event_name', ''), NULLIF(params->>'action', ''), 'page_view')
   WHEN vendor = 'bing' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'evt', ''), NULLIF(params->>'event', ''), 'pageLoad')
   WHEN vendor = 'snapchat' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'ev', ''), NULLIF(params->>'event', ''), 'PAGE_VIEW')
   ELSE event_name END)`;
 const platformId = `CASE
-  WHEN vendor = 'meta' THEN COALESCE(NULLIF(params->>'id', ''), NULLIF(params->>'pixel_id', ''), NULLIF(params->>'pixelId', ''))
-  WHEN vendor = 'linkedin' THEN COALESCE(NULLIF(params->>'pid', ''), NULLIF(params->>'partner_id', ''), NULLIF(params->>'partnerId', ''))
+  WHEN vendor = 'meta' THEN COALESCE(NULLIF(params->>'id', ''), NULLIF(params->>'pixel_id', ''), NULLIF(params->>'pixelId', ''), NULLIF((regexp_match(COALESCE(raw_url, ''), '[?&](?:id|pixel_id|pixelId)=([^&]+)'))[1], ''))
+  WHEN vendor = 'linkedin' THEN COALESCE(NULLIF(params->>'pid', ''), NULLIF(params->>'partner_id', ''), NULLIF(params->>'partnerId', ''), NULLIF((regexp_match(COALESCE(raw_url, ''), '[?&](?:pid|partner_id|partnerId)=([^&]+)'))[1], ''))
   WHEN vendor = 'bing' THEN COALESCE(NULLIF(params->>'ti', ''), NULLIF(params->>'uet_tag_id', ''), NULLIF(params->>'uetTagId', ''), NULLIF(params->>'tag_id', ''))
   WHEN vendor = 'snapchat' THEN COALESCE(NULLIF(params->>'pid', ''), NULLIF(params->>'pids', ''), NULLIF(params->>'pixel_id', ''), NULLIF(params->>'pixelId', ''))
   ELSE NULL END`;
@@ -57,8 +59,8 @@ export async function GET(req: NextRequest) {
               ARRAY_AGG(DISTINCT missing_parameters) AS missing_parameters,`;
   const eventsQ = vendor
     ? `SELECT ${displayName} AS event_name, event_type, vendor,
-              MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
-              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              MAX(${conversionLabel}) AS conversion_label,
+              MAX(${conversionId}) AS conversion_id,
               MAX(${platformId}) AS platform_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
@@ -73,8 +75,8 @@ export async function GET(req: NextRequest) {
        FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
     : `SELECT ${displayName} AS event_name, event_type, vendor,
-              MAX(NULLIF(params->>'conversion_label','')) AS conversion_label,
-              MAX(COALESCE(NULLIF(params->>'conversion_id',''), NULLIF(params->>'google_conversion_id',''))) AS conversion_id,
+              MAX(${conversionLabel}) AS conversion_label,
+              MAX(${conversionId}) AS conversion_id,
               MAX(${platformId}) AS platform_id,${correlationSelect}
               COUNT(DISTINCT ${occurrenceKey})::int AS cnt,
               COUNT(DISTINCT session_id)::int AS sessions,
