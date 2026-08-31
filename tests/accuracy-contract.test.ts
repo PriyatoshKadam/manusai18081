@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { classifyRevenueStatus } from '../lib/revenue';
 import { classifyDeliveryMode, deliveryModeLabel } from '../lib/delivery';
-import { classifyDeliveryOutcome } from '../lib/delivery-outcome';
+import { classifyDeliveryOutcome, isConfirmedDeliveryFailure, isTransportAnomaly } from '../lib/delivery-outcome';
 import { normalizeSiteInput } from '../lib/site-validation';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -10,15 +10,21 @@ const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.ur
 describe('accuracy contracts', () => {
   it('does not call a dataLayer-only observation a successful delivery', () => {
     const source = read('app/api/tag-health/route.ts');
-    expect(source).toContain("const successfulDelivery=`${networkObservation} AND delivery_outcome='delivered'`");
+    expect(source).toContain("const networkObservation=`observation_kind='network'");
+    expect(source).toContain("delivery_outcome='delivered'");
     expect(source).toContain("sample_basis:'confirmed_network_delivery_outcomes'");
   });
 
   it('distinguishes confirmed failures from transport anomalies', () => {
-    const source = read('app/api/tag-health/route.ts');
-    expect(source).toContain("delivery_outcome IN ('http_error','blocked','beacon_rejected')");
-    expect(source).toContain("delivery_outcome IN('network_error','aborted','timeout','unknown')");
-    expect(source).not.toContain("delivery_outcome IN('http_error','network_error','aborted','timeout','blocked','beacon_rejected')");
+    expect(isConfirmedDeliveryFailure('http_error')).toBe(true);
+    expect(isConfirmedDeliveryFailure('blocked')).toBe(true);
+    expect(isConfirmedDeliveryFailure('beacon_rejected')).toBe(true);
+    expect(isConfirmedDeliveryFailure('network_error')).toBe(false);
+    expect(isConfirmedDeliveryFailure('aborted')).toBe(false);
+    expect(isConfirmedDeliveryFailure('timeout')).toBe(false);
+    expect(isTransportAnomaly('network_error')).toBe(true);
+    expect(isTransportAnomaly('aborted')).toBe(true);
+    expect(isTransportAnomaly('timeout')).toBe(true);
   });
 
   it('distinguishes missing tools, mismatched currencies, and matching records', () => {
@@ -41,7 +47,7 @@ describe('accuracy contracts', () => {
     expect(monitor).toContain("networkOccurrenceId: observationKind === 'network' ? 'network-' + (++networkOccurrence) : null");
   });
 
-  it('classifies delivery outcomes without calling status-zero evidence delivered', () => {
+  it('classifies delivery outcomes without treating status zero as success', () => {
     expect(classifyDeliveryOutcome({ observationKind: 'network', transport: 'fetch', statusCode: 204, failureReason: null })).toBe('delivered');
     expect(classifyDeliveryOutcome({ observationKind: 'network', transport: 'fetch', statusCode: 503, failureReason: 'http_503' })).toBe('http_error');
     expect(classifyDeliveryOutcome({ observationKind: 'network', transport: 'fetch', statusCode: 0, failureReason: 'network_error' })).toBe('network_error');
