@@ -53,9 +53,9 @@ export async function POST(req: NextRequest) {
     if (!connection) return NextResponse.json({ error: 'Connect a Google account before refreshing GTM inventory' }, { status: 409 });
     const token = await getAccessToken(connection);
     const inventory = await readInventory(accountId, containerId, workspaceId, token);
-    let liveVersion: { versionId?: string; name?: string; updateTime?: string } = {};
+    let liveVersion: { versionId?: string; name?: string; updateTime?: string; tag?: unknown[]; trigger?: unknown[]; variable?: unknown[] } = {};
     try {
-      const live = await gtmRequest<{ containerVersion?: { versionId?: string; name?: string; updateTime?: string } }>(`accounts/${encodeURIComponent(accountId)}/containers/${encodeURIComponent(containerId)}/versions/live`, token);
+      const live = await gtmRequest<{ containerVersion?: { versionId?: string; name?: string; updateTime?: string; tag?: unknown[]; trigger?: unknown[]; variable?: unknown[] } }>(`accounts/${encodeURIComponent(accountId)}/containers/${encodeURIComponent(containerId)}/versions/live`, token);
       liveVersion = live.containerVersion || {};
     } catch { /* Live metadata is advisory; workspace inventory remains usable with a stale banner. */ }
     const inserted = await query(
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
        RETURNING id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, created_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale`,
       [session.uid, siteId, inventory.accountId, inventory.containerId, containerPublicId || null, inventory.workspaceId, JSON.stringify(inventory.tags), JSON.stringify(inventory.triggers), JSON.stringify(inventory.variables), null, null, liveVersion.versionId || null, liveVersion.name || null, liveVersion.updateTime || null],
     );
+    const liveInventory = normalizeGtmInventory({ accountId, containerId, workspaceId: 'live', tags: liveVersion.tag, triggers: liveVersion.trigger, variables: liveVersion.variable });
     const installationResult = await query(
       `SELECT i.id,i.account_id,i.container_id,i.workspace_id,i.tag_id,i.trigger_id,i.status,i.details
          FROM gtm_installations i
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       [siteId, session.uid, accountId, containerId],
     );
     const row = installationResult.rows[0];
-    const detectedTag = inventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id));
+    const detectedTag = liveInventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id)) || inventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id));
     let detectedInstallation = null;
     if (row && detectedTag) {
       const details = row.details && typeof row.details === 'object' ? row.details : {};
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
         publishRequired: false,
       };
     }
-    return NextResponse.json({ snapshot: inserted.rows[0], detectedInstallation }, { status: 201 });
+    return NextResponse.json({ snapshot: inserted.rows[0], detectedInstallation, detectedEnvironment: detectedTag && liveInventory.tags.some((tag) => tag.tagId === detectedTag.tagId) ? 'live' : detectedTag ? 'workspace' : null }, { status: 201 });
   } catch (error) {
     console.error('GTM inventory refresh error:', error);
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to refresh GTM inventory' }, { status: 502 });
