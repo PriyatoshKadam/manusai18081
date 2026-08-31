@@ -64,25 +64,45 @@ export async function POST(req: NextRequest) {
        RETURNING id, account_id, container_id, container_public_id, workspace_id, tags, triggers, variables, fetched_at, created_at, environment, snapshot_version_id, snapshot_version_name, live_version_id, live_version_name, live_version_updated_at, snapshot_stale`,
       [session.uid, siteId, inventory.accountId, inventory.containerId, containerPublicId || null, inventory.workspaceId, JSON.stringify(inventory.tags), JSON.stringify(inventory.triggers), JSON.stringify(inventory.variables), null, null, liveVersion.versionId || null, liveVersion.name || null, liveVersion.updateTime || null],
     );
+    const liveTagResources = Array.isArray(liveVersion.tag) ? liveVersion.tag.filter((tag): tag is Record<string, unknown> => Boolean(tag && typeof tag === 'object' && !Array.isArray(tag))) : [];
+    const liveMonitorTagIds = liveTagResources.filter((tag) => {
+      const name = String(tag.name || '').toLowerCase();
+      const parameters = Array.isArray(tag.parameter) ? tag.parameter : [];
+      const html = parameters.filter((parameter): parameter is Record<string, unknown> => Boolean(parameter && typeof parameter === 'object' && !Array.isArray(parameter))).map((parameter) => String(parameter.value || '')).join(' ').toLowerCase();
+      return name === GTM_MONITOR_TAG_NAME.toLowerCase() || (html.includes('monitor.js') && html.includes('apikey'));
+    }).map((tag) => String(tag.tagId || '').trim()).filter(Boolean);
     const liveInventory = normalizeGtmInventory({ accountId, containerId, workspaceId: 'live', tags: liveVersion.tag, triggers: liveVersion.trigger, variables: liveVersion.variable });
     const installationResult = await query(
       `SELECT i.id,i.account_id,i.container_id,i.workspace_id,i.tag_id,i.trigger_id,i.status,i.details
          FROM gtm_installations i
-        WHERE i.site_id=$1 AND i.user_id=$2 AND i.account_id=$3 AND i.container_id=$4 AND i.status='published'
+        WHERE i.site_id=$1 AND i.user_id=$2 AND i.account_id=$3 AND i.container_id=$4 AND i.status <> 'removed'
         ORDER BY i.created_at DESC LIMIT 1`,
       [siteId, session.uid, accountId, containerId],
     );
     const row = installationResult.rows[0];
-    const detectedTag = liveInventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id)) || inventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id));
+    const detectedTag = liveInventory.tags.find((tag) => liveMonitorTagIds.includes(tag.tagId) || tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id)) || inventory.tags.find((tag) => tag.name === GTM_MONITOR_TAG_NAME || (row?.tag_id && tag.tagId === row.tag_id));
     let detectedInstallation = null;
-    if (row && detectedTag) {
-      const details = row.details && typeof row.details === 'object' ? row.details : {};
+    if (detectedTag) {
+      const details = row?.details && typeof row.details === 'object' ? row.details : {};
+      let installationId = row?.id;
+      if (row && row.status !== 'published') {
+        await query(`UPDATE gtm_installations SET status='published',details=details||$1::jsonb WHERE id=$2 AND user_id=$3`, [JSON.stringify({ detectedInLiveContainer: true, detectedAt: new Date().toISOString() }), row.id, session.uid]);
+      }
+      if (!row) {
+        const created = await query(
+          `INSERT INTO gtm_installations (user_id,site_id,account_id,container_id,workspace_id,tag_id,trigger_id,status,details)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'published',$8::jsonb) RETURNING id`,
+          [session.uid, siteId, accountId, containerId, workspaceId, detectedTag.tagId, detectedTag.firingTriggerIds[0] || null, JSON.stringify({ detectedInLiveContainer: true, detectedAt: new Date().toISOString(), tagName: detectedTag.name, triggerName: null })],
+        );
+        installationId = created.rows[0]?.id;
+      }
+      const installationRecord = row || { account_id: accountId, container_id: containerId, workspace_id: workspaceId, tag_id: detectedTag.tagId, trigger_id: detectedTag.firingTriggerIds[0] || null };
       detectedInstallation = {
-        installationId: row.id,
-        status: row.status,
-        workspace: { accountId: row.account_id, containerId: row.container_id, workspaceId: row.workspace_id, name: details.workspaceName || null, url: details.workspaceUrl || null },
-        tag: { tagId: row.tag_id || detectedTag.tagId, name: detectedTag.name },
-        trigger: { triggerId: row.trigger_id, name: details.triggerName || null },
+        installationId,
+        status: 'published',
+        workspace: { accountId: installationRecord.account_id, containerId: installationRecord.container_id, workspaceId: installationRecord.workspace_id, name: details.workspaceName || null, url: details.workspaceUrl || null },
+        tag: { tagId: installationRecord.tag_id || detectedTag.tagId, name: detectedTag.name },
+        trigger: { triggerId: installationRecord.trigger_id, name: details.triggerName || null },
         publishRequired: false,
       };
     }
