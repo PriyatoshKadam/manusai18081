@@ -24,7 +24,7 @@ describe('overview and alert policy contract', () => {
 
   it('documents synthetic and Ads identity for customers', () => {
     expect(read('app/dashboard/synthetic/page.tsx')).toContain('Create a synthetic HTTP journey');
-    expect(read('app/dashboard/health/page.tsx')).toContain('real visitor data');
+    expect(read('app/dashboard/health/page.tsx')).toContain('confirmed network outcomes');
     expect(read('app/dashboard/vendor-view.tsx')).toContain('conversion_label');
     expect(read('app/api/events/route.ts')).toContain('google_conversion_label');
   });

@@ -5,7 +5,8 @@ import { MIN_SAMPLE_SIZE } from './metrics';
 const logicalOccurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
 const networkObservation = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
 const legacyOutcome = `(delivery_outcome IS NULL OR delivery_outcome = 'unknown')`;
-const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','network_error','aborted','timeout','blocked','beacon_rejected') OR (${legacyOutcome} AND (status_code IS NOT NULL AND status_code >= 400 OR failure_reason IN ('network_error','aborted','timeout','blocked','beacon_rejected'))))`;
+const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','blocked','beacon_rejected') OR (${legacyOutcome} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('blocked','beacon_rejected') OR failure_reason LIKE 'http_%'))) `;
+const transportAnomaly = `${networkObservation} AND (delivery_outcome IN ('network_error','aborted','timeout') OR (${legacyOutcome} AND failure_reason IN ('network_error','aborted','timeout'))) `;
 const successfulDelivery = `${networkObservation} AND (delivery_outcome = 'delivered' OR (${legacyOutcome} AND status_code BETWEEN 200 AND 399 AND failure_reason IS NULL))`;
 const knownDeliveryOutcome = `(${successfulDelivery} OR ${failedDelivery})`;
 
@@ -19,8 +20,9 @@ export async function runAnomalySweep(siteId: number) {
               COUNT(DISTINCT ${logicalOccurrenceKey})::int AS fires,
               COUNT(*) FILTER (WHERE ${knownDeliveryOutcome})::int AS delivery_attempts,
               COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
-              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked')), 0)::numeric AS avg_latency,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int AS denied
+              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked','network_error','aborted','timeout')), 0)::numeric AS avg_latency,
+              COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int AS denied,
+              COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies
          FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '15 minutes'
         GROUP BY vendor, event_name
      ), baseline AS (
@@ -28,16 +30,17 @@ export async function runAnomalySweep(siteId: number) {
               COUNT(DISTINCT ${logicalOccurrenceKey})::int AS fires,
               COUNT(*) FILTER (WHERE ${knownDeliveryOutcome})::int AS delivery_attempts,
               COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
-              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked')), 0)::numeric AS avg_latency,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int AS denied
+              COALESCE(AVG(latency_ms) FILTER (WHERE ${networkObservation} AND COALESCE(delivery_outcome, 'unknown') NOT IN ('beacon_rejected','blocked','network_error','aborted','timeout')), 0)::numeric AS avg_latency,
+              COUNT(*) FILTER (WHERE ${networkObservation} AND LOWER(COALESCE(consent_state->>'analytics_storage','')) = 'denied')::int AS denied,
+              COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies
          FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '7 days' AND received_at < NOW() - INTERVAL '15 minutes'
            AND EXTRACT(DOW FROM received_at) = EXTRACT(DOW FROM NOW())
            AND EXTRACT(HOUR FROM received_at) = EXTRACT(HOUR FROM NOW())
            AND FLOOR(EXTRACT(MINUTE FROM received_at) / 15) = FLOOR(EXTRACT(MINUTE FROM NOW()) / 15)
         GROUP BY vendor, event_name
      )
-     SELECT r.vendor, r.event_name, r.fires, r.delivery_attempts, r.failures, r.avg_latency, r.denied,
-            b.fires AS baseline_fires, b.delivery_attempts AS baseline_delivery_attempts, b.failures AS baseline_failures, b.avg_latency AS baseline_latency, b.denied AS baseline_denied
+     SELECT r.vendor, r.event_name, r.fires, r.delivery_attempts, r.failures, r.avg_latency, r.denied, r.transport_anomalies,
+            b.fires AS baseline_fires, b.delivery_attempts AS baseline_delivery_attempts, b.failures AS baseline_failures, b.avg_latency AS baseline_latency, b.denied AS baseline_denied, b.transport_anomalies AS baseline_transport_anomalies
        FROM recent r LEFT JOIN baseline b ON b.vendor = r.vendor AND COALESCE(b.event_name,'') = COALESCE(r.event_name,'')
       WHERE r.delivery_attempts >= $2 AND COALESCE(b.delivery_attempts, 0) >= $2`, [siteId, MIN_SAMPLE_SIZE],
   );

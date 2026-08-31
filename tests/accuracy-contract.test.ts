@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { classifyRevenueStatus } from '../lib/revenue';
 import { classifyDeliveryMode, deliveryModeLabel } from '../lib/delivery';
-import { classifyDeliveryOutcome } from '../lib/delivery-outcome';
+import { classifyDeliveryOutcome, isConfirmedDeliveryFailure, isTransportAnomaly } from '../lib/delivery-outcome';
 import { normalizeSiteInput } from '../lib/site-validation';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -34,6 +34,23 @@ describe('accuracy contracts', () => {
     expect(monitor).toContain("networkOccurrenceId: observationKind === 'network' ? 'network-' + (++networkOccurrence) : null");
   });
 
+  it('separates delivery failures from transport anomalies', () => {
+    expect(isConfirmedDeliveryFailure('http_error')).toBe(true);
+    expect(isConfirmedDeliveryFailure('blocked')).toBe(true);
+    expect(isConfirmedDeliveryFailure('beacon_rejected')).toBe(true);
+    expect(isConfirmedDeliveryFailure('network_error')).toBe(false);
+    expect(isConfirmedDeliveryFailure('aborted')).toBe(false);
+    expect(isConfirmedDeliveryFailure('timeout')).toBe(false);
+    expect(isTransportAnomaly('network_error')).toBe(true);
+    expect(isTransportAnomaly('aborted')).toBe(true);
+    expect(isTransportAnomaly('timeout')).toBe(true);
+    expect(isTransportAnomaly('unknown')).toBe(true);
+    const health = read('app/api/tag-health/route.ts');
+    expect(health).toContain("delivery_outcome IN ('http_error','blocked','beacon_rejected')");
+    expect(health).toContain('const transportAnomaly');
+    expect(health).not.toContain("delivery_outcome IN ('http_error','network_error','aborted','timeout','blocked','beacon_rejected')");
+  });
+
   it('classifies delivery outcomes without calling status-zero evidence delivered', () => {
     expect(classifyDeliveryOutcome({ observationKind: 'network', transport: 'fetch', statusCode: 204, failureReason: null })).toBe('delivered');
     expect(classifyDeliveryOutcome({ observationKind: 'network', transport: 'fetch', statusCode: 503, failureReason: 'http_503' })).toBe('http_error');
@@ -51,9 +68,28 @@ describe('accuracy contracts', () => {
     expect(read('lib/ingest-validation.ts')).toContain("normalizedEventName === 'purchase' ? rawRevenue >= 0");
   });
 
+  it('uses conservative monitor correlation and a singleton guard', () => {
+    const monitor = read('public/monitor.js');
+    expect(monitor).toContain('window.__GAFIX_MONITOR__');
+    expect(monitor).toContain('bestScore < 70');
+    expect(monitor).toContain("addEventListener('timeout'");
+    expect(monitor).toContain("error && error.name === 'AbortError' ? 'aborted' : 'network_error'");
+  });
+
   it('keeps ordinary resource errors out of compliance findings', () => {
     expect(read('lib/compliance.ts')).not.toContain("'resource_error'");
     expect(read('public/monitor.js')).toContain("diagnostic('resource_error'");
+    expect(read('public/monitor.js')).not.toContain("reportBlocked('resource_error'");
+  });
+
+  it('keeps delivery outcomes constrained and health wording precise', () => {
+    const schema = read('db/schema.sql');
+    expect(schema).toContain('events_delivery_outcome_check');
+    expect(schema).toContain("'beacon_rejected','unknown'");
+    expect(schema).toContain('idx_events_site_network_occurrence');
+    const health = read('app/dashboard/health/page.tsx');
+    expect(health).toContain('Delivery success rate');
+    expect(health).not.toContain('combines successful vendor requests and website speed');
   });
 
   it('does not expose full keys in the authenticated site list or dashboard layout', () => {

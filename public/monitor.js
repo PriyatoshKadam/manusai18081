@@ -12,7 +12,8 @@
   var ingestUrl = origin + '/api/ingest';
   var blockedUrl = origin + '/api/blocked';
   var g = window.__g4f = window.__g4f || {};
-  if (g.__monitorInstalled) return;
+  if (window.__GAFIX_MONITOR__ || g.__monitorInstalled) return;
+  window.__GAFIX_MONITOR__ = true;
   g.__monitorInstalled = true;
   g.version = '12.6';
   g.k = apiKey;
@@ -254,7 +255,7 @@
     return currentEvent(name, params && typeof params === 'object' ? params : {}, source, 'datalayer', explicitIndex === undefined ? pushIndex : explicitIndex, vendor);
   }
   function matchPending(name, params, ts, requestSig) {
-    var target = normalize(name); var best = null; var bestScore = -1;
+    var target = normalize(name); var best = null; var bestScore = -1; var secondScore = -1;
     for (var i = 0; i < pending.length; i += 1) {
       var item = pending[i]; if (!item || item.vendor !== 'ga4' || item.networkMatched || normalize(item.eventName) !== target) continue;
       var age = ts - item.timestamp; if (age < 0 || age > MATCH_MS) continue;
@@ -269,9 +270,9 @@
       if (item.navigationId && item.navigationId === navigationId) score += 30;
       if (item.pageUrl && item.pageUrl === pageUrl()) score += 20;
       score += Math.max(0, 20 - Math.floor(age / 300));
-      if (score > bestScore) { bestScore = score; best = item; }
+      if (score > bestScore) { secondScore = bestScore; bestScore = score; best = item; } else if (score > secondScore) { secondScore = score; }
     }
-    if (!best || bestScore < 30) return null;
+    if (!best || bestScore < 70 || (secondScore >= 70 && bestScore - secondScore < 10)) return null;
     best.networkMatched = true; best.requestSignature = requestSig; best.networkOccurrenceId = 'network-' + (++networkOccurrence); pending.splice(pending.indexOf(best), 1); return best;
   }
   function network(url, body, transport, failed, deferSend, observationKindOverride) {
@@ -346,15 +347,15 @@
         var url = typeof input === 'string' ? input : input && input.url; var body = init && init.body;
         var parsed = null; try { parsed = network(url, body, 'fetch', false, true); } catch (_) {}
         var result;
-        try { result = fetch.apply(this, arguments); } catch (error) { if (parsed) { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } throw error; }
-        if (result && result.then && parsed) result.then(function (response) { parsed.statusCode = Number(response.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; var opaque = parsed.statusCode === 0 && response.type === 'opaque'; if (!response.ok && !opaque) { parsed.failureReason = 'http_' + parsed.statusCode; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }).catch(function () { if (parsed) { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId }); } });
+        try { result = fetch.apply(this, arguments); } catch (error) { if (parsed) { parsed.failureReason = error && error.name === 'AbortError' ? 'aborted' : 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); } throw error; }
+        if (result && result.then && parsed) result.then(function (response) { parsed.statusCode = Number(response.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; var opaque = parsed.statusCode === 0 && response.type === 'opaque'; if (!response.ok && !opaque) { parsed.failureReason = 'http_' + parsed.statusCode; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }).catch(function (error) { if (parsed) { parsed.failureReason = error && error.name === 'AbortError' ? 'aborted' : 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); } });
         return result;
       };
     }
     try {
       var open = XMLHttpRequest.prototype.open, sendXhr = XMLHttpRequest.prototype.send;
       XMLHttpRequest.prototype.open = function (method, url) { this.__g4f = { method: method, url: url }; return open.apply(this, arguments); };
-      XMLHttpRequest.prototype.send = function (body) { var item = this.__g4f; var parsed = null; try { parsed = item && network(item.url, body, 'xhr', false, true); } catch (_) {} if (parsed) { this.addEventListener('load', function () { parsed.statusCode = Number(this.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (this.status >= 400) { parsed.failureReason = 'http_' + this.status; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }); this.addEventListener('error', function () { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); this.addEventListener('abort', function () { parsed.failureReason = 'aborted'; send(parsed); reportBlocked(parsed.vendor + '_transport_blocked', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId }); }); } return sendXhr.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function (body) { var item = this.__g4f; var parsed = null; try { parsed = item && network(item.url, body, 'xhr', false, true); } catch (_) {} if (parsed) { this.addEventListener('load', function () { parsed.statusCode = Number(this.status) || 0; parsed.latencyMs = Date.now() - parsed.startedAt; if (this.status >= 400) { parsed.failureReason = 'http_' + this.status; reportBlocked(parsed.vendor + '_http_failure', { eventName: parsed.eventName, blockedUrl: item.url, sessionId: sessionId, reason: parsed.failureReason, signal: parsed.vendor + '_http' }); } send(parsed); }); this.addEventListener('error', function () { parsed.failureReason = 'network_error'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); }); this.addEventListener('abort', function () { parsed.failureReason = 'aborted'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); }); this.addEventListener('timeout', function () { parsed.failureReason = 'timeout'; parsed.latencyMs = Date.now() - parsed.startedAt; send(parsed); }); } return sendXhr.apply(this, arguments); };
     } catch (_) {}
     try {
       var beacon = navigator.sendBeacon;
@@ -380,7 +381,7 @@
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (!entry.hadRecentInput) captureVital('cls', entry.value || 0); }); }).observe({ type: 'layout-shift', buffered: true }); } } catch (_) {}
   try { var navEntry = performance.getEntriesByType('navigation')[0]; if (navEntry) captureVital('ttfb', navEntry.responseStart || 0); } catch (_) {}
   try { if (typeof PerformanceObserver !== 'undefined') { new PerformanceObserver(function (list) { list.getEntries().forEach(function (entry) { if (entry.interactionId) captureVital('inp', entry.duration || 0); }); }).observe({ type: 'event', buffered: true, durationThreshold: 40 }); } } catch (_) {}
-  try { window.addEventListener('error', function (event) { var target = event.target; var url = target && (target.src || target.href); if (url && vendorFor(url, {})) { reportBlocked('resource_error', { blockedUrl: url, sessionId: sessionId, signal: 'resource_error' }); diagnostic('resource_error', { blockedUrl: text(url, 2048), target: text(target.tagName, 40) }); } else if (!target) diagnostic('console_error', { message: text(event.message || 'Unhandled window error', 512), filename: text(event.filename, 2048), line: event.lineno || null }); }, true); } catch (_) {}
+  try { window.addEventListener('error', function (event) { var target = event.target; var url = target && (target.src || target.href); if (url && vendorFor(url, {})) { diagnostic('resource_error', { blockedUrl: text(url, 2048), target: text(target.tagName, 40) }); } else if (!target) diagnostic('console_error', { message: text(event.message || 'Unhandled window error', 512), filename: text(event.filename, 2048), line: event.lineno || null }); }, true); } catch (_) {}
   try { window.addEventListener('unhandledrejection', function (event) { diagnostic('unhandled_rejection', { reason: text(event.reason && event.reason.message ? event.reason.message : event.reason, 512) }); }); } catch (_) {}
   try { var originalConsoleError = console.error; console.error = function () { var args = Array.prototype.slice.call(arguments); diagnostic('console_error', { message: text(args.map(function (value) { return typeof value === 'string' ? value : stable(safeParams(value)); }).join(' '), 1024) }); return originalConsoleError.apply(this, arguments); }; } catch (_) {}
   try { if (typeof MutationObserver !== 'undefined') new MutationObserver(function (records) { records.forEach(function (record) { Array.prototype.slice.call(record.addedNodes || []).forEach(function (node) { if (node && node.tagName === 'SCRIPT' && node.src && vendorFor(node.src, {})) diagnostic('script_injected', { vendor: vendorFor(node.src, {}), url: text(node.src, 2048) }); }); }); }).observe(document.documentElement, { childList: true, subtree: true }); } catch (_) {}

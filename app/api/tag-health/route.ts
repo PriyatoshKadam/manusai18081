@@ -9,7 +9,8 @@ const logicalOccurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id
 const networkObservation = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
 const legacyOutcome = `(delivery_outcome IS NULL OR delivery_outcome = 'unknown')`;
 const successfulDelivery = `${networkObservation} AND (delivery_outcome = 'delivered' OR (${legacyOutcome} AND status_code BETWEEN 200 AND 399 AND failure_reason IS NULL))`;
-const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','network_error','aborted','timeout','blocked','beacon_rejected') OR (${legacyOutcome} AND (status_code IS NOT NULL AND status_code >= 400 OR failure_reason IN ('network_error','aborted','timeout','blocked','beacon_rejected'))))`;
+const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','blocked','beacon_rejected') OR (${legacyOutcome} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('blocked','beacon_rejected') OR failure_reason LIKE 'http_%'))) `;
+const transportAnomaly = `${networkObservation} AND (delivery_outcome IN ('network_error','aborted','timeout') OR (${legacyOutcome} AND failure_reason IN ('network_error','aborted','timeout'))) `;
 const knownDeliveryOutcome = `(${successfulDelivery} OR ${failedDelivery})`;
 
 export async function GET(req: NextRequest) {
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
                   COUNT(*) FILTER (WHERE ${successfulDelivery})::int AS successes,
                   COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
                   COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'http_error')::int AS http_errors,
-                  COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome IN ('network_error','aborted','timeout'))::int AS transport_anomalies,
+                  COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies,
                   COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'beacon_rejected')::int AS beacon_rejections,
                   COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'blocked')::int AS blocked,
                   COUNT(*) FILTER (WHERE observation_kind IN ('datalayer','function') AND NOT EXISTS (

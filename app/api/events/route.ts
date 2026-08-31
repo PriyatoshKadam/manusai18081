@@ -6,7 +6,8 @@ import { INTERNAL_CORRELATION_NOISE_SQL } from '../../../lib/adblock-evidence';
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
 const networkObservation = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
 const legacyOutcome = `(delivery_outcome IS NULL OR delivery_outcome = 'unknown')`;
-const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','network_error','aborted','timeout','blocked','beacon_rejected') OR (${legacyOutcome} AND (status_code IS NOT NULL AND status_code >= 400 OR failure_reason IN ('network_error','aborted','timeout','blocked','beacon_rejected'))))`;
+const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','blocked','beacon_rejected') OR (${legacyOutcome} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('blocked','beacon_rejected') OR failure_reason LIKE 'http_%'))) `;
+const transportAnomaly = `${networkObservation} AND (delivery_outcome IN ('network_error','aborted','timeout') OR (${legacyOutcome} AND failure_reason IN ('network_error','aborted','timeout'))) `;
 const displayName = `(CASE
   WHEN vendor = 'gads' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'send_to', ''), NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', ''), 'conversion')
   WHEN vendor = 'meta' THEN COALESCE(NULLIF(event_name, ''), NULLIF(params->>'ev', ''), NULLIF(params->>'event', ''), 'PageView')
@@ -65,7 +66,7 @@ export async function GET(req: NextRequest) {
               COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failed,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'delivered')::int AS delivered,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'http_error')::int AS http_errors,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome IN ('network_error','aborted','timeout'))::int AS transport_anomalies,
+              COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'beacon_rejected')::int AS beacon_rejections,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'blocked')::int AS blocked,
               COUNT(*) FILTER (WHERE ${networkObservation} AND event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false))::int AS err
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
               COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failed,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'delivered')::int AS delivered,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'http_error')::int AS http_errors,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome IN ('network_error','aborted','timeout'))::int AS transport_anomalies,
+              COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'beacon_rejected')::int AS beacon_rejections,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'blocked')::int AS blocked,
               0 AS err

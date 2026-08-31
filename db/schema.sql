@@ -112,11 +112,27 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS web_vitals JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
+UPDATE events SET delivery_outcome = 'unknown'
+ WHERE delivery_outcome IS NULL OR delivery_outcome NOT IN ('delivered','http_error','network_error','aborted','timeout','blocked','beacon_rejected','unknown');
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'events_delivery_outcome_check') THEN
+    ALTER TABLE events ADD CONSTRAINT events_delivery_outcome_check CHECK (delivery_outcome IN ('delivered','http_error','network_error','aborted','timeout','blocked','beacon_rejected','unknown'));
+  END IF;
+END $$;
+
 CREATE INDEX IF NOT EXISTS idx_events_site_occurrence
   ON events(site_id, event_name, session_id, occurrence_id, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_signature
   ON events(site_id, request_signature, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_session_occurrence
+  ON events(site_id, session_id, occurrence_id, received_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_events_site_network_occurrence
+  ON events(site_id, network_occurrence_id, received_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_events_site_observation
   ON events(site_id, observation_kind, received_at DESC);

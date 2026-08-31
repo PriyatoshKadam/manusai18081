@@ -1,7 +1,7 @@
 import { query } from './db';
 import { enqueueAlertDeliveries } from './notifications';
 import { boundedSeverity } from './metrics';
-import { classifyDeliveryOutcome, deliveryOutcomeLabel, isConfirmedDeliveryFailure, isDeliveryObservation, type DeliveryOutcome } from './delivery-outcome';
+import { classifyDeliveryOutcome, deliveryOutcomeLabel, isConfirmedDeliveryFailure, isDeliveryObservation, isTransportAnomaly, type DeliveryOutcome } from './delivery-outcome';
 
 export interface ParsedEvent {
   siteId: number;
@@ -130,7 +130,7 @@ function sameNetworkOccurrence(a:ParsedEvent,b:ParsedEvent){ return !!a.networkO
 function eventClass(name:string):'navigation'|'repeatable'|'transaction'|'sensitive'|'custom'{ if(NAVIGATION_EVENTS.has(name))return'navigation'; if(NATURALLY_REPEATABLE_EVENTS.has(name))return'repeatable'; if(TRANSACTION_EVENTS.has(name))return'transaction'; if(HIGH_SENSITIVITY_EVENTS.has(name))return'sensitive'; return'custom'; }
 function isDifferentNavigation(a:ParsedEvent,b:ParsedEvent){ if(a.navigationId&&b.navigationId&&a.navigationId!==b.navigationId)return true; return eventClass((a.eventName||'').trim().toLowerCase())==='navigation'&&!samePage(a,b); }
 function isHardExpectedRepeat(a:ParsedEvent,b:ParsedEvent){ const name=(a.eventName||'').trim().toLowerCase(); if(NATURALLY_REPEATABLE_EVENTS.has(name))return true; if(name==='page_view'&&isDifferentNavigation(a,b))return true; return false; }
-function isFailedTransport(event: Pick<ParsedEvent,'statusCode'|'failureReason'|'deliveryOutcome'>){ return event.deliveryOutcome ? isConfirmedDeliveryFailure(event.deliveryOutcome) : Boolean((event.statusCode !== null && event.statusCode !== undefined && event.statusCode >= 400) || event.failureReason); }
+function isFailedTransport(event: Pick<ParsedEvent,'statusCode'|'failureReason'|'deliveryOutcome'>){ const outcome = event.deliveryOutcome || classifyDeliveryOutcome({ observationKind: 'network', statusCode: event.statusCode, failureReason: event.failureReason }); return isConfirmedDeliveryFailure(outcome) || isTransportAnomaly(outcome); }
 export function isTransportRetryPair(current: Pick<ParsedEvent,'requestSignature'|'statusCode'|'failureReason'|'receivedAt'|'deliveryOutcome'>, previous: Pick<DuplicateMatch,'requestSignature'|'statusCode'|'failureReason'|'receivedAt'|'deliveryOutcome'>){
   const sameSignature = Boolean(current.requestSignature && previous.requestSignature && current.requestSignature === previous.requestSignature);
   const previousFailed = isFailedTransport(previous);

@@ -35,11 +35,15 @@ export function classifyDeliveryOutcome(event: DeliveryEvidence): DeliveryOutcom
 }
 
 export function isConfirmedDeliveryFailure(outcome: DeliveryOutcome) {
-  return outcome === 'http_error' || outcome === 'network_error' || outcome === 'aborted' || outcome === 'timeout' || outcome === 'blocked' || outcome === 'beacon_rejected';
+  return outcome === 'http_error' || outcome === 'blocked' || outcome === 'beacon_rejected';
 }
 
 export function isTransportAnomaly(outcome: DeliveryOutcome) {
   return outcome === 'network_error' || outcome === 'aborted' || outcome === 'timeout' || outcome === 'unknown';
+}
+
+export function isSuccessfulDelivery(outcome: DeliveryOutcome) {
+  return outcome === 'delivered';
 }
 
 export function deliveryOutcomeLabel(outcome: DeliveryOutcome) {
