@@ -79,6 +79,12 @@ describe('GTM inventory correlation', () => {
     expect(parameterHealth('snapchat', 'LEVEL_COMPLETE', { pid: 'ae22325f-e147-4629-90b7-d24f349298c1', ev: 'LEVEL_COMPLETE' }, 'https://tr.snapchat.com/p?pid=ae22325f-e147-4629-90b7-d24f349298c1&ev=LEVEL_COMPLETE')).toMatchObject({ parameterStatus: 'complete', missingParameters: [] });
   });
 
+  it('uses normalized top-level identifiers for required-details health', () => {
+    expect(correlateEventWithGtm({ vendor: 'gads', eventName: 'conversion', measurementId: '11078102743', conversionLabel: 'Dk4NCNjuisQcENfduaIp' }, null)).toMatchObject({ parameterStatus: 'complete', missingParameters: [] });
+    expect(correlateEventWithGtm({ vendor: 'linkedin', eventName: 'page_view', measurementId: '5250281' }, null)).toMatchObject({ parameterStatus: 'complete', missingParameters: [] });
+    expect(correlateEventWithGtm({ vendor: 'bing', eventName: 'pageLoad', measurementId: '343007686' }, null)).toMatchObject({ parameterStatus: 'complete', missingParameters: [] });
+  });
+
   it('matches Meta Pixel and LinkedIn Insight Tag by platform identifier', () => {
     const meta = correlateEventWithGtm({ vendor: 'meta', eventName: 'PageView', params: { id: '832600056900407', ev: 'PageView' }, rawUrl: 'https://www.facebook.com/tr/?id=832600056900407&ev=PageView' }, inventory);
     expect(meta.tagName).toBe('Meta Pixel Base');

@@ -233,6 +233,7 @@ export function parameterHealth(vendor: string, eventName: string | null, params
   if (pathConversionId) values.set('conversion_id', pathConversionId);
   const normalizedVendor = normalized(vendor);
   const name = normalized(eventName);
+  if (normalizedVendor === 'gads' && (/^aw-[a-z0-9]+$/i.test(String(eventName || '').trim()) || /^\d{6,}$/.test(String(eventName || '').trim()))) values.set('conversion_id', String(eventName).trim());
   const requestText = `${name} ${normalized(rawUrl)}`;
   const isRemarketingBeacon = normalizedVendor === 'gads' && /(?:\/rmkt\/collect|viewthroughconversion|en=gtag\.config|gtag\.config)/.test(`${requestText} ${normalized(rawUrl)}`);
   const gadsConversion = normalizedVendor === 'gads' && !isRemarketingBeacon && /(?:^|[^a-z])conversion|purchase|sign[_ -]?up|lead|submit/i.test(requestText);
@@ -253,7 +254,10 @@ export function parameterHealth(vendor: string, eventName: string | null, params
   const observedParameters: string[] = [];
   const missingParameters: string[] = [];
   for (const aliases of required) {
-    const found = aliases.find((alias) => values.has(alias) && values.get(alias));
+    const found = aliases.find((alias) => {
+      const key = normalized(alias);
+      return values.has(key) && values.get(key);
+    });
     if (found) observedParameters.push(found);
     else missingParameters.push(aliases[0]);
   }
@@ -284,11 +288,24 @@ export async function refreshGtmSnapshotFreshness(limit = 50) {
 }
 
 export function correlateEventWithGtm(event: Record<string, unknown>, inventory: GtmInventory | null): EventEnrichment {
-  const health = parameterHealth(String(event.vendor || ''), stringValue(event.eventName, 120), event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {}, stringValue(event.rawUrl, 2048));
+  const eventParams = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
+  const vendorName = normalized(event.vendor);
+  const eventNameValue = stringValue(event.eventName, 240);
+  const eventNameLooksLikeId = Boolean(eventNameValue && (/^aw-[a-z0-9]+$/i.test(eventNameValue) || /^\d{6,}$/.test(eventNameValue)));
+  const healthParams = {
+    ...eventParams,
+    conversion_id: event.conversionId ?? event.conversion_id ?? event.measurementId ?? event.measurement_id ?? eventParams.conversion_id ?? (vendorName === 'gads' && eventNameLooksLikeId ? eventNameValue : undefined),
+    conversion_label: event.conversionLabel ?? event.conversion_label ?? event.label ?? eventParams.conversion_label ?? (vendorName === 'gads' && eventNameValue && !eventNameLooksLikeId && !['conversion', 'page_view', 'pageview', 'gtag.config'].includes(normalized(eventNameValue)) ? eventNameValue : undefined),
+    partner_id: event.partnerId ?? event.partner_id ?? event.measurementId ?? event.measurement_id ?? eventParams.partner_id ?? (vendorName === 'linkedin' && eventNameLooksLikeId ? eventNameValue : undefined),
+    pid: event.pid ?? eventParams.pid,
+    uet_tag_id: event.uetTagId ?? event.uet_tag_id ?? event.measurementId ?? event.measurement_id ?? eventParams.uet_tag_id ?? (vendorName === 'bing' && eventNameLooksLikeId ? eventNameValue : undefined),
+    ti: event.ti ?? eventParams.ti,
+    id: event.id ?? event.pixelId ?? event.pixel_id ?? event.measurementId ?? eventParams.id,
+  };
+  const health = parameterHealth(String(event.vendor || ''), stringValue(event.eventName, 120), healthParams, stringValue(event.rawUrl, 2048));
   if (!inventory) return { tagId: null, tagName: null, triggerName: null, workspaceId: null, confidence: 'unmatched', ...health };
   const vendor = normalized(event.vendor);
   const eventName = normalized(event.eventName);
-  const eventParams = event.params && typeof event.params === 'object' && !Array.isArray(event.params) ? event.params as Record<string, unknown> : {};
   const measurementId = normalized(event.measurementId || eventParams.tid || eventParams.measurement_id);
   const conversionId = normalized(eventParams.conversion_id || eventParams.google_conversion_id || eventParams.tid || googleAdsPathConversionId(stringValue(event.rawUrl, 2048)));
   const conversionLabel = normalized(eventParams.conversion_label || eventParams.google_conversion_label || eventParams.label || urlParameter(stringValue(event.rawUrl, 2048), ['conversion_label', 'google_conversion_label', 'label', 'send_to']));
