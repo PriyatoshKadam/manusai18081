@@ -182,15 +182,22 @@
     queue.push(payload);
     if (!flushTimer) flushTimer = setTimeout(flush, 250);
   }
+  function retryBatch(batch, attempt) {
+    if (!batch || !batch.length || attempt > 2) return;
+    var delay = attempt === 1 ? 250 : attempt === 2 ? 1000 : 3000;
+    try { setTimeout(function () { try { for (var i = batch.length - 1; i >= 0; i -= 1) { if (queue.length < MAX_QUEUE) queue.unshift(batch[i]); } if (!flushTimer) flushTimer = setTimeout(flush, 0); } catch (_) {} }, delay); } catch (_) {}
+  }
   function flush() {
     flushTimer = null;
     if (!queue.length) return;
-    var body = JSON.stringify({ apiKey: apiKey, gtmContainerId: gtmContainerId, events: queue.splice(0, queue.length) });
+    var batch = queue.splice(0, queue.length);
+    var body = JSON.stringify({ apiKey: apiKey, gtmContainerId: gtmContainerId, events: batch });
     try {
       var request = fetch(ingestUrl, { method: 'POST', body: body, keepalive: true, mode: 'no-cors', credentials: 'omit', headers: { 'Content-Type': 'text/plain;charset=UTF-8' } });
-      if (request && request.catch) request.catch(function () { reportBlocked('ingest_transport_blocked', { blockedUrl: ingestUrl, signal: 'ingest_transport' }); });
+      if (request && request.catch) request.catch(function () { retryBatch(batch, 1); });
       return;
     } catch (_) {}
+    retryBatch(batch, 1);
     try { if (navigator.sendBeacon) navigator.sendBeacon(ingestUrl, new Blob([body], { type: 'text/plain;charset=UTF-8' })); } catch (_) {}
   }
   function sendVitalsSnapshot() { if (vitalsSentForNavigation || !Object.keys(webVitals).length) return; vitalsSentForNavigation = true; diagnostic('web_vitals', {}); }

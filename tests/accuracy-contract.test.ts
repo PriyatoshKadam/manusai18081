@@ -92,6 +92,18 @@ describe('accuracy contracts', () => {
     expect(health).not.toContain('combines successful vendor requests and website speed');
   });
 
+  it('defines bounded raw-event retention without deleting findings', () => {
+    const retention = read('lib/retention.ts');
+    const jobs = read('app/api/jobs/route.ts');
+    expect(retention).toContain('RAW_TELEMETRY_RETENTION_DAYS');
+    expect(retention).toContain('MAX_BATCHES');
+    expect(retention).toContain("DELETE FROM events");
+    expect(retention).not.toContain('DELETE FROM alerts');
+    expect(retention).toContain('INTERVAL \'1 day\'');
+    expect(jobs).toContain("job === 'retention'");
+    expect(jobs).toContain('purgeRawTelemetry');
+  });
+
   it('does not expose full keys in the authenticated site list or dashboard layout', () => {
     expect(read('app/api/sites/route.ts')).not.toContain('SELECT id, domain, api_key');
     expect(read('app/dashboard/layout.tsx')).not.toContain('SELECT id, domain, api_key');
