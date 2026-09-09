@@ -9,6 +9,7 @@ import AlertModal from './alert-modal';
 import { SeverityChip, formatDateTime, timeAgo } from './ui';
 import { CommandKpi, DashboardSection, EvidenceRail, EventHeatmap, ScoreRing } from './command-visuals';
 import { eventDisplayName, plainAlertMessage, plainStatus, vendorDisplayName } from './plain-language';
+import MonitoringCommandCenter from './monitoring-command-center';
 
 export default function OverviewPage() {
   const search = useSearchParams();
@@ -92,6 +93,8 @@ export default function OverviewPage() {
       <CommandKpi label="Data processing coverage" value={detectionCoverage} note={`${number(stats.detection_failures_24h)} items GAfix could not finish checking`} tone={stats.detection_failures_24h ? 'rose' : 'blue'} />
       <CommandKpi label="Alert delivery problems" value={number(deliveryFailures)} note="Slack, email, and webhook alerts" tone={deliveryFailures ? 'rose' : 'lime'} />
     </div>
+
+    <MonitoringCommandCenter siteId={siteId} stats={stats} events={events} alerts={alerts} health={health} flow={data.flow || []} blockedFlow={data.blockedFlow || []} duplicates={duplicates} />
 
     <section className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]">
       <div className="rounded-2xl border border-white/[.08] bg-[#111722] p-5 lg:p-6"><DashboardSection eyebrow="Visitor activity" title="What is happening on your website?" description="See which tracking actions happen most often and how many visitor sessions include them." /><EventHeatmap events={events} /></div>
