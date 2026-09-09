@@ -3,24 +3,28 @@ import { readFileSync } from 'node:fs';
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
-describe('monitoring command center UI', () => {
-  it('uses real evidence sections and avoids vendor-side certainty claims', () => {
-    const source = read('app/dashboard/monitoring-command-center.tsx');
-    expect(source).toContain("'Overview'");
-    expect(source).toContain("'Alerts'");
-    expect(source).toContain("'Tracking sources'");
-    expect(source).toContain("'Consent'");
-    expect(source).toContain("'GTM setup'");
-    expect(source).toContain('does not claim that a vendor processed a request');
-    expect(source).toContain('first-party destination is not by itself proof of server-side processing');
+describe('platform monitoring UI', () => {
+  it('keeps the requested primary navigation', () => {
+    const source = read('app/dashboard/shell.tsx');
+    expect(source).toContain("label: 'Dashboard'");
+    expect(source).toContain("label: 'Alerts'");
+    expect(source).toContain("label: 'GTM Diagnostic'");
+    expect(source).toContain("label: 'Settings'");
   });
 
-  it('keeps the monitoring panel connected to existing tenant-scoped data', () => {
-    const page = read('app/dashboard/page.tsx');
-    expect(page).toContain('<MonitoringCommandCenter');
-    expect(page).toContain('stats={stats}');
-    expect(page).toContain('flow={data.flow || []}');
-    expect(page).toContain('blockedFlow={data.blockedFlow || []}');
-    expect(page).toContain('siteId={siteId}');
+  it('keeps all platform monitoring sections in the platform view', () => {
+    const source = read('app/dashboard/vendor-view-pdf.tsx');
+    for (const section of ["'Overview'", "'Events'", "'Parameters'", "'Pages'", "'Consent'", "'Ad blockers'", "'AI / Bot detector'"]) expect(source).toContain(section);
+    expect(source).toContain('Event Name');
+    expect(source).toContain('Reference Event');
+    expect(source).toContain('Session Duration');
+    expect(source).toContain('Events firing outside consent');
+    expect(source).toContain('Events AI crawled');
+  });
+
+  it('keeps platform insights tenant-scoped', () => {
+    const source = read('app/api/platform-insights/route.ts');
+    expect(source).toContain("sites WHERE id = $1 AND user_id = $2");
+    expect(source).toContain("received_at >= NOW() - INTERVAL '24 hours'");
   });
 });
