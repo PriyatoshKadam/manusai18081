@@ -55,11 +55,11 @@ export default function GtmDiagnosticsPage() {
   const dataLayer = data.dataLayer || [];
   const sources = data.sources || [];
   const provenance = data.provenance || [];
-  const tags = Array.isArray(inventory?.tags) ? inventory.tags : [];
-  const triggers = Array.isArray(inventory?.triggers) ? inventory.triggers : [];
-  const variables = Array.isArray(inventory?.variables) ? inventory.variables : [];
-  const tagById = new Map(tags.map((tag: any) => [String(tag.tagId), tag]));
-  const triggerById = new Map(triggers.map((trigger: any) => [String(trigger.triggerId), trigger]));
+  const tags: any[] = Array.isArray(inventory?.tags) ? inventory.tags : [];
+  const triggers: any[] = Array.isArray(inventory?.triggers) ? inventory.triggers : [];
+  const variables: any[] = Array.isArray(inventory?.variables) ? inventory.variables : [];
+  const tagById = new Map<string, any>(tags.map((tag: any): [string, any] => [String(tag.tagId), tag]));
+  const triggerById = new Map<string, any>(triggers.map((trigger: any): [string, any] => [String(trigger.triggerId), trigger]));
 
   return (
     <div className="fade-in max-w-6xl space-y-6">
