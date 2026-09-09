@@ -83,11 +83,6 @@ function highValue(name: string | null): boolean {
   return HIGH_VALUE_EVENTS.has(String(name || '').trim().toLowerCase());
 }
 
-/**
- * A legacy duplicate alert is allowed to remain only when the evidence can
- * support the claim. This is deliberately stricter than the real-time scorer:
- * the gate is the last line before an alert becomes user-facing truth.
- */
 export function shouldKeepDuplicateAlert(input: {
   code: string;
   eventName?: string | null;
@@ -101,9 +96,6 @@ export function shouldKeepDuplicateAlert(input: {
   const proof = classifyDuplicateProof(input);
   if (proof === 'different_transaction_ids' || proof === 'different_event_ids') return false;
 
-  // High-value conversion events require explicit identity or one logical
-  // occurrence producing multiple successful network deliveries. A matching
-  // payload alone is not enough to call two user actions duplicates.
   if (highValue(input.eventName)) {
     return proof === 'same_transaction_id'
       || proof === 'same_event_id'
@@ -113,7 +105,13 @@ export function shouldKeepDuplicateAlert(input: {
   return proof !== 'insufficient_evidence';
 }
 
-async function deliveredNetworkCount(siteId: number, eventId: number, occurrenceId: string | null, requestSignature: string | null): Promise<number> {
+async function deliveredNetworkCount(
+  siteId: number,
+  eventIdValue: number,
+  occurrenceId: string | null,
+  requestSignature: string | null,
+  currentIsDeliveredNetwork: boolean,
+): Promise<number> {
   if (occurrenceId) {
     const result = await query(
       `SELECT COUNT(*)::int AS count
@@ -124,9 +122,9 @@ async function deliveredNetworkCount(siteId: number, eventId: number, occurrence
           AND delivery_outcome = 'delivered'
           AND occurrence_id = $3
           AND received_at >= NOW() - INTERVAL '10 seconds'`,
-      [siteId, eventId, occurrenceId],
+      [siteId, eventIdValue, occurrenceId],
     );
-    return Number(result.rows[0]?.count || 0) + 1;
+    return Number(result.rows[0]?.count || 0) + (currentIsDeliveredNetwork ? 1 : 0);
   }
   if (requestSignature) {
     const result = await query(
@@ -138,16 +136,16 @@ async function deliveredNetworkCount(siteId: number, eventId: number, occurrence
           AND delivery_outcome = 'delivered'
           AND request_signature = $3
           AND received_at >= NOW() - INTERVAL '10 seconds'`,
-      [siteId, eventId, requestSignature],
+      [siteId, eventIdValue, requestSignature],
     );
-    return Number(result.rows[0]?.count || 0) + 1;
+    return Number(result.rows[0]?.count || 0) + (currentIsDeliveredNetwork ? 1 : 0);
   }
-  return 0;
+  return currentIsDeliveredNetwork ? 1 : 0;
 }
 
 async function fetchCurrentEvent(eventIdValue: number) {
   const result = await query(
-    `SELECT id,site_id,event_name,params,transaction_id,session_id,occurrence_id,request_signature,delivery_outcome
+    `SELECT id,site_id,event_name,params,transaction_id,session_id,occurrence_id,request_signature,observation_kind,delivery_outcome,page_url,vendor,dl_push_index
        FROM events WHERE id = $1 LIMIT 1`,
     [eventIdValue],
   );
@@ -167,11 +165,6 @@ async function fetchDuplicateAlert(eventIdValue: number) {
   return result.rows[0] || null;
 }
 
-/**
- * Runs after the existing detector. It never converts weak evidence into a
- * failure; it only removes claims that are contradicted by stronger evidence
- * and adds a confirmed fan-out finding when the database proves it.
- */
 export async function applyDetectionAccuracyGate(eventIdValue: number): Promise<void> {
   const current = await fetchCurrentEvent(eventIdValue);
   if (!current) return;
@@ -190,20 +183,25 @@ export async function applyDetectionAccuracyGate(eventIdValue: number): Promise<
       previous = previousResult.rows[0] || null;
     }
 
+    const currentIsDeliveredNetwork = current.observation_kind === 'network' && current.delivery_outcome === 'delivered';
     const count = await deliveredNetworkCount(
       Number(current.site_id),
       Number(current.id),
       current.occurrence_id || null,
       current.request_signature || null,
+      currentIsDeliveredNetwork,
     );
+    const sameOccurrence = Boolean(current.occurrence_id && previous?.occurrence_id && current.occurrence_id === previous.occurrence_id);
+    const sameRequestSignature = Boolean(current.request_signature && previous?.request_signature && current.request_signature === previous.request_signature);
+    const proof = classifyDuplicateProof({ currentParams: current.params || {}, previousParams: previous?.params || {}, sameOccurrence, deliveredNetworkCount: count, sameRequestSignature });
     const keep = shouldKeepDuplicateAlert({
       code: alert.code,
       eventName: alert.event_name || current.event_name,
       currentParams: current.params || {},
       previousParams: previous?.params || {},
-      sameOccurrence: Boolean(current.occurrence_id && previous?.occurrence_id && current.occurrence_id === previous.occurrence_id),
+      sameOccurrence,
       deliveredNetworkCount: count,
-      sameRequestSignature: Boolean(current.request_signature && previous?.request_signature && current.request_signature === previous.request_signature),
+      sameRequestSignature,
     });
 
     if (!keep) {
@@ -211,21 +209,19 @@ export async function applyDetectionAccuracyGate(eventIdValue: number): Promise<
         `UPDATE alerts
             SET resolved = true,
                 last_seen = NOW(),
-                root_cause = COALESCE(root_cause,'') || ' Accuracy gate: stronger event identity disproved a duplicate claim.' ,
+                root_cause = COALESCE(root_cause,'') || ' Accuracy gate: stronger event identity disproved a duplicate claim.',
                 raw = raw || $2::jsonb
           WHERE id = $1`,
-        [Number(alert.id), JSON.stringify({ accuracyGate: 'resolved', proof: classifyDuplicateProof({ currentParams: current.params || {}, previousParams: previous?.params || {}, sameOccurrence: Boolean(current.occurrence_id && previous?.occurrence_id && current.occurrence_id === previous.occurrence_id), deliveredNetworkCount: count, sameRequestSignature: Boolean(current.request_signature && previous?.request_signature && current.request_signature === previous.request_signature) }) })],
+        [Number(alert.id), JSON.stringify({ accuracyGate: 'resolved', proof })],
       );
     }
   }
 
   // Strong runtime fan-out: one logical occurrence generated >=2 successful
-  // network deliveries. This is the most defensible duplicate signal and is
-  // independent of heuristic request matching.
+  // network deliveries. This is the most defensible duplicate signal.
   if (current.observation_kind === 'network' && current.delivery_outcome === 'delivered' && current.occurrence_id) {
     const fanout = await query(
       `SELECT COUNT(*)::int AS count,
-              MIN(id)::bigint AS first_id,
               ARRAY_AGG(id ORDER BY received_at) AS ids
          FROM events
         WHERE site_id = $1
@@ -250,7 +246,7 @@ export async function applyDetectionAccuracyGate(eventIdValue: number): Promise<
         [Number(current.site_id), current.occurrence_id],
       );
       if (!exists.rowCount) {
-        const severity = highValue(current.event_name) || String(current.event_name || '').toLowerCase() === 'purchase' ? 'critical' : 'warning';
+        const severity = highValue(current.event_name) ? 'critical' : 'warning';
         await query(
           `INSERT INTO alerts(site_id,severity,code,category,vendor,event_name,message,root_cause,fix_steps,page_url,raw,occurrence_count,distinct_pushes,confidence,dedupe_key,notification_status,last_seen,distinct_sessions,distinct_pages,impact_updated_at)
            VALUES($1,$2,'gtm_multiple_tags_or_triggers','duplicate',$3,$4,$5,$6,$7::jsonb,$8,$9::jsonb,$10,$11,'confirmed',$12,'pending',NOW(),1,1,NOW())`,
