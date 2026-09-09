@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import AlertModal from './alert-modal';
-import { SeverityChip, timeAgo } from './ui';
+import { Pill, SeverityChip, timeAgo } from './ui';
 import { EventSessionChart, SourceLaneChart } from './event-analytics';
 import { eventDisplayName as friendlyEventDisplayName, eventTypeDisplay, plainAlertMessage } from './plain-language';
 
@@ -36,10 +36,10 @@ function platformIdentifierLabel(vendor: string) {
 }
 function ParameterHealth({ event }: { event: any }) {
   const missing = missingParameterNames(event);
-  if (missing.length) return <span className="pill bg-[#ff718d]/10 text-[#ff9aae]" title={`This action is missing: ${missing.join(', ')}`}>Missing: {missing.join(', ')}</span>;
+  if (missing.length) return <Pill tone="crit" dot={false} title={`This action is missing: ${missing.join(', ')}`}>Missing: {missing.join(', ')}</Pill>;
   const statuses = Array.isArray(event.parameter_statuses) ? event.parameter_statuses : [];
-  if (statuses.includes('complete')) return <span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">Complete</span>;
-  return <span className="text-xs text-slate-500">Not needed for this action</span>;
+  if (statuses.includes('complete')) return <Pill tone="ok" dot={false}>Complete</Pill>;
+  return <span className="text-xs text-[var(--text-3)]">Not needed for this action</span>;
 }
 
 export default function VendorView({ vendor, label, id }: { vendor: string; label: string; id: string | null }) {
@@ -61,8 +61,8 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
     }
   }, [siteId, vendor]);
 
-  if (!siteId) return <div className="text-slate-500 text-sm">Select a site to view {label} data.</div>;
-  if (!data) return <div className="text-slate-500 text-sm">Loading…</div>;
+  if (!siteId) return <div className="text-sm text-[var(--text-3)]">Select a site to view {label} data.</div>;
+  if (!data) return <div className="text-sm text-[var(--text-3)]">Loading…</div>;
 
   const events = data.events || [];
   const alerts = (data.alerts || []).filter((a: any) => !a.vendor || a.vendor === vendor);
@@ -78,31 +78,31 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
     <div className="fade-in">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">{label}</h2>
-          <p className="text-sm text-slate-400 mt-0.5">
+          <h2 className="font-display text-lg font-semibold text-[var(--text)]">{label}</h2>
+          <p className="mt-0.5 text-sm text-[var(--text-3)]">
             {id ? <>ID: <span className="mono">{id}</span> · </> : null}
-            <span className="text-[#a8f06a]">Tracking is active</span>
+            <span className="text-[var(--ok-fg)]">Tracking is active</span>
           </p>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-4 gap-4 mb-6">
-        <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
-          <div className="text-xs text-slate-500 uppercase">Actions seen (24h)</div>
-          <div className="text-2xl font-semibold mt-1">{totalEvents.toLocaleString()}</div>
+      <div className="mb-6 grid gap-4 md:grid-cols-4">
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="text-xs uppercase text-[var(--text-3)]">Actions seen (24h)</div>
+          <div className="mt-1 font-sans text-kpi leading-[1.1] text-[var(--text)]">{totalEvents.toLocaleString()}</div>
         </div>
-        <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
-          <div className="text-xs text-slate-500 uppercase">Different actions</div>
-          <div className="text-2xl font-semibold mt-1">{uniqueNames}</div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="text-xs uppercase text-[var(--text-3)]">Different actions</div>
+          <div className="mt-1 font-sans text-kpi leading-[1.1] text-[var(--text)]">{uniqueNames}</div>
         </div>
-        <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
-          <div className="text-xs text-slate-500 uppercase">Things to check</div>
-          <div className={`text-2xl font-semibold mt-1 ${errorCount ? 'text-[#ff718d]' : 'text-slate-100'}`}>{errorCount}</div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="text-xs uppercase text-[var(--text-3)]">Things to check</div>
+          <div className={`mt-1 font-sans text-kpi leading-[1.1] ${errorCount ? 'text-[var(--crit-fg)]' : 'text-[var(--text)]'}`}>{errorCount}</div>
         </div>
-        <div className="bg-[#111722] p-4 rounded-xl border border-white/[.08]">
-          <div className="text-xs text-slate-500 uppercase">Required details</div>
-          <div className={`text-2xl font-semibold mt-1 ${parameterSamples < 30 ? 'text-[#8fa8ff]' : parameterComplete === parameterSamples ? 'text-[#a8f06a]' : 'text-[#f6b94c]'}`}>{parameterHealth}</div>
-          <div className="text-xs text-slate-500 mt-1">Based on tracking actions seen</div>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="text-xs uppercase text-[var(--text-3)]">Required details</div>
+          <div className={`mt-1 font-sans text-kpi leading-[1.1] ${parameterSamples < 30 ? 'text-[var(--accent)]' : parameterComplete === parameterSamples ? 'text-[var(--ok-fg)]' : 'text-[var(--warn-fg)]'}`}>{parameterHealth}</div>
+          <div className="mt-1 text-xs text-[var(--text-3)]">Based on tracking actions seen</div>
         </div>
       </div>
 
@@ -111,46 +111,46 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
         <SourceLaneChart sources={data.sources || []} />
       </div>
 
-      <div className="bg-[#111722] rounded-xl border border-white/[.08] mb-6">
-        <div className="p-4 border-b border-white/[.06] flex items-center justify-between">
-          <h3 className="font-semibold text-slate-100">Actions we saw</h3>
-          <div className="text-xs text-slate-500">Most frequent first</div>
+      <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+        <div className="flex items-center justify-between border-b border-[var(--border-soft)] p-4">
+          <h3 className="font-display font-semibold text-[var(--text)]">Actions we saw</h3>
+          <div className="text-xs text-[var(--text-3)]">Most frequent first</div>
         </div>
         {events.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">No {label} activity yet. Add the GAfix tag to start seeing it here.</div>
+          <div className="p-8 text-center text-sm text-[var(--text-3)]">No {label} activity yet. Add the GAfix tag to start seeing it here.</div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="text-xs text-slate-400 uppercase bg-white/[.04]">
+            <thead className="bg-[var(--surface-2)] text-xs uppercase text-[var(--text-3)]">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">Action</th>
-                <th className="text-left px-4 py-2 font-medium">Kind of action</th>
-                <th className="text-left px-4 py-2 font-medium">Tag setup</th>
-                <th className="text-left px-4 py-2 font-medium">Required details</th>
-                <th className="text-right px-4 py-2 font-medium">Times seen</th>
-                <th className="text-right px-4 py-2 font-medium">Visitor sessions</th>
-                <th className="text-right px-4 py-2 font-medium">Response time</th>
-                <th className="text-right px-4 py-2 font-medium">Problems</th>
-                <th className="text-left px-4 py-2 font-medium">How it looks</th>
+                <th className="px-4 py-2 text-left font-medium">Action</th>
+                <th className="px-4 py-2 text-left font-medium">Kind of action</th>
+                <th className="px-4 py-2 text-left font-medium">Tag setup</th>
+                <th className="px-4 py-2 text-left font-medium">Required details</th>
+                <th className="px-4 py-2 text-right font-medium">Times seen</th>
+                <th className="px-4 py-2 text-right font-medium">Visitor sessions</th>
+                <th className="px-4 py-2 text-right font-medium">Response time</th>
+                <th className="px-4 py-2 text-right font-medium">Problems</th>
+                <th className="px-4 py-2 text-left font-medium">How it looks</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/[.06]">
+            <tbody className="divide-y divide-[var(--border-soft)]">
               {events.map((e: any, i: number) => {
                 const hasAlert = alerts.find((a: any) => a.event_name === e.event_name);
                 return (
-                  <tr key={i} className="hover:bg-white/[.04]">
-                    <td className="px-4 py-3 mono">{eventDisplayName(e, vendor)} {vendor === 'gads' && e.event_name && (e.conversion_label || e.conversion_id) ? <span className="block text-[10px] text-slate-500 not-italic">{e.conversion_label || 'Conversion'}{e.conversion_id ? ` · ${e.conversion_id}` : ''}</span> : null}{(['meta', 'linkedin', 'bing', 'snapchat'].includes(vendor)) && e.platform_id ? <span className="block text-[10px] text-slate-500 not-italic">{platformIdentifierLabel(vendor)}: {e.platform_id}</span> : null}</td>
-                    <td className="px-4 py-3 text-slate-400 capitalize">{eventTypeDisplay(e.event_type)}</td>
-                    <td className="px-4 py-3"><div className="max-w-[190px] truncate" title={tagSummary(e)}>{tagSummary(e)}</div>{e.gtm_trigger_names?.length ? <div className="text-[10px] text-slate-500 truncate max-w-[190px]" title={e.gtm_trigger_names.join(', ')}>Runs when: {e.gtm_trigger_names.join(', ')}</div> : null}</td>
+                  <tr key={i} className="hover:bg-[var(--surface-2)]">
+                    <td className="px-4 py-3 mono text-[var(--text)]">{eventDisplayName(e, vendor)} {vendor === 'gads' && e.event_name && (e.conversion_label || e.conversion_id) ? <span className="block text-[10px] text-[var(--text-3)] not-italic">{e.conversion_label || 'Conversion'}{e.conversion_id ? ` · ${e.conversion_id}` : ''}</span> : null}{(['meta', 'linkedin', 'bing', 'snapchat'].includes(vendor)) && e.platform_id ? <span className="block text-[10px] text-[var(--text-3)] not-italic">{platformIdentifierLabel(vendor)}: {e.platform_id}</span> : null}</td>
+                    <td className="px-4 py-3 text-[var(--text-3)] capitalize">{eventTypeDisplay(e.event_type)}</td>
+                    <td className="px-4 py-3"><div className="max-w-[190px] truncate text-[var(--text)]" title={tagSummary(e)}>{tagSummary(e)}</div>{e.gtm_trigger_names?.length ? <div className="max-w-[190px] truncate text-[10px] text-[var(--text-3)]" title={e.gtm_trigger_names.join(', ')}>Runs when: {e.gtm_trigger_names.join(', ')}</div> : null}</td>
                     <td className="px-4 py-3"><ParameterHealth event={e} /></td>
-                    <td className="px-4 py-3 text-right font-medium">{Number(e.cnt).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-slate-400">{Number(e.sessions || 0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right text-slate-400">{Number(e.avg_latency_ms || 0) ? `${Number(e.avg_latency_ms).toLocaleString()} ms` : 'Not available'}</td>
-                    <td className={`px-4 py-3 text-right ${Number(e.failed || 0) ? 'text-[#ff718d] font-medium' : 'text-slate-400'}`}>{Number(e.failed || 0) ? `${Number(e.failed || 0).toLocaleString()} problem${Number(e.failed || 0) === 1 ? '' : 's'}` : 'None'}</td>
+                    <td className="px-4 py-3 text-right font-medium text-[var(--text)]">{Number(e.cnt).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-[var(--text-3)]">{Number(e.sessions || 0).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-right text-[var(--text-3)]">{Number(e.avg_latency_ms || 0) ? `${Number(e.avg_latency_ms).toLocaleString()} ms` : 'Not available'}</td>
+                    <td className={`px-4 py-3 text-right ${Number(e.failed || 0) ? 'font-medium text-[var(--crit-fg)]' : 'text-[var(--text-3)]'}`}>{Number(e.failed || 0) ? `${Number(e.failed || 0).toLocaleString()} problem${Number(e.failed || 0) === 1 ? '' : 's'}` : 'None'}</td>
                     <td className="px-4 py-3">
                       {hasAlert ? (
-                        <span className="pill bg-[#f6b94c]/10 text-[#ffd27a]">Needs attention</span>
+                        <Pill tone="warn" dot={false}>Needs attention</Pill>
                       ) : (
-                        <span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">Looks good</span>
+                        <Pill tone="ok" dot={false}>Looks good</Pill>
                       )}
                     </td>
                   </tr>
@@ -162,23 +162,23 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
       </div>
 
       {alerts.length > 0 && (
-        <div className="bg-[#111722] rounded-xl border border-white/[.08]">
-          <div className="p-4 border-b border-white/[.06]">
-            <h3 className="font-semibold text-slate-100">Things to check for {label}</h3>
+        <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <div className="border-b border-[var(--border-soft)] p-4">
+            <h3 className="font-display font-semibold text-[var(--text)]">Things to check for {label}</h3>
           </div>
-          <div className="divide-y divide-white/[.06]">
+          <div className="divide-y divide-[var(--border-soft)]">
             {alerts.map((a: any) => (
               <button
                 key={a.id}
                 onClick={() => setSelectedAlert(a)}
-                className="w-full text-left p-4 hover:bg-white/[.04] flex items-center gap-4"
+                className="flex w-full items-center gap-4 p-4 text-left hover:bg-[var(--surface-2)]"
               >
                 <SeverityChip severity={a.severity} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-slate-100">{plainAlertMessage(a)}</div>
-                  {a.event_name && <div className="text-xs text-slate-400 mt-0.5">Action: {friendlyEventDisplayName(a.event_name)} <span className="mono text-slate-500">({a.event_name})</span></div>}
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-[var(--text)]">{plainAlertMessage(a)}</div>
+                  {a.event_name && <div className="mt-0.5 text-xs text-[var(--text-3)]">Action: {friendlyEventDisplayName(a.event_name)} <span className="mono text-[var(--text-3)]">({a.event_name})</span></div>}
                 </div>
-                <span className="text-xs text-slate-500">{timeAgo(a.created_at)}</span>
+                <span className="text-xs text-[var(--text-3)]">{timeAgo(a.created_at)}</span>
               </button>
             ))}
           </div>

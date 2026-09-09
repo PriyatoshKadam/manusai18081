@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 type Site = { id: number; domain: string; api_key?: string; first_party_domain?: string | null };
+type NavItem = { key: string; label: string; href: string; icon: () => JSX.Element; children?: { href: string; label: string }[] };
 
 export default function DashboardShell({
   children, email, sites,
@@ -13,22 +14,21 @@ export default function DashboardShell({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [siteId, setSiteId] = useState<number | null>(null);
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [themeReady, setThemeReady] = useState(false);
+  const [open, setOpen] = useState(true);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem('gafix-theme');
-    const next = saved === 'light' ? 'light' : 'dark';
-    setTheme(next);
-    document.documentElement.dataset.theme = next;
-    setThemeReady(true);
+    try {
+      const saved = window.localStorage.getItem('gafix-rail-open');
+      if (saved !== null) setOpen(saved === '1');
+    } catch {}
+    setReady(true);
   }, []);
 
   useEffect(() => {
-    if (!themeReady) return;
-    document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('gafix-theme', theme);
-  }, [theme, themeReady]);
+    if (!ready) return;
+    try { window.localStorage.setItem('gafix-rail-open', open ? '1' : '0'); } catch {}
+  }, [open, ready]);
 
   useEffect(() => {
     const qId = Number(searchParams.get('siteId') || 0);
@@ -50,126 +50,178 @@ export default function DashboardShell({
   }
 
   const currentSite = sites.find((s) => s.id === siteId);
-  const nav = [
-    { section: 'Monitoring', items: [
-      { href: '/dashboard', label: 'Overview', icon: iconGrid },
-      { href: '/dashboard/ga4', label: 'Google Analytics', badge: 'GA', badgeColor: 'bg-orange-500' },
-      { href: '/dashboard/ads', label: 'Google Ads', badge: 'Ad', badgeColor: 'bg-blue-500' },
-      { href: '/dashboard/meta', label: 'Meta tracking', badge: 'M', badgeColor: 'bg-blue-600' },
-      { href: '/dashboard/tiktok', label: 'TikTok tracking', badge: 'TT', badgeColor: 'bg-ink-950' },
-      { href: '/dashboard/linkedin', label: 'LinkedIn tracking', badge: 'in', badgeColor: 'bg-sky-700' },
-      { href: '/dashboard/bing', label: 'Microsoft Ads tracking', badge: 'B', badgeColor: 'bg-cyan-700' },
-      { href: '/dashboard/snapchat', label: 'Snapchat tracking', badge: 'S', badgeColor: 'bg-yellow-500' },
-    ]},
-    { section: 'Insights', items: [
-      { href: '/dashboard/sessions', label: 'Visitor sessions', icon: iconUsers },
-      { href: '/dashboard/revenue', label: 'Purchase impact', icon: iconChart },
-      { href: '/dashboard/vitals', label: 'Website speed', icon: iconPulse },
-    ]},
-    { section: 'Diagnostics', items: [
-      { href: '/dashboard/audit', label: 'Tracking check', icon: iconShield },
-      { href: '/dashboard/health', label: 'Tracking health', icon: iconShield },
-      { href: '/dashboard/duplicates', label: 'Possible repeats', icon: iconLayers },
-      { href: '/dashboard/gtm', label: 'Tag Manager checks', icon: iconLayers },
-      { href: '/dashboard/adblock', label: 'When tracking was blocked', icon: iconShield },
-      { href: '/dashboard/consent', label: 'Privacy choices', icon: iconLock },
-      { href: '/dashboard/compliance', label: 'Website safety', icon: iconShield },
-    ]},
-    { section: 'Setup', items: [
-      { href: '/dashboard/install', label: 'Install GAfix', icon: iconCode, highlight: true },
-      { href: '/dashboard/integrations', label: 'Alerts and data', icon: iconLink },
-      { href: '/dashboard/settings', label: 'Settings', icon: iconGear },
-    ]},
+  const withSite = (href: string) => href + (siteId ? `?siteId=${siteId}` : '');
+
+  const nav: NavItem[] = [
+    { key: 'home', label: 'Home', href: '/dashboard', icon: iconHome },
+    {
+      key: 'monitoring', label: 'Monitoring', href: '/dashboard', icon: iconMonitoring,
+      children: [
+        { href: '/dashboard/ga4', label: 'Google Analytics' },
+        { href: '/dashboard/ads', label: 'Google Ads' },
+        { href: '/dashboard/meta', label: 'Meta' },
+        { href: '/dashboard/tiktok', label: 'TikTok' },
+        { href: '/dashboard/linkedin', label: 'LinkedIn' },
+        { href: '/dashboard/bing', label: 'Microsoft Ads' },
+        { href: '/dashboard/snapchat', label: 'Snapchat' },
+        { href: '/dashboard/sessions', label: 'Visitor sessions' },
+        { href: '/dashboard/revenue', label: 'Purchase impact' },
+        { href: '/dashboard/vitals', label: 'Website speed' },
+      ],
+    },
+    {
+      key: 'audits', label: 'Audit Reports', href: '/dashboard/audit', icon: iconAudit,
+      children: [
+        { href: '/dashboard/audit', label: 'Tracking check' },
+        { href: '/dashboard/health', label: 'Tracking health' },
+        { href: '/dashboard/duplicates', label: 'Possible repeats' },
+        { href: '/dashboard/gtm', label: 'Tag setup check' },
+        { href: '/dashboard/adblock', label: 'When tracking was blocked' },
+        { href: '/dashboard/consent', label: 'Privacy choices' },
+        { href: '/dashboard/compliance', label: 'Website safety' },
+      ],
+    },
+    { key: 'alerts', label: 'Alerts', href: '/dashboard/alerts', icon: iconAlerts },
+    { key: 'billing', label: 'Billing', href: '/dashboard/billing', icon: iconBilling },
+    { key: 'plans', label: 'Plans', href: '/dashboard/plans', icon: iconPlans },
+    {
+      key: 'settings', label: 'Settings', href: '/dashboard/settings', icon: iconSettings,
+      children: [
+        { href: '/dashboard/settings', label: 'Websites' },
+        { href: '/dashboard/install', label: 'Install GAfix' },
+        { href: '/dashboard/integrations', label: 'Alerts and data' },
+      ],
+    },
+    { key: 'admin', label: 'Admin', href: '/dashboard/admin', icon: iconAdmin },
+    { key: 'users', label: 'User Management', href: '/dashboard/user-management', icon: iconUsers },
+    { key: 'help', label: 'Help Center', href: '/dashboard/help', icon: iconHelp },
   ];
 
-  return (
-    <div className={`dashboard-shell ${theme === 'dark' ? 'dashboard-dark' : 'dashboard-light'} min-h-screen`} data-theme={theme}>
-      <div className="flex">
-                  <aside className="w-64 h-screen bg-[#0b111b] border-r border-white/[.07] text-white flex flex-col fixed left-0 top-0 overflow-hidden shadow-2xl shadow-black/20">
+  const isActive = (item: NavItem) =>
+    pathname === item.href || (item.children ? item.children.some((c) => pathname === c.href) : false);
 
-          <div className="p-4 border-b border-white/10">
-            <Link href="/" className="flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5 shadow-sm shadow-black/20"><img src="/gafix-logo.png" alt="GAfix" className="h-full w-full object-contain" /></span>
-              <span><span className="block font-semibold tracking-tight text-white">GAfix<span className="text-[#ff9d18]">.</span></span><span className="mt-0.5 block text-[9px] uppercase tracking-[.18em] text-slate-500">Real-user intelligence</span></span>
-            </Link>
-          </div>
-          <div className="p-4">
+  return (
+    <div className="dashboard-shell min-h-screen" data-theme="light">
+      <div className="flex">
+        <aside
+          className="fixed left-0 top-0 z-20 flex h-screen flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--surface)] px-3 pb-3 pt-3.5 transition-[width] duration-200"
+          style={{ width: open ? 248 : 76 }}
+        >
+          <Link href="/" className={`mb-4 flex items-center gap-2 px-1 ${open ? '' : 'justify-center'}`}>
+            <span className="gafix-wordmark whitespace-nowrap">
+              <span className="gafix-wordmark-ga">GA</span>
+              <span className="text-[var(--text)]">fix</span>
+            </span>
+          </Link>
+
+          <div className="mb-2 px-0.5">
             {sites.length ? (
-              <select
-                value={siteId || ''}
-                onChange={(e) => switchSite(Number(e.target.value))}
-                className="w-full border border-white/[.09] rounded-xl px-3 py-2.5 text-sm bg-[#121b29] text-white outline-none focus:border-[#86a8ff]"
-              >
-                {sites.map((s) => (
-                  <option key={s.id} value={s.id}>{s.domain}</option>
-                ))}
-              </select>
+              open ? (
+                <select
+                  value={siteId || ''}
+                  onChange={(e) => switchSite(Number(e.target.value))}
+                  className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+                >
+                  {sites.map((s) => (
+                    <option key={s.id} value={s.id}>{s.domain}</option>
+                  ))}
+                </select>
+              ) : (
+                <div title={currentSite?.domain || 'Site'} className="mx-auto grid h-9 w-9 place-items-center rounded-[9px] border border-[var(--border-soft)] bg-[var(--surface-2)] text-[10px] font-bold text-[var(--text-2)]">
+                  {(currentSite?.domain || 'S').charAt(0).toUpperCase()}
+                </div>
+              )
             ) : (
-              <Link href="/dashboard/settings" className="block w-full text-center border border-dashed border-white/20 rounded-xl px-3 py-2.5 text-sm text-slate-300 hover:border-[#2f6bff] hover:text-[#86a8ff]">
-                + Add your first site
+              <Link href="/dashboard/settings" className={`block rounded-xl border border-dashed border-[var(--border-strong)] px-3 py-2.5 text-center text-sm text-[var(--text-3)] hover:border-[var(--accent)] hover:text-[var(--accent)] ${open ? '' : 'px-1 text-xs'}`}>
+                {open ? '+ Add your first site' : '+'}
               </Link>
             )}
           </div>
-          <nav className="min-h-0 px-2 py-2 space-y-1 flex-1 overflow-y-auto overscroll-contain">
-            {nav.map((sec) => (
-              <div key={sec.section}>
-                <div className="px-3 py-1 mt-5 text-[10px] font-bold text-slate-600 uppercase tracking-[.18em]">{sec.section}</div>
-                {sec.items.map((item: any) => {
-                  const active = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href + (siteId ? `?siteId=${siteId}` : '')}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center gap-2 transition ${
-                        active
-                          ? 'bg-gradient-to-r from-[#2f6bff]/30 to-transparent text-white font-semibold ring-1 ring-[#86a8ff]/25 shadow-[inset_3px_0_0_#2f6bff]'
-                          : item.highlight
-                          ? 'text-[#86a8ff] hover:bg-[#2f6bff]/10 font-semibold'
-                          : 'text-slate-300 hover:bg-white/10 hover:text-white'
-                      }`}
-                    >
-                      {item.icon ? item.icon() : (
-                        <span className={`w-4 h-4 rounded ${item.badgeColor} text-white text-[9px] font-bold flex items-center justify-center`}>{item.badge}</span>
-                      )}
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </div>
-            ))}
+
+          <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain py-1">
+            {nav.map((item, index) => {
+              const active = isActive(item);
+              return (
+                <div key={item.key}>
+                  {index === 6 ? <div className="my-2 h-px w-full bg-[var(--border)]" /> : null}
+                  <Link
+                    href={withSite(item.href)}
+                    title={item.label}
+                    className="flex h-11 items-center gap-[11px] rounded-rail px-3 text-[13.5px] font-medium transition-colors duration-150"
+                    style={{
+                      background: active ? 'var(--tint)' : 'transparent',
+                      color: active ? 'var(--accent)' : 'var(--text-2)',
+                      justifyContent: open ? 'flex-start' : 'center',
+                    }}
+                    onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                    onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+                  >
+                    {item.icon()}
+                    {open ? <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span> : null}
+                  </Link>
+                  {open && item.children && active ? (
+                    <div className="ml-[19px] mt-0.5 flex flex-col gap-0.5 border-l border-[var(--border)] pl-3">
+                      {item.children.map((child) => (
+                        <Link
+                          key={child.href}
+                          href={withSite(child.href)}
+                          className="truncate rounded-lg px-2 py-1.5 text-[12.5px] transition-colors"
+                          style={{
+                            color: pathname === child.href ? 'var(--text)' : 'var(--text-3)',
+                            fontWeight: pathname === child.href ? 600 : 500,
+                            background: pathname === child.href ? 'var(--surface-3)' : 'transparent',
+                          }}
+                        >
+                          {child.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
           </nav>
-          <div className="m-3 rounded-xl border border-[#a8f06a]/15 bg-[#a8f06a]/[.05] p-3"><div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[.15em] text-[#b9f57e]"><span className="dot bg-[#a8f06a]" /> Collector active</div><div className="mt-1 text-[10px] leading-relaxed text-slate-500">GAfix is watching visitor actions and checking whether tracking gets through.</div></div>
-          <div className="p-3 border-t border-white/[.07] flex items-center gap-2">
-            <div className="w-9 h-9 rounded-full bg-[#2f6bff] text-white font-bold text-sm flex items-center justify-center">
+
+          <div
+            onClick={() => setOpen(!open)}
+            className="mb-1 flex h-[38px] cursor-pointer items-center gap-[11px] rounded-[10px] px-3 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-2)] hover:text-[var(--text)]"
+            style={{ justifyContent: open ? 'flex-start' : 'center' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ transform: `rotate(${open ? 180 : 0}deg)`, transition: 'transform 200ms ease' }}><path d="M9 6l6 6-6 6" /></svg>
+            {open ? <span className="whitespace-nowrap text-[12.5px]">Collapse</span> : null}
+          </div>
+
+          <div className={`flex items-center gap-2 border-t border-[var(--border-soft)] pt-3 ${open ? '' : 'justify-center'}`}>
+            <div className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[var(--accent)] text-sm font-bold text-white">
               {email.charAt(0).toUpperCase()}
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate text-white">{email}</div>
-              <button onClick={logout} className="text-xs text-slate-500 hover:text-white">Sign out</button>
-            </div>
+            {open ? (
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium text-[var(--text)]">{email}</div>
+                <button onClick={logout} className="text-xs text-[var(--text-3)] hover:text-[var(--text)]">Sign out</button>
+              </div>
+            ) : null}
           </div>
         </aside>
 
-        <main className="dashboard-main-grid flex-1 min-h-screen min-w-0 ml-64">
-          <div className="h-[72px] border-b border-white/[.07] bg-[#0b111b]/90 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30 backdrop-blur-xl">
+        <main className="dashboard-main-grid min-h-screen min-w-0 flex-1 transition-[margin] duration-200" style={{ marginLeft: open ? 248 : 76 }}>
+          <div className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-6 backdrop-blur lg:px-8">
             <div className="flex items-center gap-3">
-              <div><p className="text-[10px] font-bold uppercase tracking-[.18em] text-[#86a8ff]">GAfix command center</p><h1 className="mt-0.5 font-semibold tracking-tight text-white">{pageTitle(pathname)}</h1></div>
+              <div>
+                <p className="dashboard-eyebrow">GAfix command center</p>
+                <h1 className="mt-0.5 font-display text-[17px] font-semibold tracking-tight text-[var(--text)]">{pageTitle(pathname)}</h1>
+              </div>
               {currentSite && (
-                <><span className="dashboard-top-control"><span className="dot bg-[#a8f06a]" /> <strong>Live</strong> · last 24 hours</span><span className="pill bg-[#a8f06a]/10 text-[#b9f57e]">
-                  <span className="dot bg-green-500"></span>Live
-                </span></>
+                <span className="dashboard-top-control"><span className="status-dot" style={{ background: 'var(--ok-dot)' }} /> <strong>Live</strong> · last 24 hours</span>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <button type="button" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`} aria-pressed={theme === 'light'} className="dashboard-top-control theme-toggle">
-                <span aria-hidden="true">{theme === 'dark' ? '☼' : '◐'}</span><strong>{theme === 'dark' ? 'Light' : 'Dark'}</strong>
-              </button>
               {currentSite && (
-                <span className="dashboard-top-control"><span className="text-slate-500">Site</span><strong className="mono">{currentSite.domain}</strong></span>
+                <span className="dashboard-top-control"><span className="text-[var(--text-3)]">Site</span><strong className="mono">{currentSite.domain}</strong></span>
               )}
             </div>
           </div>
-          <div className="dashboard-gridline min-h-[calc(100vh-72px)] p-5 lg:p-8">{children}</div>
+          <div className="dashboard-gridline min-h-[calc(100vh-64px)] bg-[var(--canvas)] p-5 lg:p-8">{children}</div>
         </main>
       </div>
     </div>
@@ -178,7 +230,7 @@ export default function DashboardShell({
 
 function pageTitle(path: string) {
   const titles: Record<string, string> = {
-    '/dashboard': 'Overview',
+    '/dashboard': 'Home',
     '/dashboard/ga4': 'Google Analytics',
     '/dashboard/ads': 'Google Ads',
     '/dashboard/meta': 'Meta tracking',
@@ -189,10 +241,10 @@ function pageTitle(path: string) {
     '/dashboard/sessions': 'Visitor sessions',
     '/dashboard/revenue': 'Purchase impact',
     '/dashboard/vitals': 'Website speed',
-    '/dashboard/audit': 'Tracking check',
+    '/dashboard/audit': 'Audit Reports',
     '/dashboard/health': 'Tracking health',
     '/dashboard/duplicates': 'Possible repeats',
-    '/dashboard/gtm': 'Tag Manager checks',
+    '/dashboard/gtm': 'Tag setup check',
     '/dashboard/adblock': 'When tracking was blocked',
     '/dashboard/consent': 'Privacy choices',
     '/dashboard/compliance': 'Website safety',
@@ -200,18 +252,24 @@ function pageTitle(path: string) {
     '/dashboard/gtm-connect': 'Connect Tag Manager',
     '/dashboard/integrations': 'Alerts and data',
     '/dashboard/settings': 'Settings',
+    '/dashboard/alerts': 'Alerts',
+    '/dashboard/billing': 'Billing',
+    '/dashboard/plans': 'Plans',
+    '/dashboard/admin': 'Admin',
+    '/dashboard/user-management': 'User Management',
+    '/dashboard/help': 'Help Center',
   };
   return titles[path] || 'Dashboard';
 }
 
-// icons
-function iconGrid() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>); }
-function iconLayers() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>); }
-function iconShield() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 14.14 14.14"/></svg>); }
-function iconLock() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>); }
-function iconCode() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>); }
-function iconLink() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>); }
-function iconUsers() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>); }
-function iconChart() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 3v18h18"/><path d="m7 16 4-5 3 3 5-7"/></svg>); }
-function iconPulse() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>); }
-function iconGear() { return (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>); }
+// icons — outline style, stroke-width 1.8, round caps (matching the mockup's rail icon set)
+function iconHome() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V20h13V9.5" /><path d="M9.75 20v-5.5h4.5V20" /></svg>); }
+function iconMonitoring() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M2.5 12.5h4l2.2-6 3.4 12 2.6-8.4 1.6 2.4h5.2" /></svg>); }
+function iconAudit() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M6 2.75h8L18.5 7.5v13.75H6z" /><path d="M13.5 3v5h5" /><path d="M9 12.5h6M9 16h4" /></svg>); }
+function iconAlerts() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M18 15.5V10a6 6 0 1 0-12 0v5.5L4.5 18h15z" /><path d="M9.8 18a2.2 2.2 0 0 0 4.4 0" /></svg>); }
+function iconBilling() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" className="flex-none"><rect x="2.5" y="5" width="19" height="14" rx="2.5" /><path d="M2.5 9.75h19" /><path d="M6 14.5h4" /></svg>); }
+function iconPlans() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" className="flex-none"><rect x="3.25" y="3.25" width="7" height="7" rx="1.6" /><rect x="13.75" y="3.25" width="7" height="7" rx="1.6" /><rect x="3.25" y="13.75" width="7" height="7" rx="1.6" /><rect x="13.75" y="13.75" width="7" height="7" rx="1.6" /></svg>); }
+function iconSettings() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>); }
+function iconAdmin() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="12" cy="12" r="2.9" /><path d="M19.1 14.6a1.6 1.6 0 0 0 .32 1.77l.06.06a1.9 1.9 0 1 1-2.7 2.7l-.05-.06a1.6 1.6 0 0 0-1.78-.32 1.6 1.6 0 0 0-.97 1.46v.17a1.9 1.9 0 1 1-3.8 0v-.09a1.6 1.6 0 0 0-1.05-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a1.9 1.9 0 1 1-2.7-2.7l.06-.05a1.6 1.6 0 0 0 .32-1.78 1.6 1.6 0 0 0-1.46-.97H2.2a1.9 1.9 0 1 1 0-3.8h.09a1.6 1.6 0 0 0 1.46-1.05 1.6 1.6 0 0 0-.32-1.77l-.06-.06a1.9 1.9 0 1 1 2.7-2.7l.05.06a1.6 1.6 0 0 0 1.78.32h.08a1.6 1.6 0 0 0 .97-1.46V2.3a1.9 1.9 0 1 1 3.8 0v.09a1.6 1.6 0 0 0 .97 1.46 1.6 1.6 0 0 0 1.78-.32l.05-.06a1.9 1.9 0 1 1 2.7 2.7l-.06.05a1.6 1.6 0 0 0-.32 1.78v.08a1.6 1.6 0 0 0 1.46.97h.17a1.9 1.9 0 1 1 0 3.8h-.09a1.6 1.6 0 0 0-1.46.97z" /></svg>); }
+function iconUsers() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="9" cy="8.5" r="3.2" /><path d="M3.2 20c.7-3.2 3.1-4.8 5.8-4.8s5.1 1.6 5.8 4.8" /><path d="M16.2 6.2a3 3 0 0 1 0 5.6M17.6 20c-.2-1.4-.6-2.6-1.3-3.6 2.3.2 4 1.7 4.5 3.6z" /></svg>); }
+function iconHelp() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="12" cy="12" r="9.2" /><path d="M9.4 9.3a2.7 2.7 0 1 1 3.7 2.5c-.8.34-1.1.9-1.1 1.7v.3" /><path d="M12 17.1h.01" /></svg>); }

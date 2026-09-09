@@ -24,7 +24,7 @@ export function ScoreRing({ value, label, detail, tone = 'lime' }: { value: numb
   const safe = value === null || Number.isNaN(value) ? 0 : Math.max(0, Math.min(100, Number(value)));
   const radius = 42;
   const circumference = 2 * Math.PI * radius;
-  const colors = { lime: '#a8f06a', blue: '#6d8cff', amber: '#f6b94c', rose: '#ff718d' };
+  const colors = { lime: '#16A34A', blue: '#4F46E5', amber: '#F59E0B', rose: '#DC2626' };
   return <div className="score-ring-card"><div className="score-ring"><svg viewBox="0 0 108 108" aria-label={`${label}: ${value === null ? 'collecting' : `${safe}%`}`}><circle cx="54" cy="54" r={radius} className="score-ring-track" /><circle cx="54" cy="54" r={radius} className="score-ring-value" style={{ stroke: colors[tone], strokeDasharray: circumference, strokeDashoffset: circumference - (safe / 100) * circumference }} /></svg><div className="score-ring-number">{value === null ? '—' : `${safe}`}<small>{value === null ? '' : '%'}</small></div></div><div className="score-ring-label">{label}</div><div className="score-ring-detail">{detail}</div></div>;
 }
 
@@ -33,7 +33,7 @@ export function MiniTrend({ values, tone = 'blue', height = 34 }: { values: numb
   const min = Math.min(...values, 0);
   const max = Math.max(...values, 1);
   const points = values.map((value, index) => `${(index / Math.max(values.length - 1, 1)) * width},${height - ((value - min) / Math.max(max - min, 1)) * (height - 4)}`).join(' ');
-  const stroke: Record<string, string> = { blue: '#6d8cff', lime: '#a8f06a', amber: '#f6b94c', rose: '#ff718d', violet: '#b18cff' };
+  const stroke: Record<string, string> = { blue: '#4F46E5', lime: '#16A34A', amber: '#F59E0B', rose: '#DC2626', violet: '#6E63F2' };
   return <svg className="mini-trend" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true"><polyline points={points} fill="none" stroke={stroke[tone] || stroke.blue} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
