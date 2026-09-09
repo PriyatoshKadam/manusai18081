@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '../../../lib/db';
 import { classifyEvent, ParsedEvent, processPersistedEvent } from '../../../lib/detection';
+import { applyDetectionAccuracyGate } from '../../../lib/detection-accuracy';
 import { assertBodySize, parseIngestBody } from '../../../lib/ingest-validation';
 import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { recordComplianceEvidence } from '../../../lib/compliance';
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest) {
         };
         void recordComplianceEvidence(parsed, { domain: site.domain, firstPartyDomain: site.first_party_domain });
         await processPersistedEvent(parsed);
+        await applyDetectionAccuracyGate(parsed.eventId);
         processedCount += 1;
       } catch (error) {
         console.error('ingest event processing error:', error);
