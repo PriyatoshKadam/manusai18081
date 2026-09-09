@@ -53,13 +53,15 @@ describe('plain-language dashboard copy', () => {
 });
 
 describe('critical plain-language UI contracts', () => {
-  it('keeps the dashboard routes and key customer phrases present', () => {
+  it('keeps the requested primary dashboard routes present', () => {
     const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
     const shell = read('app/dashboard/shell.tsx');
     const install = read('app/dashboard/install/page.tsx');
     const adblock = read('app/dashboard/adblock/page.tsx');
-    expect(shell).toContain("label: 'Possible repeats'");
-    expect(shell).toContain("label: 'Website speed'");
+    expect(shell).toContain("label: 'Dashboard'");
+    expect(shell).toContain("label: 'Alerts'");
+    expect(shell).toContain("label: 'GTM Diagnostic'");
+    expect(shell).toContain("label: 'Settings'");
     expect(install).toContain('Never use both methods.');
     expect(adblock).toContain('not as proof of ad blocking');
   });
