@@ -23,15 +23,16 @@ describe('Slack and repeated-event regressions', () => {
     expect(duplicates).toContain("'gtm_and_direct_implementation'");
   });
 
-  it('exposes a customer-facing action center and delivery status', () => {
+  it('keeps the customer dashboard focused on the requested platform destinations', () => {
     const page = read('app/dashboard/page.tsx');
-    expect(page).toContain('Your action list');
-    expect(page).toContain('Alert delivery');
-    expect(page).toContain('/api/alert-deliveries');
-    expect(page).toContain('Recent tracking actions');
-    expect(page).toContain('collapseActionItems');
-    expect(page).toContain('Triggered');
-    expect(page).toContain('Last seen');
+    expect(page).toContain('Tracking overview');
+    expect(page).toContain("vendor: 'ga4'");
+    expect(page).toContain("vendor: 'gads'");
+    expect(page).toContain("vendor: 'meta'");
+    expect(page).toContain("vendor: 'bing'");
+    expect(page).toContain("vendor: 'tiktok'");
+    expect(page).toContain("vendor: 'linkedin'");
+    expect(page).toContain("vendor: 'snapchat'");
   });
 
   it('keeps detection SQL parameters type-stable for alert upserts', () => {
