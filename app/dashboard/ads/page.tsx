@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import VendorView from '../vendor-view';
+import VendorView from '../vendor-view-pdf';
 
 export default function AdsPage() {
   const search = useSearchParams();
