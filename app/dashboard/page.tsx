@@ -1,142 +1,31 @@
 'use client';
 
-export const dynamic = 'force-dynamic';
-
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import AlertModal from './alert-modal';
-import { Pill, SeverityChip, formatDateTime, timeAgo } from './ui';
-import { CommandKpi, DashboardSection, EvidenceRail, EventHeatmap, ScoreRing } from './command-visuals';
-import { eventDisplayName, plainAlertMessage, plainStatus, vendorDisplayName } from './plain-language';
-import MonitoringCommandCenter from './monitoring-command-center';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
-export default function OverviewPage() {
-  const search = useSearchParams();
-  const siteId = search.get('siteId');
-  const [data, setData] = useState<any>(null);
-  const [selectedAlert, setSelectedAlert] = useState<any>(null);
-  const [error, setError] = useState('');
+const platforms = [
+  { href: '/dashboard/ga4', vendor: 'ga4', name: 'Google Analytics', short: 'GA4', description: 'Events, parameters, pages, consent and delivery.' },
+  { href: '/dashboard/ads', vendor: 'gads', name: 'Google Ads', short: 'Google Ads', description: 'Conversions, tags, delivery and consent.' },
+  { href: '/dashboard/meta', vendor: 'meta', name: 'Meta', short: 'Meta', description: 'Pixel events, deduplication and delivery.' },
+  { href: '/dashboard/bing', vendor: 'bing', name: 'Microsoft Ads', short: 'Microsoft Ads', description: 'UET events, conversions and delivery.' },
+  { href: '/dashboard/tiktok', vendor: 'tiktok', name: 'TikTok', short: 'TikTok', description: 'Events, parameters and delivery health.' },
+  { href: '/dashboard/linkedin', vendor: 'linkedin', name: 'LinkedIn', short: 'LinkedIn', description: 'Insight events, parameters and consent.' },
+  { href: '/dashboard/snapchat', vendor: 'snapchat', name: 'Snapchat', short: 'Snapchat', description: 'Pixel events, parameters and delivery.' },
+];
 
-  useEffect(() => {
-    if (!siteId) return;
-    let active = true;
-    async function load() {
-      try {
-        const qs = `siteId=${encodeURIComponent(siteId)}`;
-        const fetchJson = async (path: string, fallback: any) => {
-          try {
-            const response = await fetch(path, { cache: 'no-store' });
-            const body = await response.json();
-            if (!response.ok) throw new Error(body.error || `${path} failed`);
-            return body;
-          } catch (cause) {
-            if (active) setError(cause instanceof Error ? cause.message : `${path} unavailable`);
-            return fallback;
-          }
-        };
-        const [overview, health, duplicates, deliveries] = await Promise.all([
-          fetchJson(`/api/events?${qs}`, { stats: {}, events: [], alerts: [], flow: [], blockedFlow: [] }),
-          fetchJson(`/api/tag-health?${qs}`, { health: [], anomalies: [], revenue: [], compliance: [], performance: [] }),
-          fetchJson(`/api/duplicates?${qs}`, { duplicates: [] }),
-          fetchJson(`/api/alert-deliveries?${qs}`, { deliveries: [] }),
-        ]);
-        if (active) { setData({ ...overview, ...health, ...duplicates, ...deliveries }); setError(''); }
-      } catch (cause) {
-        if (active) setError(cause instanceof Error ? cause.message : 'Live monitoring unavailable');
-      }
-    }
-    load();
-    const timer = setInterval(load, 10000);
-    return () => { active = false; clearInterval(timer); };
-  }, [siteId]);
+type Summary = { total_event_hits: number; event_total: number; parameter_number: number; successful_network_events: number; failed_network_events: number };
+const fetchJson = (url: string) => fetch(url, { cache: 'no-store' }).then(async (response) => { if (!response.ok) throw new Error(`Request failed: ${response.status}`); return response.json(); });
 
-  if (!siteId) return <EmptyState />;
-  if (!data) return <div className="text-sm text-slate-500">Loading live evidence…</div>;
-
-  const stats = data.stats || {};
-  const alerts = data.alerts || [];
-  const health = data.health || [];
-  const duplicates = data.duplicates || [];
-  const retries = data.retries || [];
-  const deliveries = data.deliveries || [];
-  const events = data.events || [];
-  const scoredHealth = health.filter((row: any) => row.health_score !== null && row.health_score !== undefined);
-  const avgHealth = scoredHealth.length ? Math.round(scoredHealth.reduce((sum: number, row: any) => sum + Number(row.health_score), 0) / scoredHealth.length) : null;
-  const failed = health.reduce((sum: number, row: any) => sum + Number(row.failures || 0), 0);
-  const deliveryFailures = deliveries.filter((item: any) => item.status === 'failed').length;
-  const repeated = duplicates.filter((item: any) => ['login', 'run_audit'].includes(String(item.event_name || '').toLowerCase()));
-  const actions = collapseActionItems([...duplicates.slice(0, 12), ...alerts.slice(0, 12)]).slice(0, 4);
-  const totalSessions = Number(stats.sessions_24h || 0);
-  const totalFires = events.reduce((sum: number, row: any) => sum + Number(row.cnt || 0), 0);
-  const minSampleSize = 30;
-  const avgEventsPerSession = totalSessions >= minSampleSize ? (totalFires / totalSessions).toFixed(1) : '—';
-  const detectionCoverage = stats.detection_coverage_pct == null ? 'Collecting' : `${Number(stats.detection_coverage_pct).toFixed(1)}%`;
-
-  return <div className="fade-in mx-auto max-w-[1500px] space-y-7">
-    <section className="relative overflow-hidden rounded-[1.35rem] border border-[var(--border)] bg-[var(--surface)] p-6 shadow-sm lg:p-8">
-      <div className="absolute -right-20 -top-32 h-80 w-80 rounded-full bg-[var(--accent)]/[.06] blur-3xl" />
-      <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-[var(--ok-dot)]/[.06] blur-3xl" />
-      <div className="relative grid gap-8 lg:grid-cols-[1fr_220px] lg:items-center">
-        <div><div className="dashboard-eyebrow">Live visitor tracking · Last 24 hours</div><h2 className="mt-3 max-w-3xl font-display text-3xl font-semibold leading-tight tracking-tight text-[var(--text)] lg:text-h1">Know when your tracking needs attention.</h2><p className="mt-4 max-w-2xl text-sm leading-6 text-[var(--text-2)]">GAfix checks what visitors did, whether your tracking fired, where it was sent, and whether it arrived successfully.</p><div className="mt-6 flex flex-wrap items-center gap-2"><span className="dashboard-top-control"><span className="status-dot" style={{ background: 'var(--ok-dot)' }} /> Tracking is active</span><span className="dashboard-top-control"><strong>{number(totalSessions)}</strong> visitor sessions checked</span><span className="dashboard-top-control"><strong>{number(totalFires)}</strong> tracking actions seen</span></div></div>
-        <ScoreRing value={avgHealth} label="Tracking health" detail={avgHealth === null ? 'Still collecting data' : avgHealth >= 95 ? 'Tracking looks healthy' : 'Worth checking'} />
-      </div>
-    </section>
-
-    {error && <div className="rounded-xl border border-[var(--warn-bd)] bg-[var(--warn-bg)] p-3 text-sm text-[var(--warn-fg)]">Some live data could not be refreshed: {error}</div>}
-
-    <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
-      <CommandKpi label="Tracking actions per hour" value={number(stats.events_hour)} note={`${number(stats.events_24h)} seen in the last 24 hours`} tone="blue" />
-      <CommandKpi label="Actions per visitor session" value={avgEventsPerSession} note={totalSessions < minSampleSize ? `Collecting (${totalSessions}/${minSampleSize} sessions)` : 'Across visitor sessions'} tone="violet" />
-      <CommandKpi label="Tracking actions with problems" value={number(failed)} note="Could not be confirmed as received" tone={failed ? 'rose' : 'lime'} />
-      <CommandKpi label="Possible repeat tracking" value={number(duplicates.length)} note={`${number(repeated.length)} repeat-sensitive events · ${number(retries.length)} automatic retries not counted`} tone={duplicates.length ? 'amber' : 'lime'} />
-      <CommandKpi label="Data processing coverage" value={detectionCoverage} note={`${number(stats.detection_failures_24h)} items GAfix could not finish checking`} tone={stats.detection_failures_24h ? 'rose' : 'blue'} />
-      <CommandKpi label="Alert delivery problems" value={number(deliveryFailures)} note="Slack, email, and webhook alerts" tone={deliveryFailures ? 'rose' : 'lime'} />
-    </div>
-
-    <MonitoringCommandCenter siteId={siteId} stats={stats} events={events} alerts={alerts} health={health} flow={data.flow || []} blockedFlow={data.blockedFlow || []} duplicates={duplicates} />
-
-    <section className="grid gap-5 xl:grid-cols-[1.35fr_.65fr]">
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:p-6"><DashboardSection eyebrow="Visitor activity" title="What is happening on your website?" description="See which tracking actions happen most often and how many visitor sessions include them." /><EventHeatmap events={events} /></div>
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:p-6"><DashboardSection eyebrow="Needs attention" title="Things worth checking" description="GAfix puts the most important tracking issues first." action={<Link href={`/dashboard/duplicates?siteId=${siteId}`} className="text-xs font-semibold text-[var(--accent)]">See possible repeats →</Link>} /><EvidenceRail items={actions} /></div>
-    </section>
-
-
-    <section className="grid gap-5 xl:grid-cols-[1.25fr_.75fr]">
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:p-6"><DashboardSection eyebrow="Your action list" title="What to do next" description="Open an issue to see the cause and suggested next steps." action={<Link href={`/dashboard/health?siteId=${siteId}`} className="text-xs font-semibold text-[var(--accent)]">See all tracking health →</Link>} />{actions.length ? <div className="divide-y divide-[var(--border-soft)]">{actions.map((item: any, index: number) => <button key={`${item.id}-${index}`} onClick={() => setSelectedAlert(item.sourceType === 'alert' ? item : { ...item, severity: 'warning' })} className="flex w-full items-start gap-3 py-3 text-left transition hover:bg-[var(--surface-2)]"><SeverityChip severity={item.severity || 'warning'} /><div className="min-w-0 flex-1"><div className="text-sm font-medium text-[var(--text)]">{plainAlertMessage(item)}</div><div className="mt-1 text-xs text-[var(--text-3)]">{item.event_name ? eventDisplayName(item.event_name) : item.vendor ? vendorDisplayName(item.vendor) : 'Tracking'} · {item.occurrence_count || 0} tracking actions seen{item.incidentCount > 1 ? ` · ${item.incidentCount} related issues` : ''}</div><div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--text-3)]"><span>Triggered {formatDateTime(item.created_at || item.first_seen || item.last_seen)}</span>{item.last_seen && item.last_seen !== (item.created_at || item.first_seen) ? <span>Last seen {formatDateTime(item.last_seen)}</span> : null}</div></div><span className="whitespace-nowrap text-xs text-[var(--text-3)]">{timeAgo(item.last_seen || item.created_at)}</span></button>)}</div> : <div className="empty-visual">Nothing needs your attention right now. GAfix is continuing to watch your tracking.</div>}</div>
-      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:p-6"><DashboardSection eyebrow="Alert delivery" title="Are alerts reaching your team?" description="Check whether Slack, email, and webhooks are working." action={<Link href={`/dashboard/integrations?siteId=${siteId}`} className="text-xs font-semibold text-[var(--accent)]">Manage alerts →</Link>} /><div className="space-y-2">{['slack', 'email', 'webhook'].map((channel) => { const last = deliveries.find((item: any) => item.channel === channel); return <div key={channel} className="flex items-center justify-between border-b border-[var(--border-soft)] py-3 last:border-0"><span className="text-sm capitalize text-[var(--text-2)]">{channel}</span>{last ? <Pill tone={last.status === 'delivered' ? 'ok' : last.status === 'failed' ? 'crit' : 'warn'}>{plainStatus(last.status)}</Pill> : <span className="text-xs text-[var(--text-3)]">No alerts sent yet</span>}</div>; })}</div><div className="mt-5 rounded-xl border border-[var(--border)] bg-[var(--tint)] p-3 text-xs leading-5 text-[var(--text-2)]">Failed alerts are tried again and remain visible here. Important issues can be sent immediately; lower-priority issues are grouped into the daily summary.</div></div>
-    </section>
-
-    <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 lg:p-6"><DashboardSection eyebrow="Recent tracking activity" title="Recent tracking actions" description="Each row summarizes what GAfix recently saw on your website." action={<Link href={`/dashboard/ga4?siteId=${siteId}`} className="text-xs font-semibold text-[var(--accent)]">See tracking details →</Link>} /><div className="overflow-x-auto"><table className="w-full min-w-[650px] text-sm"><thead className="border-b border-[var(--border)] text-[10px] uppercase tracking-[.12em] text-[var(--text-3)]"><tr><th className="p-3 text-left">Action</th><th className="p-3 text-left">Tracking tool</th><th className="p-3 text-right">Times seen</th><th className="p-3 text-right">Visitor sessions</th><th className="p-3 text-right">Problems</th><th className="p-3 text-right">Average response time</th></tr></thead><tbody className="divide-y divide-[var(--border-soft)]">{events.slice(0, 12).map((event: any, i: number) => <tr key={`${event.event_name}-${event.vendor}-${i}`} className="transition hover:bg-[var(--surface-2)]"><td className="p-3 font-mono text-[var(--text)]">{eventDisplayName(event.event_name)}</td><td className="p-3 text-xs text-[var(--text-3)]">{vendorDisplayName(event.vendor)}</td><td className="p-3 text-right font-medium text-[var(--text)]">{number(event.cnt)}</td><td className="p-3 text-right text-[var(--text-2)]">{number(event.sessions)}</td><td className={`p-3 text-right ${Number(event.failed || 0) ? 'font-medium text-[var(--crit-fg)]' : 'text-[var(--text-3)]'}`}>{Number(event.failed || 0) ? `${number(event.failed)} problem${Number(event.failed) === 1 ? '' : 's'}` : 'None'}</td><td className="p-3 text-right text-[var(--text-2)]">{Number(event.avg_latency_ms || 0) ? `${number(event.avg_latency_ms)} ms` : 'Not available'}</td></tr>)}</tbody></table></div></section>
-
-    <AlertModal alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
-  </div>;
+export default function DashboardPage() {
+  const params = useSearchParams();
+  const siteId = Number(params.get('siteId') || 0);
+  const [summary, setSummary] = useState<Record<string, Summary>>({});
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { if (!siteId) return; let cancelled = false; setLoading(true); Promise.all(platforms.map(async (platform) => { try { const data = await fetchJson(`/api/platform-insights?siteId=${siteId}&vendor=${platform.vendor}`); return [platform.vendor, data.overview as Summary] as const; } catch { return [platform.vendor, null] as const; } })).then((rows) => { if (!cancelled) setSummary(Object.fromEntries(rows.filter((row): row is readonly [string, Summary] => Boolean(row[1])))); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [siteId]);
+  const totals = Object.values(summary).reduce((acc, row) => ({ hits: acc.hits + row.total_event_hits, events: acc.events + row.event_total, issues: acc.issues + row.failed_network_events }), { hits: 0, events: 0, issues: 0 });
+  return <div className="mx-auto max-w-[1440px] space-y-6"><section><div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="dashboard-eyebrow">All platforms</p><h2 className="mt-1 font-display text-3xl font-semibold tracking-tight text-[var(--text)]">Tracking overview</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--text-2)]">Open a platform to inspect its events, parameters, pages, consent, ad blockers and AI crawler activity.</p></div><div className="flex gap-2"><Metric label="Event hits" value={totals.hits}/><Metric label="Event types" value={totals.events}/><Metric label="Delivery issues" value={totals.issues}/></div></div></section><section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{platforms.map((platform) => { const row = summary[platform.vendor]; return <Link key={platform.vendor} href={`${platform.href}?siteId=${siteId}`} className="group rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5 shadow-[var(--shadow)] transition hover:-translate-y-0.5 hover:border-[var(--border-strong)]"><div className="flex items-start justify-between gap-4"><div><div className="flex items-center gap-2"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[var(--mon-tint)] text-xs font-bold text-[var(--mon-fg)]">{platform.short.slice(0, 2).toUpperCase()}</span><h3 className="font-semibold text-[var(--text)]">{platform.name}</h3></div><p className="mt-3 text-sm leading-5 text-[var(--text-2)]">{platform.description}</p></div><span className="text-[var(--text-3)] transition group-hover:translate-x-0.5">→</span></div><div className="mt-5 grid grid-cols-3 gap-2 border-t border-[var(--border-soft)] pt-4">{loading && !row ? <><MiniSkeleton/><MiniSkeleton/><MiniSkeleton/></> : <><MiniStat label="Hits" value={row?.total_event_hits ?? 0}/><MiniStat label="Events" value={row?.event_total ?? 0}/><MiniStat label="Issues" value={row?.failed_network_events ?? 0}/></>}</div></Link>; })}</section></div>;
 }
-
-function collapseActionItems(items: any[]) {
-  const grouped = new Map<string, any>();
-  for (const item of items) {
-    const key = `${String(item.event_name || item.vendor || 'signal').trim().toLowerCase()}:${String(item.vendor || '').trim().toLowerCase()}`;
-    const existing = grouped.get(key);
-    if (!existing) {
-      grouped.set(key, { ...item, incidentCount: 1 });
-      continue;
-    }
-    existing.incidentCount += 1;
-    existing.occurrence_count = Math.max(Number(existing.occurrence_count || 0), Number(item.occurrence_count || 0));
-    const existingLast = new Date(existing.last_seen || existing.created_at || 0).getTime();
-    const itemLast = new Date(item.last_seen || item.created_at || 0).getTime();
-    if (itemLast > existingLast) {
-      existing.last_seen = item.last_seen || item.created_at;
-      existing.created_at = item.created_at || item.last_seen;
-      existing.message = item.message || existing.message;
-      existing.raw = item.raw || existing.raw;
-    }
-    const existingFirst = new Date(existing.first_seen || existing.created_at || 0).getTime();
-    const itemFirst = new Date(item.first_seen || item.created_at || 0).getTime();
-    if (itemFirst && (!existingFirst || itemFirst < existingFirst)) existing.first_seen = item.first_seen || item.created_at;
-  }
-  return [...grouped.values()].sort((a, b) => new Date(b.last_seen || b.created_at || 0).getTime() - new Date(a.last_seen || a.created_at || 0).getTime());
-}
-function number(value: unknown) { return Number(value || 0).toLocaleString(); }
-function EmptyState() { return <div className="mx-auto max-w-lg py-20 text-center"><div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-[var(--tint)] text-[var(--accent)]"><span className="text-2xl">✦</span></div><h2 className="font-display text-xl font-semibold text-[var(--text)]">Add your first site to get started</h2><p className="mt-2 text-sm leading-6 text-[var(--text-2)]">Connect one GTM monitor tag and see every fire, failure, duplicate, consent decision, and delivery path in one command center.</p><Link href="/dashboard/settings" className="mt-6 inline-flex rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[var(--accent-hover)]">Add a site</Link></div>; }
+function Metric({ label, value }: { label: string; value: number }) { return <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5"><div className="text-[10px] font-bold uppercase tracking-[0.12em] text-[var(--text-3)]">{label}</div><div className="mt-0.5 text-lg font-semibold text-[var(--text)]">{value.toLocaleString()}</div></div>; }
+function MiniStat({ label, value }: { label: string; value: number }) { return <div><div className="text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--text-3)]">{label}</div><div className="mt-1 text-sm font-semibold text-[var(--text)]">{value.toLocaleString()}</div></div>; }
+function MiniSkeleton() { return <div className="h-10 animate-pulse rounded-lg bg-[var(--surface-2)]" />; }

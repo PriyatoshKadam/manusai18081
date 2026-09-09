@@ -7,6 +7,7 @@ import { rateLimit, requestKey } from '../../../lib/rate-limit';
 import { recordComplianceEvidence } from '../../../lib/compliance';
 import { classifyDeliveryMode } from '../../../lib/delivery';
 import { correlateEventWithGtm } from '../../../lib/gtm-inventory';
+import { classifyAiUserAgent } from '../../../lib/ai-bot';
 import type { GtmInventory } from '../../../lib/gtm-inventory';
 
 export const runtime = 'nodejs';
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
     const site = siteResult.rows[0];
     if (!site) return json({ ok: false, error: 'Invalid telemetry credentials' }, 401);
 
+    const userAgent = req.headers.get('user-agent')?.slice(0, 2048) || null;
+    const aiBot = classifyAiUserAgent(userAgent);
     let processedCount = 0;
     const inventoryCache = new Map<string, GtmInventory | null>();
     for (const event of body.events) {
@@ -68,8 +71,8 @@ export async function POST(req: NextRequest) {
           `INSERT INTO events
              (site_id, vendor, event_name, event_type, page_url, client_id, params, raw_url, dl_push_index, source,
               observation_kind, session_id, occurrence_id, network_occurrence_id, request_signature, transport, origin_source,
-              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, beacon_accepted, delivery_outcome, consent_state, web_vitals, revenue_value, revenue_currency, revenue_value_status, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic, gtm_tag_id, gtm_tag_name, gtm_trigger_name, gtm_workspace_id, gtm_correlation_confidence, missing_parameters, observed_parameters, parameter_status)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'observed',$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40::jsonb,$41::jsonb,$42)
+              gtm_container_id, navigation_id, delivery_status, status_code, latency_ms, failure_reason, beacon_accepted, delivery_outcome, consent_state, web_vitals, revenue_value, revenue_currency, revenue_value_status, transaction_id, resource_domain, resource_type, delivery_mode, is_synthetic, gtm_tag_id, gtm_tag_name, gtm_trigger_name, gtm_workspace_id, gtm_correlation_confidence, missing_parameters, observed_parameters, parameter_status, user_agent, ai_bot_name, ai_bot_operator, ai_bot_purpose)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'observed',$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$40::jsonb,$41::jsonb,$42,$43,$44,$45,$46)
            RETURNING id, received_at`,
           [
             site.id, event.vendor, event.eventName, classifyEvent(event.eventName, event.vendor), event.pageUrl, event.clientId,
@@ -78,6 +81,7 @@ export async function POST(req: NextRequest) {
             event.gtmContainerId, event.navigationId, event.statusCode, event.latencyMs, event.failureReason, event.beaconAccepted, event.deliveryOutcome,
             JSON.stringify(event.consentState), JSON.stringify(event.webVitals), event.revenueValue, event.revenueCurrency, event.revenueValueStatus, event.transactionId, event.resourceDomain, event.resourceType, deliveryMode, event.isSynthetic,
             enrichment.tagId, enrichment.tagName, enrichment.triggerName, enrichment.workspaceId, enrichment.confidence, JSON.stringify(enrichment.missingParameters), JSON.stringify(enrichment.observedParameters), enrichment.parameterStatus,
+            userAgent, aiBot?.name || null, aiBot?.operator || null, aiBot?.purpose || null,
           ],
         );
         const dbEvent = inserted.rows[0];
