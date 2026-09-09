@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import VendorView from '../vendor-view';
+import VendorView from '../vendor-view-pdf';
 
 export default function SnapchatPage() {
   const search = useSearchParams();
@@ -21,7 +21,9 @@ export default function SnapchatPage() {
         const site = data.sites?.find((item: any) => item.id === Number(siteId));
         if (!cancelled) setId(site?.snapchat_pixel_id || null);
       })
-      .catch(() => { if (!cancelled) setId(null); });
+      .catch(() => {
+        if (!cancelled) setId(null);
+      });
     return () => { cancelled = true; };
   }, [siteId]);
 
