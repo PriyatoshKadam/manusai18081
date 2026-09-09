@@ -1,3 +1,4 @@
+import { describe, expect, it } from 'vitest';
 import { evaluateConsentAudit } from './consent-audit';
 
 describe('evaluateConsentAudit', () => {
