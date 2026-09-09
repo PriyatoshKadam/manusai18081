@@ -10,7 +10,7 @@ const platforms = [
   { href: '/dashboard/ga4', label: 'Google Analytics', vendor: 'ga4' },
   { href: '/dashboard/ads', label: 'Google Ads', vendor: 'gads' },
   { href: '/dashboard/meta', label: 'Meta', vendor: 'meta' },
-  { href: '/dashboard/bing', label: 'Microsoft Ads', vendor: 'microsoft' },
+  { href: '/dashboard/bing', label: 'Microsoft Ads', vendor: 'bing' },
   { href: '/dashboard/tiktok', label: 'TikTok', vendor: 'tiktok' },
   { href: '/dashboard/linkedin', label: 'LinkedIn', vendor: 'linkedin' },
   { href: '/dashboard/snapchat', label: 'Snapchat', vendor: 'snapchat' },
@@ -61,48 +61,7 @@ export default function DashboardShell({ children, email, sites }: { children: R
     { href: '/dashboard/settings', label: 'Settings', icon: 'settings' as const, active: pathname.startsWith('/dashboard/settings') },
   ];
 
-  return <div className="dashboard-shell min-h-screen" data-theme="light">
-    <div className="flex">
-      <aside className="fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 pb-3 pt-4 transition-[width] duration-200" style={{ width: open ? 254 : 76 }}>
-        <Link href={withSite('/dashboard')} className={`mb-5 flex items-center px-2 ${open ? '' : 'justify-center'}`}>
-          <span className="gafix-wordmark whitespace-nowrap"><span className="gafix-wordmark-ga">GA</span><span className="text-[var(--text)]">fix</span></span>
-        </Link>
-        <div className="mb-4 px-1">
-          {sites.length ? <select value={siteId || ''} onChange={(event) => switchSite(Number(event.target.value))} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]">{sites.map((site) => <option key={site.id} value={site.id}>{site.domain}</option>)}</select> : <Link href="/dashboard/settings" className="block rounded-xl border border-dashed border-[var(--border-strong)] px-3 py-2 text-center text-sm text-[var(--text-3)]">{open ? '+ Add your first site' : '+'}</Link>}
-        </div>
-        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
-          {nav.map((item) => <div key={item.href}>
-            <Link href={withSite(item.href)} title={item.label} className="flex h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold transition-colors" style={{ background: item.active ? 'var(--mon-tint)' : 'transparent', color: item.active ? 'var(--mon-fg)' : 'var(--text-2)', justifyContent: open ? 'flex-start' : 'center' }}>
-              {icon(item.icon)}{open ? <span>{item.label}</span> : null}
-            </Link>
-          </div>)}
-          {open && (pathname === '/dashboard' || platformActive) ? <div className="mt-2 border-t border-[var(--border-soft)] pt-3">
-            <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-3)]">Platforms</p>
-            <div className="space-y-0.5">{platforms.map((platform) => <Link key={platform.vendor} href={withSite(platform.href)} className="block rounded-lg px-3 py-2 text-[12px] font-medium transition-colors" style={{ color: pathname === platform.href ? 'var(--text)' : 'var(--text-3)', background: pathname === platform.href ? 'var(--surface-3)' : 'transparent' }}>{platform.label}</Link>)}</div>
-          </div> : null}
-        </nav>
-        <button type="button" onClick={() => setOpen((value) => !value)} className="mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-[var(--text-3)] hover:bg-[var(--surface-2)]" style={{ justifyContent: open ? 'flex-start' : 'center' }} aria-label="Toggle sidebar"><span style={{ transform: `rotate(${open ? 180 : 0}deg)`, display: 'inline-flex' }}>›</span>{open ? <span className="text-xs">Collapse</span> : null}</button>
-        <div className={`flex items-center gap-2 border-t border-[var(--border-soft)] pt-3 ${open ? '' : 'justify-center'}`}>
-          <div className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[var(--mon)] text-sm font-bold text-white">{email.charAt(0).toUpperCase()}</div>
-          {open ? <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[var(--text)]">{email}</div><button onClick={logout} className="text-xs text-[var(--text-3)] hover:text-[var(--text)]">Sign out</button></div> : null}
-        </div>
-      </aside>
-      <main className="dashboard-main-grid min-h-screen min-w-0 flex-1 transition-[margin] duration-200" style={{ marginLeft: open ? 254 : 76 }}>
-        <div className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-6 backdrop-blur lg:px-8">
-          <div><p className="dashboard-eyebrow">GAfix monitoring</p><h1 className="mt-0.5 font-display text-[17px] font-semibold tracking-tight text-[var(--text)]">{pageTitle(pathname)}</h1></div>
-          {currentSite ? <span className="dashboard-top-control"><span className="status-dot" style={{ background: 'var(--ok-dot)' }} /> <strong>Live</strong> · {currentSite.domain}</span> : null}
-        </div>
-        <div className="dashboard-gridline min-h-[calc(100vh-64px)] bg-[var(--canvas)] p-5 lg:p-8">{children}</div>
-      </main>
-    </div>
-  </div>;
+  return <div className="dashboard-shell min-h-screen" data-theme="light"><div className="flex"><aside className="fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 pb-3 pt-4 transition-[width] duration-200" style={{ width: open ? 254 : 76 }}><Link href={withSite('/dashboard')} className={`mb-5 flex items-center px-2 ${open ? '' : 'justify-center'}`}><span className="gafix-wordmark whitespace-nowrap"><span className="gafix-wordmark-ga">GA</span><span className="text-[var(--text)]">fix</span></span></Link><div className="mb-4 px-1">{sites.length ? <select value={siteId || ''} onChange={(event) => switchSite(Number(event.target.value))} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]">{sites.map((site) => <option key={site.id} value={site.id}>{site.domain}</option>)}</select> : <Link href="/dashboard/settings" className="block rounded-xl border border-dashed border-[var(--border-strong)] px-3 py-2 text-center text-sm text-[var(--text-3)]">{open ? '+ Add your first site' : '+'}</Link>}</div><nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">{nav.map((item) => <Link key={item.href} href={withSite(item.href)} title={item.label} className="flex h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold transition-colors" style={{ background: item.active ? 'var(--mon-tint)' : 'transparent', color: item.active ? 'var(--mon-fg)' : 'var(--text-2)', justifyContent: open ? 'flex-start' : 'center' }}>{icon(item.icon)}{open ? <span>{item.label}</span> : null}</Link>)}{open && (pathname === '/dashboard' || platformActive) ? <div className="mt-2 border-t border-[var(--border-soft)] pt-3"><p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-3)]">Platforms</p><div className="space-y-0.5">{platforms.map((platform) => <Link key={platform.vendor} href={withSite(platform.href)} className="block rounded-lg px-3 py-2 text-[12px] font-medium transition-colors" style={{ color: pathname === platform.href ? 'var(--text)' : 'var(--text-3)', background: pathname === platform.href ? 'var(--surface-3)' : 'transparent' }}>{platform.label}</Link>)}</div></div> : null}</nav><button type="button" onClick={() => setOpen((value) => !value)} className="mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-[var(--text-3)] hover:bg-[var(--surface-2)]" style={{ justifyContent: open ? 'flex-start' : 'center' }} aria-label="Toggle sidebar"><span style={{ transform: `rotate(${open ? 180 : 0}deg)`, display: 'inline-flex' }}>›</span>{open ? <span className="text-xs">Collapse</span> : null}</button><div className={`flex items-center gap-2 border-t border-[var(--border-soft)] pt-3 ${open ? '' : 'justify-center'}`}><div className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[var(--mon)] text-sm font-bold text-white">{email.charAt(0).toUpperCase()}</div>{open ? <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[var(--text)]">{email}</div><button onClick={logout} className="text-xs text-[var(--text-3)] hover:text-[var(--text)]">Sign out</button></div> : null}</div></aside><main className="dashboard-main-grid min-h-screen min-w-0 flex-1 transition-[margin] duration-200" style={{ marginLeft: open ? 254 : 76 }}><div className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-6 backdrop-blur lg:px-8"><div><p className="dashboard-eyebrow">GAfix monitoring</p><h1 className="mt-0.5 font-display text-[17px] font-semibold tracking-tight text-[var(--text)]">{pageTitle(pathname)}</h1></div>{currentSite ? <span className="dashboard-top-control"><span className="status-dot" style={{ background: 'var(--ok-dot)' }} /> <strong>Live</strong> · {currentSite.domain}</span> : null}</div><div className="dashboard-gridline min-h-[calc(100vh-64px)] bg-[var(--canvas)] p-5 lg:p-8">{children}</div></main></div></div>;
 }
 
-function pageTitle(path: string) {
-  if (path === '/dashboard') return 'Dashboard';
-  if (path === '/dashboard/alerts') return 'Alerts';
-  if (path.startsWith('/dashboard/gtm')) return 'GTM Diagnostic';
-  if (path.startsWith('/dashboard/settings')) return 'Settings';
-  const platform = platforms.find((item) => item.href === path);
-  return platform?.label || 'Dashboard';
-}
+function pageTitle(path: string) { if (path === '/dashboard') return 'Dashboard'; if (path === '/dashboard/alerts') return 'Alerts'; if (path.startsWith('/dashboard/gtm')) return 'GTM Diagnostic'; if (path.startsWith('/dashboard/settings')) return 'Settings'; const platform = platforms.find((item) => item.href === path); return platform?.label || 'Dashboard'; }
