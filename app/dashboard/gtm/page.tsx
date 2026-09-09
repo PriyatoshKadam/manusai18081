@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import AlertModal from '../alert-modal';
 import { SeverityChip, timeAgo } from '../ui';
 import { DataLayerProvenance, EventSessionChart, SourceLaneChart } from '../event-analytics';
@@ -10,7 +11,26 @@ export default function GtmDiagnosticsPage() {
   const search = useSearchParams();
   const siteId = search.get('siteId');
   const [data, setData] = useState<any>(null);
+  const [inventory, setInventory] = useState<any>(null);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState('');
   const [selected, setSelected] = useState<any>(null);
+
+  async function loadInventory() {
+    if (!siteId) return;
+    setInventoryLoading(true);
+    setInventoryError('');
+    try {
+      const response = await fetch(`/api/gtm/inventory?siteId=${encodeURIComponent(siteId)}`, { cache: 'no-store' });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body?.error || 'Unable to load GTM inventory');
+      setInventory(body?.snapshot || null);
+    } catch (error) {
+      setInventoryError(error instanceof Error ? error.message : 'Unable to load GTM inventory');
+    } finally {
+      setInventoryLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!siteId) return;
@@ -22,6 +42,7 @@ export default function GtmDiagnosticsPage() {
       } catch {}
     }
     load();
+    loadInventory();
     const timer = setInterval(load, 8000);
     return () => { cancelled = true; clearInterval(timer); };
   }, [siteId]);
@@ -34,6 +55,11 @@ export default function GtmDiagnosticsPage() {
   const dataLayer = data.dataLayer || [];
   const sources = data.sources || [];
   const provenance = data.provenance || [];
+  const tags = Array.isArray(inventory?.tags) ? inventory.tags : [];
+  const triggers = Array.isArray(inventory?.triggers) ? inventory.triggers : [];
+  const variables = Array.isArray(inventory?.variables) ? inventory.variables : [];
+  const tagById = new Map(tags.map((tag: any) => [String(tag.tagId), tag]));
+  const triggerById = new Map(triggers.map((trigger: any) => [String(trigger.triggerId), trigger]));
 
   return (
     <div className="fade-in max-w-6xl space-y-6">
@@ -41,6 +67,27 @@ export default function GtmDiagnosticsPage() {
         <h2 className="text-lg font-semibold text-ink-950">Tag Manager checks</h2>
         <p className="text-sm text-ink-500 mt-1">GAfix compares website actions, Tag Manager triggers, sent requests, and direct tracking to find setup conflicts.</p>
       </div>
+
+      <section className="bg-white rounded-xl border border-ink-200 p-5">
+        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
+          <div>
+            <h3 className="font-semibold text-ink-950">GTM Connection &amp; Script Setup</h3>
+            <p className="text-sm text-ink-500 mt-1">Connect the Google account, choose the GTM container and workspace, review the monitor script, and publish only after explicit confirmation.</p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              {inventory ? <span className="px-2.5 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">GTM inventory connected</span> : <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">GTM inventory not connected</span>}
+              {inventory?.account_id && <span className="px-2.5 py-1 rounded-full bg-ink-50 text-ink-600 border border-ink-200">Account {inventory.account_id}</span>}
+              {inventory?.container_id && <span className="px-2.5 py-1 rounded-full bg-ink-50 text-ink-600 border border-ink-200">Container {inventory.container_id}</span>}
+              {inventory?.workspace_id && <span className="px-2.5 py-1 rounded-full bg-ink-50 text-ink-600 border border-ink-200">Workspace {inventory.workspace_id}</span>}
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <button type="button" onClick={loadInventory} disabled={inventoryLoading} className="px-3 py-2 rounded-lg border border-ink-200 text-sm font-medium text-ink-700 hover:bg-ink-50 disabled:opacity-50">{inventoryLoading ? 'Refreshing…' : 'Refresh GTM data'}</button>
+            <Link href={`/dashboard/gtm-connect?siteId=${encodeURIComponent(siteId)}`} className="px-3 py-2 rounded-lg bg-ink-950 text-white text-sm font-medium hover:bg-ink-800">Open GTM setup</Link>
+          </div>
+        </div>
+        {inventoryError && <div className="mt-4 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">{inventoryError} <Link className="underline ml-1" href={`/dashboard/gtm-connect?siteId=${encodeURIComponent(siteId)}`}>Connect GTM</Link></div>}
+        {!inventory && !inventoryError && <div className="mt-4 rounded-lg bg-ink-50 border border-ink-100 px-3 py-2 text-sm text-ink-500">No saved GTM workspace inventory yet. Open GTM setup to connect an account and select a container/workspace.</div>}
+      </section>
 
       <div className="grid md:grid-cols-4 gap-4">
         {[
@@ -55,6 +102,18 @@ export default function GtmDiagnosticsPage() {
           </div>
         ))}
       </div>
+
+      {inventory && <section className="bg-white rounded-xl border border-ink-200">
+        <div className="p-4 border-b border-ink-100 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <div><h3 className="font-semibold text-ink-950">Connected GTM tags &amp; triggers</h3><p className="text-xs text-ink-500 mt-1">Live inventory from the selected GTM workspace. Trigger relationships are shown for each tag.</p></div>
+          <span className="text-xs text-ink-400">Fetched {inventory.fetched_at ? timeAgo(inventory.fetched_at) : 'recently'}</span>
+        </div>
+        <div className="grid md:grid-cols-3 gap-3 p-4 border-b border-ink-100">
+          {[['Tags', tags.length], ['Triggers', triggers.length], ['Variables', variables.length]].map(([label, value]) => <div key={String(label)} className="rounded-lg bg-ink-50 p-3"><div className="text-xs uppercase text-ink-400">{label}</div><div className="text-xl font-semibold text-ink-950 mt-1">{Number(value).toLocaleString()}</div></div>)}
+        </div>
+        {tags.length === 0 ? <div className="p-6 text-sm text-ink-400">No tags were returned for this workspace.</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead className="bg-ink-50 text-xs text-ink-500 uppercase"><tr><th className="text-left px-4 py-2">Tag</th><th className="text-left px-4 py-2">Type</th><th className="text-left px-4 py-2">Firing trigger</th><th className="text-left px-4 py-2">Tag ID</th></tr></thead><tbody className="divide-y divide-ink-100">{tags.map((tag: any) => { const triggerIds = Array.isArray(tag.firingTriggerIds) ? tag.firingTriggerIds : []; return <tr key={String(tag.tagId || tag.name)}><td className="px-4 py-3 font-medium text-ink-950">{tag.name || '(unnamed tag)'}</td><td className="px-4 py-3 text-ink-600">{tag.type || '—'}</td><td className="px-4 py-3">{triggerIds.length ? <div className="flex flex-wrap gap-1">{triggerIds.map((id: any) => <span key={String(id)} className="px-2 py-1 rounded bg-blue-50 text-blue-800 text-xs">{triggerById.get(String(id))?.name || String(id)}</span>)}</div> : <span className="text-ink-400">None</span>}</td><td className="px-4 py-3 mono text-xs text-ink-500">{tag.tagId || '—'}</td></tr>; })}</tbody></table></div>}
+        {triggers.length > 0 && <div className="p-4 border-t border-ink-100"><h4 className="text-sm font-semibold text-ink-950 mb-2">Triggers</h4><div className="grid md:grid-cols-2 gap-2">{triggers.map((trigger: any) => <div key={String(trigger.triggerId || trigger.name)} className="rounded-lg border border-ink-100 p-3"><div className="text-sm font-medium text-ink-900">{trigger.name || '(unnamed trigger)'}</div><div className="text-xs text-ink-500 mt-1">{trigger.type || '—'} · {trigger.triggerId || '—'}</div></div>)}</div></div>}
+      </section>}
 
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-5">
         <h3 className="font-semibold text-blue-950">How to check a tracking problem</h3>
