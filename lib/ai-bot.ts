@@ -4,9 +4,7 @@ export type AiBotMatch = {
   purpose: 'training' | 'search' | 'assistant' | 'agent';
 };
 
-// Keep this list intentionally conservative: a match is only returned for a known
-// crawler/agent signature, not for generic strings such as "bot" or "crawler".
-// Sources are based on Cloudflare Radar's current bot directory/reference.
+// Conservative allow-list: generic crawlers/search spiders are deliberately excluded.
 const AI_BOTS: Array<{ name: string; operator: string; purpose: AiBotMatch['purpose']; patterns: RegExp[] }> = [
   { name: 'GPTBot', operator: 'OpenAI', purpose: 'training', patterns: [/\bgptbot\b/i] },
   { name: 'OAI-SearchBot', operator: 'OpenAI', purpose: 'search', patterns: [/\boai-searchbot\b/i] },
@@ -18,14 +16,10 @@ const AI_BOTS: Array<{ name: string; operator: string; purpose: AiBotMatch['purp
   { name: 'Bytespider', operator: 'ByteDance', purpose: 'training', patterns: [/\bbytespider\b/i] },
   { name: 'Meta-ExternalAgent', operator: 'Meta', purpose: 'training', patterns: [/\bmeta-externalagent\b/i] },
   { name: 'Meta-ExternalFetcher', operator: 'Meta', purpose: 'assistant', patterns: [/\bmeta-externalfetcher\b/i] },
-  { name: 'FacebookBot', operator: 'Meta', purpose: 'training', patterns: [/\bfacebookbot\b/i] },
   { name: 'Amazonbot', operator: 'Amazon', purpose: 'training', patterns: [/\bamazonbot\b/i] },
   { name: 'Google-CloudVertexBot', operator: 'Google', purpose: 'training', patterns: [/\bgoogle-cloudvertexbot\b/i] },
-  { name: 'GoogleOther', operator: 'Google', purpose: 'training', patterns: [/\bgoogleother\b/i] },
-  { name: 'Applebot', operator: 'Apple', purpose: 'search', patterns: [/\bapplebot\b/i] },
   { name: 'DuckAssistBot', operator: 'DuckDuckGo', purpose: 'assistant', patterns: [/\bduckassistbot\b/i] },
   { name: 'MistralAI-User', operator: 'Mistral', purpose: 'assistant', patterns: [/\bmistralai-user\b/i] },
-  { name: 'CCBot', operator: 'Common Crawl', purpose: 'training', patterns: [/\bccbot\b/i] },
   { name: 'Cloudflare-AI-Search', operator: 'Cloudflare', purpose: 'search', patterns: [/\bcloudflare-ai-search\b/i] },
 ];
 
