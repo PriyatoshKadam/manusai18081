@@ -85,7 +85,7 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
   const blocked = data.blocked || data.blocked_events || [];
   const parameterRows = events.filter((event: any) => Array.isArray(event.parameter_statuses) && event.parameter_statuses.some((status: string) => ['complete', 'missing'].includes(status)));
   const tabs = [
-    { key: 'events', label: `Events`, count: events.length },
+    { key: 'events', label: 'Events', count: events.length },
     { key: 'details', label: 'Event details', count: parameterRows.length },
     { key: 'pages', label: 'Pages', count: pages.length },
     { key: 'consent', label: 'Consent', count: consent.length },
@@ -203,18 +203,10 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
           </div>
         ) : null}
 
-        {tab === 'details' ? (
-          <DetailTab events={parameterRows} vendor={vendor} />
-        ) : null}
-        {tab === 'pages' ? (
-          <SimpleDataTable title="Pages" description="Which pages are sending data correctly, and which are not." rows={pages} columns={['page_name', 'events', 'sessions', 'note']} empty="No page-level evidence is available yet." />
-        ) : null}
-        {tab === 'consent' ? (
-          <SimpleDataTable title="Consent" description="Whether visitors’ cookie consent choices are being tracked and respected." rows={consent} columns={['status', 'sessions', 'event_name', 'note']} empty="No consent evidence is available yet." />
-        ) : null}
-        {tab === 'adblocks' ? (
-          <SimpleDataTable title="Ad blockers" description="How many visitors have blockers, which can hide some of your data." rows={blocked} columns={['event_name', 'blocked', 'sessions', 'note']} empty="No blocker evidence is available yet." />
-        ) : null}
+        {tab === 'details' ? <DetailTab events={parameterRows} vendor={vendor} /> : null}
+        {tab === 'pages' ? <SimpleDataTable title="Pages" description="Which pages are sending data correctly, and which are not." rows={pages} columns={['page_name', 'events', 'sessions', 'note']} empty="No page-level evidence is available yet." /> : null}
+        {tab === 'consent' ? <SimpleDataTable title="Consent" description="Whether visitors’ cookie consent choices are being tracked and respected." rows={consent} columns={['status', 'sessions', 'event_name', 'note']} empty="No consent evidence is available yet." /> : null}
+        {tab === 'adblocks' ? <SimpleDataTable title="Ad blockers" description="How many visitors have blockers, which can hide some of your data." rows={blocked} columns={['event_name', 'blocked', 'sessions', 'note']} empty="No blocker evidence is available yet." /> : null}
       </section>
 
       <section className="mt-5 grid gap-5 xl:grid-cols-2">
