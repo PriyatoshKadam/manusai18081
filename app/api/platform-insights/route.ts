@@ -38,9 +38,6 @@ export async function GET(req: NextRequest) {
       `SELECT
         COUNT(DISTINCT ${occurrenceKey})::int AS total_event_hits,
         COUNT(DISTINCT LOWER(COALESCE(event_name, '')))::int AS event_total,
-        COUNT(DISTINCT NULLIF(jsonb_array_elements_text(${nonEmptyJsonArray('observed_parameters')}), ''))::int AS parameter_number,
-        COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS recent_rows,
-        COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND detection_status = 'scored')::int AS scored_rows,
         COUNT(DISTINCT session_id)::int AS sessions,
         COUNT(*) FILTER (WHERE ${delivered})::int AS successful_network_events,
         COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome IN ('http_error','blocked','beacon_rejected','network_error','aborted','timeout'))::int AS failed_network_events
@@ -93,7 +90,7 @@ export async function GET(req: NextRequest) {
          FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '24 hours'${vendorClause}
          GROUP BY COALESCE(NULLIF(page_url, ''), ''), NULLIF(session_id, '')
        )
-       SELECT page_url, COUNT(*) FILTER (WHERE page_url <> '')::int AS sessions,
+       SELECT page_url, COUNT(*)::int AS sessions,
               SUM(events)::int AS events,
               ROUND(AVG(EXTRACT(EPOCH FROM (last_seen - first_seen))))::int AS session_duration_seconds
        FROM session_pages
@@ -207,7 +204,10 @@ export async function GET(req: NextRequest) {
       cmp: cmp ? { name: cmp[0], observations: cmp[1], detected: true } : { name: 'Not detected', observations: 0, detected: false },
       consentMode: { detected: consentModeDetected, sessions: Number(consent.rows[0]?.consent_mode_sessions || 0), signalSessions: consentSignalSessions, signalPct },
       choiceRecorded: { sessions: choiceSessions, totalSessions, percent: choicePct, status: choicePct === null ? 'Collecting evidence' : `${choicePct}% of observed sessions` },
-      eventsOutsideConsent: consentEvents.rows.map((row: any) => ({ status: 'Review', event_name: row.event_name || 'Unnamed event', vendor: row.vendor, compliant: row.vendor === 'ga4' ? true : false, gtm_tag_name: row.gtm_tag_name, gtm_trigger_name: row.gtm_trigger_name, page_url: row.page_url, consent_state: row.consent_state || {}, notes: row.vendor === 'ga4' ? 'Google Consent Mode can legitimately send cookieless measurement when analytics_storage is denied; review the consent mode state rather than treating the request itself as a violation.' : 'Vendor activity was observed while a consent storage signal was denied. Verify the vendor is configured with an appropriate consent check.' })),
+      eventsOutsideConsent: consentEvents.rows.map((row: any) => {
+        const compliant = row.vendor === 'ga4' ? consentModeDetected : false;
+        return { status: compliant ? 'Compliant' : 'Needs review', event_name: row.event_name || 'Unnamed event', vendor: row.vendor, compliant, gtm_tag_name: row.gtm_tag_name, gtm_trigger_name: row.gtm_trigger_name, page_url: row.page_url, consent_state: row.consent_state || {}, notes: compliant ? 'Google Consent Mode was detected; denied storage can result in cookieless measurement rather than a consent violation.' : 'A vendor event was observed while a consent storage signal was denied. Verify the vendor has an appropriate consent check and compare the banner choice with the request.' };
+      }),
       denied: { analytics: Number(consent.rows[0]?.analytics_denied_events || 0), ads: Number(consent.rows[0]?.ad_denied_events || 0) },
     },
     adblocks: { total: Number(rawOverview.total_event_hits || 0), successful: Number(rawOverview.successful_network_events || 0), blocked: blockedTotal, rows: blockers.rows.map((row: any) => ({ ...row, blocked: Number(row.blocked || 0), sessions: Number(row.sessions || 0), notes: 'Confirmed or likely blocker evidence. Correlation-only signals are excluded.' })), trend: blockerTrend.rows.map((row: any) => ({ hour: row.hour, blocked: Number(row.blocked || 0) })) },
