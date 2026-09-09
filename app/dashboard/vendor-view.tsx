@@ -42,7 +42,6 @@ function ParameterHealth({ event }: { event: any }) {
   if (statuses.includes('complete')) return <Pill tone="ok" dot={false}>Complete</Pill>;
   return <span className="text-xs text-[var(--text-3)]">Not needed</span>;
 }
-
 function platformTone(vendor: string) {
   if (vendor === 'ga4') return 'var(--accent)';
   if (vendor === 'gads') return '#4285F4';
@@ -84,13 +83,7 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
   const pages = data.pages || [];
   const consent = data.consent || data.consent_events || [];
   const blocked = data.blocked || data.blocked_events || [];
-  const totalEvents = events.reduce((sum: number, e: any) => sum + Number(e.cnt || 0), 0);
-  const uniqueNames = events.length;
-  const errorCount = alerts.length;
   const parameterRows = events.filter((event: any) => Array.isArray(event.parameter_statuses) && event.parameter_statuses.some((status: string) => ['complete', 'missing'].includes(status)));
-  const parameterSamples = parameterRows.reduce((sum: number, event: any) => sum + Number(event.cnt || 0), 0);
-  const parameterComplete = parameterRows.reduce((sum: number, event: any) => sum + (Array.isArray(event.missing_parameters) && event.missing_parameters.some((item: any) => Array.isArray(item) && item.length) ? 0 : Number(event.cnt || 0)), 0);
-  const parameterHealth = parameterSamples < 30 ? `Collecting (${parameterSamples}/30)` : `${Math.round((parameterComplete / Math.max(1, parameterSamples)) * 1000) / 10}%`;
   const tabs = [
     { key: 'events', label: `Events`, count: events.length },
     { key: 'details', label: 'Event details', count: parameterRows.length },
@@ -148,7 +141,7 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
                 <div className="mt-1 flex items-center justify-between text-[10px] text-[var(--text-3)]"><span>{destination.active ? `${destination.issues} things to check` : 'Nothing to check'}</span><span>{destination.active ? '›' : ''}</span></div>
               </div>
             ))}
-            {['TikTok', 'LinkedIn', 'Akk'].map((name) => <div key={name} className="grid min-w-[70px place-items-center] rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"><span className="text-[11px] font-semibold text-[var(--text-2)]">{name}</span><span className="mt-1 text-[10px] text-[var(--text-3)]">Add</span></div>)}
+            {['TikTok', 'LinkedIn', 'Akk'].map((name) => <div key={name} className="grid min-w-[70px] place-items-center rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3"><span className="text-[11px] font-semibold text-[var(--text-2)]">{name}</span><span className="mt-1 text-[10px] text-[var(--text-3)]">Add</span></div>)}
           </div>
 
           <div className="mt-5 flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5">
@@ -243,15 +236,12 @@ export default function VendorView({ vendor, label, id }: { vendor: string; labe
 function DetailTab({ events, vendor }: { events: any[]; vendor: string }) {
   return <div className="p-5 lg:p-6"><div className="rounded-xl border border-[var(--border)] overflow-hidden"><div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3"><h3 className="font-semibold text-sm text-[var(--text)]">Event details <span className="font-normal text-[var(--text-3)]">{events.length} shown</span></h3><p className="mt-0.5 text-xs text-[var(--text-3)]">The extra details attached to each event, like which product was bought or which button was clicked.</p></div>{events.length ? <div className="overflow-x-auto"><table className="w-full min-w-[800px] text-sm"><thead className="border-b border-[var(--border)] text-[10px] uppercase tracking-[.12em] text-[var(--text-3)]"><tr><th className="p-3 text-left">Status</th><th className="p-3 text-left">Parameter name</th><th className="p-3 text-left">Presence</th><th className="p-3 text-left">Notes</th></tr></thead><tbody className="divide-y divide-[var(--border-soft)]">{events.slice(0, 20).flatMap((event: any, index: number) => { const statuses = Array.isArray(event.parameter_statuses) ? event.parameter_statuses : []; const names = Array.isArray(event.parameter_names) ? event.parameter_names : missingParameterNames(event); if (!statuses.length) return []; return names.slice(0, 5).map((name: string, j: number) => <tr key={`${index}-${j}`}><td className="p-3"><Pill tone={missingParameterNames(event).includes(name) ? 'crit' : 'ok'} dot={false}>{missingParameterNames(event).includes(name) ? 'Needs attention' : 'Info'}</Pill></td><td className="p-3 font-mono text-[var(--text)]">{name}</td><td className="p-3">{missingParameterNames(event).includes(name) ? <div className="h-2 w-44 rounded-full bg-[var(--surface-3)]"><div className="h-2 w-1/3 rounded-full bg-[var(--crit-fg)]" /></div> : <div className="h-2 w-44 rounded-full bg-[var(--surface-3)]"><div className="h-2 w-full rounded-full bg-[var(--ok-dot)]" /></div>}</td><td className="p-3 text-xs text-[var(--text-3)]">{missingParameterNames(event).includes(name) ? `Missing for ${eventDisplayName(event, vendor)}` : 'Nothing to flag'}</td></tr>); })}</tbody></table></div> : <div className="p-8 text-center text-sm text-[var(--text-3)]">No event-detail evidence yet.</div>}</div></div>;
 }
+
 function SimpleDataTable({ title, description, rows, columns, empty }: { title: string; description: string; rows: any[]; columns: string[]; empty: string }) {
   return <div className="p-5 lg:p-6"><div className="rounded-xl border border-[var(--border)] overflow-hidden"><div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3"><h3 className="font-semibold text-sm text-[var(--text)]">{title} <span className="font-normal text-[var(--text-3)]">{rows.length} shown</span></h3><p className="mt-0.5 text-xs text-[var(--text-3)]">{description}</p></div>{rows.length ? <div className="overflow-x-auto"><table className="w-full min-w-[680px] text-sm"><thead className="border-b border-[var(--border)] text-[10px] uppercase tracking-[.12em] text-[var(--text-3)]"><tr>{columns.map((column) => <th key={column} className="p-3 text-left">{column.replaceAll('_', ' ')}</th>)}</tr></thead><tbody className="divide-y divide-[var(--border-soft)]">{rows.slice(0, 30).map((row, index) => <tr key={index} className="hover:bg-[var(--surface-2)]">{columns.map((column) => <td key={column} className="p-3 text-[var(--text-2)]">{String(row?.[column] ?? '—')}</td>)}</tr>)}</tbody></table></div> : <div className="p-8 text-center text-sm text-[var(--text-3)]">{empty}</div>}</div></div>;
 }
+
 function sparkPoints(seed: number) {
   const points = Array.from({ length: 12 }, (_, i) => `${i * 8},${12 + Math.round(Math.sin(i * 0.9 + seed) * 5) + (i % 4 === 0 ? 2 : 0)}`);
   return points.join(' ');
-}
-function missingParameterNames(event: any) {
-  const values = Array.isArray(event.missing_parameters) ? event.missing_parameters.flatMap((value: any) => Array.isArray(value) ? value : []) : [];
-  const labels: Record<string, string> = { id: 'pixel_id', ev: 'event_name', pid: 'partner_id', pids: 'pixel_id', ti: 'uet_tag_id', tag_id: 'uet_tag_id', tid: 'conversion_id' };
-  return [...new Set(values.filter(Boolean).map((value: string) => labels[value] || value))];
 }
