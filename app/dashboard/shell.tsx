@@ -5,7 +5,26 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 type Site = { id: number; domain: string; api_key?: string; first_party_domain?: string | null };
-type NavItem = { key: string; label: string; href: string; icon: () => JSX.Element; children?: { href: string; label: string }[] };
+
+const platforms = [
+  { href: '/dashboard/ga4', label: 'Google Analytics', vendor: 'ga4' },
+  { href: '/dashboard/ads', label: 'Google Ads', vendor: 'gads' },
+  { href: '/dashboard/meta', label: 'Meta', vendor: 'meta' },
+  { href: '/dashboard/bing', label: 'Microsoft Ads', vendor: 'microsoft' },
+  { href: '/dashboard/tiktok', label: 'TikTok', vendor: 'tiktok' },
+  { href: '/dashboard/linkedin', label: 'LinkedIn', vendor: 'linkedin' },
+  { href: '/dashboard/snapchat', label: 'Snapchat', vendor: 'snapchat' },
+];
+
+function icon(kind: 'dashboard' | 'alerts' | 'gtm' | 'settings') {
+  const paths = {
+    dashboard: <><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></>,
+    alerts: <><path d="M18 15.5V10a6 6 0 1 0-12 0v5.5L4.5 18h15z"/><path d="M9 18.5h6"/></>,
+    gtm: <><path d="M4 5h16v14H4z"/><path d="M8 9h8M8 13h5"/></>,
+    settings: <><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.9 1.9-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-2.7v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-1.9-1.9.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.6-1H6v-2.7h.2a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 1.9-1.9.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6V3h2.7v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 1.9 1.9-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2V12h-.2a1.7 1.7 0 0 0-1.6 1z"/></>,
+  };
+  return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{paths[kind]}</svg>;
+}
 
 export default function DashboardShell({ children, email, sites }: { children: React.ReactNode; email: string; sites: Site[] }) {
   const router = useRouter();
@@ -13,43 +32,77 @@ export default function DashboardShell({ children, email, sites }: { children: R
   const searchParams = useSearchParams();
   const [siteId, setSiteId] = useState<number | null>(null);
   const [open, setOpen] = useState(true);
-  const [ready, setReady] = useState(false);
 
-  useEffect(() => { try { const saved = window.localStorage.getItem('gafix-rail-open'); if (saved !== null) setOpen(saved === '1'); } catch {} setReady(true); }, []);
-  useEffect(() => { if (!ready) return; try { window.localStorage.setItem('gafix-rail-open', open ? '1' : '0'); } catch {} }, [open, ready]);
-  useEffect(() => { const qId = Number(searchParams.get('siteId') || 0); if (qId && sites.find((s) => s.id === qId)) setSiteId(qId); else if (sites.length) setSiteId(sites[0].id); else setSiteId(null); }, [searchParams, sites]);
-  function switchSite(id: number) { setSiteId(id); const url = new URL(window.location.href); url.searchParams.set('siteId', String(id)); router.push(url.pathname + url.search); }
-  async function logout() { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/'); }
-  const currentSite = sites.find((s) => s.id === siteId);
+  useEffect(() => {
+    const qId = Number(searchParams.get('siteId') || 0);
+    setSiteId(qId && sites.some((site) => site.id === qId) ? qId : sites[0]?.id || null);
+  }, [searchParams, sites]);
+
+  const currentSite = sites.find((site) => site.id === siteId);
   const withSite = (href: string) => href + (siteId ? `?siteId=${siteId}` : '');
-  const nav: NavItem[] = [
-    { key: 'home', label: 'Home', href: '/dashboard', icon: iconHome },
-    { key: 'monitoring', label: 'Monitoring', href: '/dashboard', icon: iconMonitoring, children: [{ href: '/dashboard/ga4', label: 'Google Analytics' }, { href: '/dashboard/ads', label: 'Google Ads' }, { href: '/dashboard/meta', label: 'Meta' }, { href: '/dashboard/tiktok', label: 'TikTok' }, { href: '/dashboard/linkedin', label: 'LinkedIn' }, { href: '/dashboard/bing', label: 'Microsoft Ads' }, { href: '/dashboard/snapchat', label: 'Snapchat' }, { href: '/dashboard/sessions', label: 'Visitor sessions' }, { href: '/dashboard/revenue', label: 'Purchase impact' }, { href: '/dashboard/vitals', label: 'Website speed' }] },
-    { key: 'audits', label: 'Audit Reports', href: '/dashboard/audit', icon: iconAudit, children: [{ href: '/dashboard/audit', label: 'Tracking check' }, { href: '/dashboard/health', label: 'Tracking health' }, { href: '/dashboard/duplicates', label: 'Possible repeats' }, { href: '/dashboard/gtm', label: 'Tag setup check' }, { href: '/dashboard/adblock', label: 'When tracking was blocked' }, { href: '/dashboard/consent', label: 'Privacy choices' }, { href: '/dashboard/compliance', label: 'Website safety' }] },
-    { key: 'alerts', label: 'Alerts', href: '/dashboard/alerts', icon: iconAlerts }, { key: 'billing', label: 'Billing', href: '/dashboard/billing', icon: iconBilling }, { key: 'plans', label: 'Plans', href: '/dashboard/plans', icon: iconPlans },
-    { key: 'settings', label: 'Settings', href: '/dashboard/settings', icon: iconSettings, children: [{ href: '/dashboard/settings', label: 'Websites' }, { href: '/dashboard/install', label: 'Install GAfix' }, { href: '/dashboard/integrations', label: 'Alerts and data' }] },
-    { key: 'admin', label: 'Admin', href: '/dashboard/admin', icon: iconAdmin }, { key: 'users', label: 'User Management', href: '/dashboard/user-management', icon: iconUsers }, { key: 'help', label: 'Help Center', href: '/dashboard/help', icon: iconHelp },
+  const platformActive = pathname.startsWith('/dashboard/') && platforms.some((platform) => pathname === platform.href);
+
+  function switchSite(id: number) {
+    setSiteId(id);
+    const next = new URL(window.location.href);
+    next.searchParams.set('siteId', String(id));
+    router.push(next.pathname + next.search);
+  }
+
+  async function logout() {
+    await fetch('/api/auth/logout', { method: 'POST' });
+    router.push('/');
+  }
+
+  const nav = [
+    { href: '/dashboard', label: 'Dashboard', icon: 'dashboard' as const, active: pathname === '/dashboard' },
+    { href: '/dashboard/alerts', label: 'Alerts', icon: 'alerts' as const, active: pathname === '/dashboard/alerts' },
+    { href: '/dashboard/gtm', label: 'GTM Diagnostic', icon: 'gtm' as const, active: pathname.startsWith('/dashboard/gtm') },
+    { href: '/dashboard/settings', label: 'Settings', icon: 'settings' as const, active: pathname.startsWith('/dashboard/settings') },
   ];
-  const isActive = (item: NavItem) => pathname === item.href || Boolean(item.children?.some((c) => pathname === c.href));
-  return <div className="dashboard-shell min-h-screen" data-theme="light"><div className="flex">
-    <aside className="fixed left-0 top-0 z-20 flex h-screen flex-col overflow-hidden border-r border-[var(--border)] bg-[var(--surface)] px-3 pb-3 pt-3.5 transition-[width] duration-200" style={{ width: open ? 248 : 76 }}>
-      <Link href="/" className={`mb-4 flex items-center gap-2 px-1 ${open ? '' : 'justify-center'}`}><span className="gafix-wordmark whitespace-nowrap"><span className="gafix-wordmark-ga">GA</span><span className="text-[var(--text)]">fix</span></span></Link>
-      <div className="mb-2 px-0.5">{sites.length ? (open ? <select value={siteId || ''} onChange={(e) => switchSite(Number(e.target.value))} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]">{sites.map((s) => <option key={s.id} value={s.id}>{s.domain}</option>)}</select> : <div title={currentSite?.domain || 'Site'} className="mx-auto grid h-9 w-9 place-items-center rounded-[9px] border border-[var(--border-soft)] bg-[var(--surface-2)] text-[10px] font-bold text-[var(--text-2)]">{(currentSite?.domain || 'S').charAt(0).toUpperCase()}</div>) : <Link href="/dashboard/settings" className="block rounded-xl border border-dashed border-[var(--border-strong)] px-3 py-2.5 text-center text-sm text-[var(--text-3)]">{open ? '+ Add your first site' : '+'}</Link>}</div>
-      <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overscroll-contain py-1">{nav.map((item, index) => { const active = isActive(item); return <div key={item.key}>{index === 6 ? <div className="my-2 h-px w-full bg-[var(--border)]" /> : null}<Link href={withSite(item.href)} title={item.label} className="flex h-10 items-center gap-[11px] rounded-rail px-3 text-[13px] font-medium transition-colors duration-150" style={{ background: active ? 'var(--mon-tint)' : 'transparent', color: active ? 'var(--mon-fg)' : 'var(--text-2)', justifyContent: open ? 'flex-start' : 'center' }}>{item.icon()}{open ? <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span> : null}</Link>{open && item.children && active ? <div className="ml-[19px] mt-0.5 flex flex-col gap-0.5 border-l border-[var(--border)] pl-3">{item.children.map((child) => <Link key={child.href} href={withSite(child.href)} className="truncate rounded-lg px-2 py-1.5 text-[12px] transition-colors" style={{ color: pathname === child.href ? 'var(--text)' : 'var(--text-3)', fontWeight: pathname === child.href ? 600 : 500, background: pathname === child.href ? 'var(--surface-3)' : 'transparent' }}>{child.label}</Link>)}</div> : null}</div>; })}</nav>
-      <button type="button" onClick={() => setOpen(!open)} className="mb-1 flex h-[38px] items-center gap-[11px] rounded-[10px] px-3 text-[var(--text-3)] transition-colors hover:bg-[var(--surface-2)]" style={{ justifyContent: open ? 'flex-start' : 'center' }}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ transform: `rotate(${open ? 180 : 0}deg)` }}><path d="M9 6l6 6-6 6" /></svg>{open ? <span className="text-[12.5px]">Collapse</span> : null}</button>
-      <div className={`flex items-center gap-2 border-t border-[var(--border-soft)] pt-3 ${open ? '' : 'justify-center'}`}><div className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[var(--mon)] text-sm font-bold text-white">{email.charAt(0).toUpperCase()}</div>{open ? <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[var(--text)]">{email}</div><button onClick={logout} className="text-xs text-[var(--text-3)]">Sign out</button></div> : null}</div>
-    </aside>
-    <main className="dashboard-main-grid min-h-screen min-w-0 flex-1 transition-[margin] duration-200" style={{ marginLeft: open ? 248 : 76 }}><div className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-6 backdrop-blur lg:px-8"><div className="flex items-center gap-3"><div><p className="dashboard-eyebrow">GAfix command center</p><h1 className="mt-0.5 font-display text-[17px] font-semibold tracking-tight text-[var(--text)]">{pageTitle(pathname)}</h1></div>{currentSite ? <span className="dashboard-top-control"><span className="status-dot" style={{ background: 'var(--ok-dot)' }} /> <strong>Live</strong> · last 24 hours</span> : null}</div>{currentSite ? <span className="dashboard-top-control"><span className="text-[var(--text-3)]">Site</span><strong className="mono">{currentSite.domain}</strong></span> : null}</div><div className="dashboard-gridline min-h-[calc(100vh-64px)] bg-[var(--canvas)] p-5 lg:p-8">{children}</div></main>
-  </div></div>;
+
+  return <div className="dashboard-shell min-h-screen" data-theme="light">
+    <div className="flex">
+      <aside className="fixed left-0 top-0 z-30 flex h-screen flex-col border-r border-[var(--border)] bg-[var(--surface)] px-3 pb-3 pt-4 transition-[width] duration-200" style={{ width: open ? 254 : 76 }}>
+        <Link href={withSite('/dashboard')} className={`mb-5 flex items-center px-2 ${open ? '' : 'justify-center'}`}>
+          <span className="gafix-wordmark whitespace-nowrap"><span className="gafix-wordmark-ga">GA</span><span className="text-[var(--text)]">fix</span></span>
+        </Link>
+        <div className="mb-4 px-1">
+          {sites.length ? <select value={siteId || ''} onChange={(event) => switchSite(Number(event.target.value))} className="w-full rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]">{sites.map((site) => <option key={site.id} value={site.id}>{site.domain}</option>)}</select> : <Link href="/dashboard/settings" className="block rounded-xl border border-dashed border-[var(--border-strong)] px-3 py-2 text-center text-sm text-[var(--text-3)]">{open ? '+ Add your first site' : '+'}</Link>}
+        </div>
+        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto">
+          {nav.map((item) => <div key={item.href}>
+            <Link href={withSite(item.href)} title={item.label} className="flex h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-semibold transition-colors" style={{ background: item.active ? 'var(--mon-tint)' : 'transparent', color: item.active ? 'var(--mon-fg)' : 'var(--text-2)', justifyContent: open ? 'flex-start' : 'center' }}>
+              {icon(item.icon)}{open ? <span>{item.label}</span> : null}
+            </Link>
+          </div>)}
+          {open && (pathname === '/dashboard' || platformActive) ? <div className="mt-2 border-t border-[var(--border-soft)] pt-3">
+            <p className="px-3 pb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--text-3)]">Platforms</p>
+            <div className="space-y-0.5">{platforms.map((platform) => <Link key={platform.vendor} href={withSite(platform.href)} className="block rounded-lg px-3 py-2 text-[12px] font-medium transition-colors" style={{ color: pathname === platform.href ? 'var(--text)' : 'var(--text-3)', background: pathname === platform.href ? 'var(--surface-3)' : 'transparent' }}>{platform.label}</Link>)}</div>
+          </div> : null}
+        </nav>
+        <button type="button" onClick={() => setOpen((value) => !value)} className="mb-2 flex h-9 items-center gap-2 rounded-lg px-3 text-[var(--text-3)] hover:bg-[var(--surface-2)]" style={{ justifyContent: open ? 'flex-start' : 'center' }} aria-label="Toggle sidebar"><span style={{ transform: `rotate(${open ? 180 : 0}deg)`, display: 'inline-flex' }}>›</span>{open ? <span className="text-xs">Collapse</span> : null}</button>
+        <div className={`flex items-center gap-2 border-t border-[var(--border-soft)] pt-3 ${open ? '' : 'justify-center'}`}>
+          <div className="grid h-9 w-9 flex-none place-items-center rounded-full bg-[var(--mon)] text-sm font-bold text-white">{email.charAt(0).toUpperCase()}</div>
+          {open ? <div className="min-w-0 flex-1"><div className="truncate text-sm font-medium text-[var(--text)]">{email}</div><button onClick={logout} className="text-xs text-[var(--text-3)] hover:text-[var(--text)]">Sign out</button></div> : null}
+        </div>
+      </aside>
+      <main className="dashboard-main-grid min-h-screen min-w-0 flex-1 transition-[margin] duration-200" style={{ marginLeft: open ? 254 : 76 }}>
+        <div className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)]/95 px-6 backdrop-blur lg:px-8">
+          <div><p className="dashboard-eyebrow">GAfix monitoring</p><h1 className="mt-0.5 font-display text-[17px] font-semibold tracking-tight text-[var(--text)]">{pageTitle(pathname)}</h1></div>
+          {currentSite ? <span className="dashboard-top-control"><span className="status-dot" style={{ background: 'var(--ok-dot)' }} /> <strong>Live</strong> · {currentSite.domain}</span> : null}
+        </div>
+        <div className="dashboard-gridline min-h-[calc(100vh-64px)] bg-[var(--canvas)] p-5 lg:p-8">{children}</div>
+      </main>
+    </div>
+  </div>;
 }
-function pageTitle(path: string) { const titles: Record<string, string> = {'/dashboard':'Home','/dashboard/ga4':'Google Analytics','/dashboard/ads':'Google Ads','/dashboard/meta':'Meta tracking','/dashboard/tiktok':'TikTok tracking','/dashboard/linkedin':'LinkedIn tracking','/dashboard/bing':'Microsoft Ads tracking','/dashboard/snapchat':'Snapchat tracking','/dashboard/sessions':'Visitor sessions','/dashboard/revenue':'Purchase impact','/dashboard/vitals':'Website speed','/dashboard/audit':'Audit Reports','/dashboard/health':'Tracking health','/dashboard/duplicates':'Possible repeats','/dashboard/gtm':'Tag setup check','/dashboard/adblock':'When tracking was blocked','/dashboard/consent':'Privacy choices','/dashboard/compliance':'Website safety','/dashboard/install':'Install GAfix','/dashboard/gtm-connect':'Connect Tag Manager','/dashboard/integrations':'Alerts and data','/dashboard/settings':'Settings','/dashboard/alerts':'Alerts','/dashboard/billing':'Billing','/dashboard/plans':'Plans','/dashboard/admin':'Admin','/dashboard/user-management':'User Management','/dashboard/help':'Help Center'}; return titles[path] || 'Dashboard'; }
-function iconHome() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M3 10.5 12 3l9 7.5" /><path d="M5.5 9.5V20h13V9.5" /><path d="M9.75 20v-5.5h4.5V20" /></svg>); }
-function iconMonitoring() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M2.5 12.5h4l2.2-6 3.4 12 2.6-8.4 1.6 2.4h5.2" /></svg>); }
-function iconAudit() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M6 2.75h8L18.5 7.5v13.75H6z" /><path d="M13.5 3v5h5" /><path d="M9 12.5h6M9 16h4" /></svg>); }
-function iconAlerts() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M18 15.5V10a6 6 0 1 0-12 0v5.5L4.5 18h15z" /><path d="M9 18.5h6" /></svg>); }
-function iconBilling() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M3 10h18M8 14h3" /></svg>); }
-function iconPlans() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M4 5h16v14H4z" /><path d="M8 9h8M8 13h5" /></svg>); }
-function iconSettings() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z" /><path d="M4.9 15.2 3.8 17l2.5 2.5 1.8-1.1a7.2 7.2 0 0 0 2 .8L10.5 21h3l.4-1.8a7.2 7.2 0 0 0 2-.8l1.8 1.1 2.5-2.5-1.1-1.8a7.2 7.2 0 0 0 .8-2l1.8-.4v-3l-1.8-.4a7.2 7.2 0 0 0-.8-2l1.1-1.8-2.5-2.5-1.8 1.1a7.2 7.2 0 0 0-2-.8L13.5 3h-3l-.4 1.8a7.2 7.2 0 0 0-2 .8L6.3 4.5 3.8 7l1.1 1.8a7.2 7.2 0 0 0-.8 2l-1.8.4v3l1.8.4a7.2 7.2 0 0 0 .8 2z" /></svg>); }
-function iconAdmin() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M12 3 4 6v5c0 5.2 3.2 8.3 8 10 4.8-1.7 8-4.8 8-10V6z" /><path d="M9 12h6M12 9v6" /></svg>); }
-function iconUsers() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><path d="M16 20v-1.7a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4V20" /><circle cx="9.5" cy="7.5" r="3.2" /><path d="M17 11a3.2 3.2 0 0 0 0-6.2M21 20v-1.7a4 4 0 0 0-3-3.8" /></svg>); }
-function iconHelp() { return (<svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="flex-none"><circle cx="12" cy="12" r="9" /><path d="M9.6 9.3a2.5 2.5 0 1 1 4.3 1.8c-.9.9-1.9 1.2-1.9 2.8" /><path d="M12 17h.01" /></svg>); }
+
+function pageTitle(path: string) {
+  if (path === '/dashboard') return 'Dashboard';
+  if (path === '/dashboard/alerts') return 'Alerts';
+  if (path.startsWith('/dashboard/gtm')) return 'GTM Diagnostic';
+  if (path.startsWith('/dashboard/settings')) return 'Settings';
+  const platform = platforms.find((item) => item.href === path);
+  return platform?.label || 'Dashboard';
+}
