@@ -23,6 +23,7 @@ const platformId = `CASE
   WHEN vendor = 'bing' THEN COALESCE(NULLIF(params->>'ti', ''), NULLIF(params->>'uet_tag_id', ''), NULLIF(params->>'uetTagId', ''), NULLIF(params->>'tag_id', ''))
   WHEN vendor = 'snapchat' THEN COALESCE(NULLIF(params->>'pid', ''), NULLIF(params->>'pids', ''), NULLIF(params->>'pixel_id', ''), NULLIF(params->>'pixelId', ''))
   ELSE NULL END`;
+const consentAlertFilter = `(LOWER(COALESCE(code,'')) LIKE '%consent%' OR LOWER(COALESCE(category,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_user_data%' OR LOWER(COALESCE(message,'')) LIKE '%ad_personalization%' OR LOWER(COALESCE(message,'')) LIKE '%g100%' OR LOWER(COALESCE(root_cause,'')) LIKE '%consent%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(fix_steps,'')) LIKE '%consent%')`;
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -70,7 +71,7 @@ export async function GET(req: NextRequest) {
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'http_error')::int AS http_errors,
               COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'beacon_rejected')::int AS beacon_rejections,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false))::int AS err
+              COUNT(*) FILTER (WHERE ${networkObservation} AND event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false AND NOT ${consentAlertFilter}))::int AS err
        FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
     : `SELECT ${displayName} AS event_name, event_type, vendor,
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
        FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours'
       GROUP BY CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END`, [siteId]);
   const [alerts, sources] = await Promise.all([
-    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at, last_seen, occurrence_count, distinct_pushes, confidence, dedupe_key, distinct_sessions, distinct_pages, impact_updated_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
+    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at, last_seen, occurrence_count, distinct_pushes, confidence, dedupe_key, distinct_sessions, distinct_pages, impact_updated_at FROM alerts WHERE site_id = $1 AND resolved = false AND NOT ${consentAlertFilter} ORDER BY created_at DESC LIMIT 50`, [siteId]),
     query(`SELECT event_name, source, origin_source, observation_kind, COUNT(*)::int AS count FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours' GROUP BY event_name, source, origin_source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),
   ]);
   return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows, flow: flow.rows, blockedFlow: blockedFlow.rows, sources: sources.rows });
