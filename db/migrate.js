@@ -55,8 +55,8 @@ async function main() {
     await withRetry(() => pool.query(sql));
     console.log('Schema applied successfully.');
     await withRetry(() => pool.query(`UPDATE events SET vendor = 'gtm', event_type = 'internal' WHERE vendor = 'ga4' AND LOWER(COALESCE(event_name, '')) LIKE 'gtm.%'`));
-    await withRetry(() => pool.query(`ALTER TABLE events ADD COLUMN IF NOT EXISTS user_agent TEXT, ADD COLUMN IF NOT EXISTS ai_bot_name TEXT, ADD COLUMN IF NOT EXISTS ai_bot_operator TEXT, ADD COLUMN IF NOT EXISTS ai_bot_purpose TEXT`));
-    console.log('Historical GTM lifecycle rows normalized and AI crawler columns ensured.');
+    await withRetry(() => pool.query(`ALTER TABLE events DROP COLUMN IF EXISTS ai_bot_name, DROP COLUMN IF EXISTS ai_bot_operator, DROP COLUMN IF EXISTS ai_bot_purpose`));
+    console.log('Historical GTM lifecycle rows normalized and legacy AI crawler fields removed.');
   } finally {
     await pool.end().catch((error) => console.warn(`Migration pool close warning (${safeError(error)}).`));
   }
