@@ -25,7 +25,14 @@ describe('overview and alert policy contract', () => {
   it('documents synthetic and Ads identity for customers', () => {
     expect(read('app/dashboard/synthetic/page.tsx')).toContain('Create a synthetic HTTP journey');
     expect(read('app/dashboard/health/page.tsx')).toContain('confirmed network outcomes');
-    expect(read('app/dashboard/vendor-ui.tsx')).toContain('conversion_id');
-    expect(read('app/api/events/route.ts')).toContain('google_conversion_label');
+
+    const vendorUi = read('app/dashboard/vendor-ui.tsx');
+    const vendorView = read('app/dashboard/vendor-view-pdf.tsx');
+    expect(vendorUi).toContain("export { default } from './vendor-view-pdf';");
+    expect(vendorView).toContain('Platform monitoring');
+
+    const eventsApi = read('app/api/events/route.ts');
+    expect(eventsApi).toContain('conversion_id');
+    expect(eventsApi).toContain('google_conversion_label');
   });
 });
