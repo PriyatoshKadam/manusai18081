@@ -14,11 +14,13 @@ describe('platform monitoring UI', () => {
 
   it('keeps all requested platform monitoring sections in the platform view', () => {
     const source = read('app/dashboard/vendor-view-pdf.tsx');
-    for (const section of ["'Overview'", "'Events'", "'Parameters'", "'Pages'", "'Consent'", "'Ad blockers'"]) expect(source).toContain(section);
+    for (const section of ["'Overview'", "'Events'", "'Parameters'", "'Pages'", "'Consent'", "'Ad blockers'"]) {
+      expect(source).toContain(section);
+    }
     expect(source).not.toContain("'AI / Bot detector'");
-    expect(source).toContain('Event Name');
-    expect(source).toContain('Reference Event');
-    expect(source).toContain('Session Duration');
+    expect(source).toContain('Event name');
+    expect(source).toContain('Trackingplan-style event health');
+    expect(source).toContain('Parameters');
     expect(source).toContain('Events firing outside consent');
     expect(source).not.toContain('Events AI crawled');
   });
