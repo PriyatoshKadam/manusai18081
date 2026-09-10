@@ -54,6 +54,73 @@ async function main() {
     console.log(`Applying schema with up to ${MAX_ATTEMPTS} database connection attempts...`);
     await withRetry(() => pool.query(sql));
     console.log('Schema applied successfully.');
+
+    // Older installations may have JSON fields stored as TEXT/JSON rather
+    // than JSONB. Convert those legacy columns safely so JSON functions used
+    // by monitoring cannot fail because of one malformed or empty old value.
+    await withRetry(() => pool.query(`
+      CREATE OR REPLACE FUNCTION pg_temp.ga4fix_safe_jsonb(value text, fallback jsonb DEFAULT '{}'::jsonb)
+      RETURNS jsonb
+      LANGUAGE plpgsql
+      IMMUTABLE
+      AS $fn$
+      BEGIN
+        IF value IS NULL OR btrim(value) = '' THEN
+          RETURN fallback;
+        END IF;
+        BEGIN
+          RETURN value::jsonb;
+        EXCEPTION WHEN others THEN
+          RETURN fallback;
+        END;
+      END;
+      $fn$;
+
+      DO $do$
+      DECLARE
+        item record;
+        fallback jsonb;
+      BEGIN
+        FOR item IN
+          SELECT * FROM (VALUES
+            ('sites','vendor_routing_policy'),
+            ('events','params'),
+            ('events','consent_state'),
+            ('events','web_vitals'),
+            ('events','observed_parameters'),
+            ('events','missing_parameters'),
+            ('alerts','fix_steps'),
+            ('alerts','raw'),
+            ('adblock_events','blocked_vendors'),
+            ('audit_runs','findings'),
+            ('gtm_installations','details'),
+            ('gtm_config_snapshots','tags'),
+            ('gtm_config_snapshots','triggers'),
+            ('gtm_config_snapshots','variables')
+          ) AS v(table_name, column_name)
+        LOOP
+          IF EXISTS (
+            SELECT 1 FROM information_schema.columns
+             WHERE table_schema = current_schema()
+               AND table_name = item.table_name
+               AND column_name = item.column_name
+               AND data_type <> 'jsonb'
+          ) THEN
+            fallback := CASE
+              WHEN item.column_name IN ('fix_steps','findings','blocked_vendors','tags','triggers','variables','observed_parameters','missing_parameters') THEN '[]'::jsonb
+              ELSE '{}'::jsonb
+            END;
+            EXECUTE format(
+              'ALTER TABLE %I ALTER COLUMN %I TYPE jsonb USING pg_temp.ga4fix_safe_jsonb(%I::text, %L::jsonb)',
+              item.table_name, item.column_name, item.column_name, fallback::text
+            );
+          END IF;
+        END LOOP;
+      END
+      $do$;
+    `));
+    console.log('Legacy JSON columns normalized safely.');
+
     await withRetry(() => pool.query(`UPDATE events SET vendor = 'gtm', event_type = 'internal' WHERE vendor = 'ga4' AND LOWER(COALESCE(event_name, '')) LIKE 'gtm.%'`));
     await withRetry(() => pool.query(`ALTER TABLE events DROP COLUMN IF EXISTS ai_bot_name, DROP COLUMN IF EXISTS ai_bot_operator, DROP COLUMN IF EXISTS ai_bot_purpose`));
     console.log('Historical GTM lifecycle rows normalized and legacy AI crawler fields removed.');
