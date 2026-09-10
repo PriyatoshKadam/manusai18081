@@ -6,7 +6,7 @@ import { INTERNAL_CORRELATION_NOISE_SQL } from '../../../lib/adblock-evidence';
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
 const networkObservation = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
 const legacyOutcome = `(delivery_outcome IS NULL OR delivery_outcome = 'unknown')`;
-const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','blocked','beacon_rejected') OR (${legacyOutcome} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('blocked','beacon_rejected') OR failure_reason LIKE 'http_%'))) `;
+const failedDelivery = `${networkObservation} AND (delivery_outcome IN ('http_error','beacon_rejected') OR (${legacyOutcome} AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('beacon_rejected') OR failure_reason LIKE 'http_%'))) `;
 const transportAnomaly = `${networkObservation} AND (delivery_outcome IN ('network_error','aborted','timeout') OR (${legacyOutcome} AND failure_reason IN ('network_error','aborted','timeout'))) `;
 const conversionId = `COALESCE(NULLIF(params->>'conversion_id', ''), NULLIF(params->>'google_conversion_id', ''), NULLIF((regexp_match(COALESCE(raw_url, ''), '/pagead/(conversion|viewthroughconversion)/([^/?]+)'))[2], ''))`;
 const conversionLabel = `COALESCE(NULLIF(params->>'conversion_label', ''), NULLIF(params->>'google_conversion_label', ''), NULLIF(params->>'label', ''), NULLIF((regexp_match(COALESCE(raw_url, ''), '[?&](?:conversion_label|google_conversion_label|label|send_to)=([^&]+)'))[1], ''))`;
@@ -70,7 +70,6 @@ export async function GET(req: NextRequest) {
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'http_error')::int AS http_errors,
               COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'beacon_rejected')::int AS beacon_rejections,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'blocked')::int AS blocked,
               COUNT(*) FILTER (WHERE ${networkObservation} AND event_name IN (SELECT event_name FROM alerts WHERE alerts.site_id = $1 AND alerts.resolved = false))::int AS err
        FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`
@@ -86,7 +85,6 @@ export async function GET(req: NextRequest) {
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'http_error')::int AS http_errors,
               COUNT(*) FILTER (WHERE ${transportAnomaly})::int AS transport_anomalies,
               COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'beacon_rejected')::int AS beacon_rejections,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome = 'blocked')::int AS blocked,
               0 AS err
        FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
@@ -98,24 +96,16 @@ export async function GET(req: NextRequest) {
             COUNT(*) FILTER (WHERE ${failedDelivery})::int AS failures,
             COUNT(DISTINCT resource_domain)::int AS destinations,
             ARRAY_REMOVE(ARRAY_AGG(DISTINCT resource_domain), NULL) AS domains
-       FROM events
-      WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
+       FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
       GROUP BY CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END
-      ORDER BY events DESC`,
-    [siteId],
-  );
+      ORDER BY events DESC`, [siteId]);
   const blockedFlow = await query(
     `SELECT CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END AS delivery_mode, COUNT(*)::int AS blocked
-       FROM adblock_events
-      WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours'
-      GROUP BY CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END`,
-    [siteId],
-  );
+       FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed', 'likely') AND ${noiseFilter} AND detected_at > NOW() - INTERVAL '24 hours'
+      GROUP BY CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END`, [siteId]);
   const [alerts, sources] = await Promise.all([
     query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps, page_url, raw, created_at, last_seen, occurrence_count, distinct_pushes, confidence, dedupe_key, distinct_sessions, distinct_pages, impact_updated_at FROM alerts WHERE site_id = $1 AND resolved = false ORDER BY created_at DESC LIMIT 50`, [siteId]),
-    query(`SELECT event_name, source, origin_source, observation_kind, COUNT(*)::int AS count
-           FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours'
-           GROUP BY event_name, source, origin_source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),
+    query(`SELECT event_name, source, origin_source, observation_kind, COUNT(*)::int AS count FROM events WHERE site_id = $1 AND vendor = $2 AND received_at > NOW() - INTERVAL '24 hours' GROUP BY event_name, source, origin_source, observation_kind ORDER BY count DESC LIMIT 100`, [siteId, vendor || 'ga4']),
   ]);
   return NextResponse.json({ stats: stats.rows[0], events: eventsRes.rows, alerts: alerts.rows, flow: flow.rows, blockedFlow: blockedFlow.rows, sources: sources.rows });
 }
