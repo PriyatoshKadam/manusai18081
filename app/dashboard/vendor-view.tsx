@@ -1,3 +1,8 @@
 'use client';
 
-export { default } from './vendor-view-pdf';
+import VendorView from './vendor-view-pdf';
+import ReferenceMonitoringPanels from './reference-monitoring-panels';
+
+export default function VendorViewWithReferenceMonitoring(props: { vendor: string; label: string; id: string | null }) {
+  return <><VendorView {...props} /><ReferenceMonitoringPanels vendor={props.vendor} /></>;
+}
