@@ -23,7 +23,9 @@ const platformId = `CASE
   WHEN vendor = 'bing' THEN COALESCE(NULLIF(params->>'ti', ''), NULLIF(params->>'uet_tag_id', ''), NULLIF(params->>'uetTagId', ''), NULLIF(params->>'tag_id', ''))
   WHEN vendor = 'snapchat' THEN COALESCE(NULLIF(params->>'pid', ''), NULLIF(params->>'pids', ''), NULLIF(params->>'pixel_id', ''), NULLIF(params->>'pixelId', ''))
   ELSE NULL END`;
-const consentAlertFilter = `(LOWER(COALESCE(code,'')) LIKE '%consent%' OR LOWER(COALESCE(category,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_user_data%' OR LOWER(COALESCE(message,'')) LIKE '%ad_personalization%' OR LOWER(COALESCE(message,'')) LIKE '%g100%' OR LOWER(COALESCE(root_cause,'')) LIKE '%consent%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(fix_steps,'')) LIKE '%consent%')`;
+// fix_steps is JSONB in current schema. Cast it to text before applying text functions;
+// COALESCE(fix_steps, '') would make PostgreSQL attempt to parse '' as JSON.
+const consentAlertFilter = `(LOWER(COALESCE(code,'')) LIKE '%consent%' OR LOWER(COALESCE(category,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_user_data%' OR LOWER(COALESCE(message,'')) LIKE '%ad_personalization%' OR LOWER(COALESCE(message,'')) LIKE '%g100%' OR LOWER(COALESCE(root_cause,'')) LIKE '%consent%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(fix_steps::text,'')) LIKE '%consent%')`;
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
