@@ -5,7 +5,7 @@ import { query } from '../../../lib/db';
 const occurrenceKey = `COALESCE(NULLIF(session_id || ':' || occurrence_id, ':'), network_occurrence_id, id::text)`;
 const network = `observation_kind = 'network' AND COALESCE(transport, '') <> 'performance'`;
 const nonBlockedFailure = `(${network} AND delivery_outcome IN ('http_error','beacon_rejected')) OR (${network} AND (delivery_outcome IS NULL OR delivery_outcome = 'unknown') AND ((status_code IS NOT NULL AND status_code >= 400) OR failure_reason IN ('beacon_rejected') OR failure_reason LIKE 'http_%'))`;
-
+const consentSignal = `(LOWER(COALESCE(code,'')) LIKE '%consent%' OR LOWER(COALESCE(category,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_user_data%' OR LOWER(COALESCE(message,'')) LIKE '%ad_personalization%' OR LOWER(COALESCE(message,'')) LIKE '%g100%' OR LOWER(COALESCE(root_cause,'')) LIKE '%consent%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(fix_steps,'')) LIKE '%consent%')`;
 const STANDARD_REQUIRED: Record<string, string[]> = {
   purchase: ['transaction_id', 'value', 'currency'],
   refund: ['transaction_id'],
@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
       FROM events e CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(e.params)='object' THEN e.params ELSE '{}'::jsonb END)
       WHERE e.site_id = $1 AND e.vendor = $2 AND e.received_at >= NOW() - INTERVAL '30 days'
       GROUP BY LOWER(COALESCE(event_name,'')), vendor, LOWER(key) ORDER BY hits DESC LIMIT 10000`, [siteId, vendor]),
-    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps FROM alerts WHERE site_id = $1 AND resolved = false AND ($2::text IS NULL OR vendor = $2) ORDER BY created_at DESC LIMIT 500`, [siteId, vendor]),
+    query(`SELECT id, severity, code, category, vendor, event_name, message, root_cause, fix_steps FROM alerts WHERE site_id = $1 AND resolved = false AND ($2::text IS NULL OR vendor = $2) AND NOT ${consentSignal} ORDER BY created_at DESC LIMIT 500`, [siteId, vendor]),
     query(`SELECT tags, triggers, variables, fetched_at, environment, snapshot_version_id, live_version_id, live_version_name, snapshot_stale FROM gtm_config_snapshots WHERE site_id = $1 AND user_id = $2 ORDER BY fetched_at DESC LIMIT 1`, [siteId, session.uid]),
   ]);
 
