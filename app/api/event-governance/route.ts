@@ -109,10 +109,12 @@ export async function GET(req: NextRequest) {
     for (const alert of (alerts.rows as any[]).filter((a) => normaliseName(a.event_name) === eventName)) { const code = String(alert.code || 'tracking_alert'); if (/ad.?block|blocked|pixel/i.test(code) || /ad.?block|blocked/i.test(String(alert.message || ''))) continue; add(`alert:${code}`, alert.severity === 'critical' ? 'critical' : 'warning', alert.message || code, alert.root_cause || alert.fix_steps || 'Open the alert for the captured evidence.',undefined,alert.created_at); }
     const status = issues.some((i) => i.severity === 'critical' || i.severity === 'warning') ? 'Warn' : issues.some((i) => i.code === 'new_event') ? 'New' : row.hits_24h > 0 ? 'OK' : 'Off';
     const issueOutput = issues.map(({ fingerprint, ...issue }) => issue);
-    if (issueOutput.length > 1) {
-      const combinedDetail = issueOutput.map((issue: any, index: number) => `${index + 1}. ${issue.message}${issue.detail ? ` — ${issue.detail}` : ''}`).join('\n');
-      issueOutput[0] = { ...issueOutput[0], detail: combinedDetail };
-    }
+    const allIssueDetails = issueOutput.map((issue: any, index: number) => {
+      const timestamp = issue.timestamp ? new Date(issue.timestamp).toLocaleString() : 'Timestamp unavailable';
+      return `${index + 1}. ${issue.message}${issue.detail ? ` — ${issue.detail}` : ''} — Detected: ${timestamp}`;
+    }).join('\n');
+    if (issueOutput.length) issueOutput[0] = { ...issueOutput[0], detail: allIssueDetails };
+    if (issueOutput.length > 1) issueOutput.splice(1);
     byName.set(key, { event_name: row.event_name || 'unnamed event', vendor, event_type: row.event_type || 'standard', status, hits_24h: Number(row.hits_24h || 0), prior_hits_24h: Number(row.prior_hits_24h || 0), lifetime_hits: Number(row.lifetime_hits || 0), first_seen: row.first_seen, last_seen: row.last_seen, gtm: { configured: Boolean(config), tag_names: config?.tag_names || row.observed_gtm_tags || [], trigger_names: config?.trigger_names || row.observed_gtm_triggers || [], correlation_confidences: row.correlation_confidences || [], snapshot_fetched_at: snapshot?.fetched_at || null, snapshot_environment: snapshot?.environment || null, snapshot_stale: Boolean(snapshot?.snapshot_stale) }, issues: issueOutput, properties: props.map((p: any) => ({ parameter_name: p.parameter_name, hits: Number(p.hits || 0), types: p.types || [] })) });
   }
   if (snapshotUsableForMissing) for (const [key, config] of configured.entries()) if (!byName.has(key)) byName.set(key, { event_name: config.event_name, vendor, event_type: 'standard', status: 'Warn', hits_24h: 0, prior_hits_24h: 0, lifetime_hits: 0, first_seen: null, last_seen: null, gtm: { configured: true, tag_names: config.tag_names, trigger_names: config.trigger_names, correlation_confidences: [], snapshot_fetched_at: snapshot?.fetched_at || null, snapshot_environment: snapshot?.environment || null, snapshot_stale: false }, issues: [{ code: 'missing_event', severity: 'warning', message: `Missing event: ${config.event_name}`, detail: `GTM has ${config.tag_names.join(', ') || 'a tag'} configured for this event, but no matching event was observed for ${vendor} in the last 30 days.`, evidence: { gtmTags: config.tag_names, gtmTriggers: config.trigger_names }, timestamp: snapshot?.fetched_at || null }], properties: [] });
