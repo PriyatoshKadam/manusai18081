@@ -13,434 +13,54 @@ function cleanPath(value: unknown) {
   if (!value) return '/';
   try { return new URL(String(value)).pathname || '/'; } catch { return String(value).split('?')[0].split('#')[0] || '/'; }
 }
-
 function text(value: unknown) { return value == null ? '' : String(value).trim(); }
-
-function classifyUtmRule(name: string, value: string) {
-  const problems: string[] = [];
-  if (!value) problems.push('empty');
-  if (/^\s|\s$/.test(value)) problems.push('leading/trailing whitespace');
-  if (/[A-Z]/.test(value)) problems.push('uppercase characters');
-  if (/\s/.test(value)) problems.push('spaces');
-  if (/[^a-z0-9._-]/i.test(value)) problems.push('special characters');
-  return problems.map((problem) => `${name}: ${problem}`);
-}
+function classifyUtmRule(name: string, value: string) { const problems: string[] = []; if (!value) problems.push('empty'); if (/^\s|\s$/.test(value)) problems.push('leading/trailing whitespace'); if (/[A-Z]/.test(value)) problems.push('uppercase characters'); if (/\s/.test(value)) problems.push('spaces'); if (/[^a-z0-9._-]/i.test(value)) problems.push('special characters'); return problems.map((problem) => `${name}: ${problem}`); }
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  const url = new URL(req.url);
-  const siteId = Number(url.searchParams.get('siteId'));
-  const vendor = url.searchParams.get('vendor')?.trim().toLowerCase() || null;
+  const url = new URL(req.url); const siteId = Number(url.searchParams.get('siteId')); const vendor = url.searchParams.get('vendor')?.trim().toLowerCase() || null;
   if (!Number.isSafeInteger(siteId) || siteId <= 0) return NextResponse.json({ error: 'siteId required' }, { status: 400 });
-
-  const owner = await query(
-    `SELECT id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id, meta_pixel_id,
-            tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id, snapchat_pixel_id,
-            first_party_domain
-       FROM sites WHERE id = $1 AND user_id = $2`,
-    [siteId, session.uid],
-  );
+  const owner = await query(`SELECT id, domain, gtm_container_id, ga4_measurement_id, gads_conversion_id, meta_pixel_id, tiktok_pixel_id, linkedin_partner_id, bing_uet_tag_id, snapchat_pixel_id, first_party_domain FROM sites WHERE id = $1 AND user_id = $2`, [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-
-  const vendorClause = vendor ? ' AND vendor = $2' : '';
-  const args = vendor ? [siteId, vendor] : [siteId];
-  const noiseFilter = `NOT ${INTERNAL_CORRELATION_NOISE_SQL}`;
+  const vendorClause = vendor ? ' AND vendor = $2' : ''; const args = vendor ? [siteId, vendor] : [siteId]; const noiseFilter = `NOT ${INTERNAL_CORRELATION_NOISE_SQL}`;
 
   const results = await Promise.all([
-    query(
-      `SELECT
-         COUNT(DISTINCT ${occurrenceKey}) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS total_event_hits,
-         COUNT(DISTINCT LOWER(COALESCE(event_name, ''))) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS event_total,
-         COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS sessions,
-         COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND ${delivered})::int AS successful_network_events,
-         COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND ${networkObservation} AND delivery_outcome IN ('http_error','blocked','beacon_rejected','network_error','aborted','timeout'))::int AS failed_network_events,
-         COUNT(DISTINCT LOWER(COALESCE(event_name,''))) FILTER (WHERE received_at >= NOW() - INTERVAL '30 days')::int AS active_event_types_30d,
-         COUNT(DISTINCT LOWER(COALESCE(event_name,''))) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS active_event_types_24h,
-         COUNT(DISTINCT LOWER(COALESCE(event_name,''))) FILTER (WHERE received_at >= NOW() - INTERVAL '30 days' AND received_at < NOW() - INTERVAL '29 days')::int AS active_event_types_30d_prior
-       FROM events WHERE site_id = $1${vendorClause}`,
-      args,
-    ),
-    query(
-      `SELECT LOWER(COALESCE(event_name,'')) AS event_name,
-              event_type,
-              observation_kind,
-              MIN(received_at) AS first_seen,
-              MAX(received_at) AS last_seen,
-              COUNT(DISTINCT ${occurrenceKey})::int AS hits,
-              COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions,
-              COUNT(*) FILTER (WHERE ${delivered})::int AS successful_deliveries,
-              COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome <> 'delivered')::int AS delivery_problems,
-              COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS hits_24h,
-              COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND received_at < NOW() - INTERVAL '1 day')::int AS prior_24h_hits,
-              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(gtm_tag_name,'')), NULL) AS gtm_tags,
-              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(gtm_trigger_name,'')), NULL) AS gtm_triggers,
-              BOOL_OR(is_synthetic) AS synthetic_observed
-         FROM events
-        WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-        GROUP BY LOWER(COALESCE(event_name,'')), event_type, observation_kind
-        ORDER BY hits DESC, event_name ASC
-        LIMIT 300`,
-      args,
-    ),
-    query(
-      `WITH base AS (
-         SELECT ${occurrenceKey} AS occurrence_key, event_name, observed_parameters, missing_parameters, params, received_at
-           FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-       ),
-       observed AS (
-         SELECT occurrence_key, event_name, LOWER(TRIM(value)) AS parameter_name, true AS passed
-           FROM base CROSS JOIN LATERAL jsonb_array_elements_text(${nonEmptyJsonArray('observed_parameters')}) AS item(value)
-          WHERE NULLIF(TRIM(value), '') IS NOT NULL
-       ),
-       missing AS (
-         SELECT occurrence_key, event_name, LOWER(TRIM(value)) AS parameter_name, false AS passed
-           FROM base CROSS JOIN LATERAL jsonb_array_elements_text(${nonEmptyJsonArray('missing_parameters')}) AS item(value)
-          WHERE NULLIF(TRIM(value), '') IS NOT NULL
-       ),
-       listed AS (
-         SELECT occurrence_key, event_name, LOWER(key) AS parameter_name, true AS passed
-           FROM base CROSS JOIN LATERAL jsonb_object_keys(CASE WHEN jsonb_typeof(params)='object' THEN params ELSE '{}'::jsonb END) AS item(key)
-          WHERE NULLIF(TRIM(key), '') IS NOT NULL
-       ),
-       all_rows AS (SELECT * FROM observed UNION ALL SELECT * FROM missing UNION ALL SELECT * FROM listed)
-       SELECT parameter_name,
-              COUNT(DISTINCT occurrence_key) FILTER (WHERE passed)::int AS reference_event_count,
-              COUNT(DISTINCT occurrence_key)::int AS observed_or_expected_event_count,
-              COUNT(DISTINCT occurrence_key) FILTER (WHERE NOT passed)::int AS missing_event_count,
-              ROUND(100.0 * COUNT(DISTINCT occurrence_key) FILTER (WHERE passed) / NULLIF(COUNT(DISTINCT occurrence_key),0),1) AS coverage,
-              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(event_name,'')) FILTER (WHERE passed),NULL) AS passing_events,
-              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(event_name,'')) FILTER (WHERE NOT passed),NULL) AS failing_events
-         FROM all_rows
-        GROUP BY parameter_name
-        ORDER BY missing_event_count DESC, observed_or_expected_event_count DESC, parameter_name ASC
-        LIMIT 300`,
-      args,
-    ),
-    query(
-      `WITH base AS (
-         SELECT ${occurrenceKey} AS occurrence_key, event_name, params
-           FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-       ),
-       expanded AS (
-         SELECT occurrence_key, event_name, key AS parameter_name, value
-           FROM base CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(params)='object' THEN params ELSE '{}'::jsonb END)
-       )
-       SELECT LOWER(parameter_name) AS parameter_name,
-              ARRAY_AGG(DISTINCT ${valueType('value')}) AS observed_types,
-              COUNT(DISTINCT occurrence_key)::int AS hits,
-              ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(event_name,'')),NULL) AS events
-         FROM expanded
-        GROUP BY LOWER(parameter_name)
-        ORDER BY hits DESC, parameter_name ASC
-        LIMIT 300`,
-      args,
-    ),
-    query(
-      `WITH session_pages AS (
-         SELECT COALESCE(NULLIF(page_url,''),'') AS page_url,
-                NULLIF(session_id,'') AS session_id,
-                MIN(received_at) AS first_seen,
-                MAX(received_at) AS last_seen,
-                COUNT(DISTINCT ${occurrenceKey})::int AS events
-           FROM events
-          WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-          GROUP BY COALESCE(NULLIF(page_url,''),''), NULLIF(session_id,'')
-       ), page_agg AS (
-         SELECT page_url,
-                COUNT(*) FILTER (WHERE first_seen >= NOW() - INTERVAL '24 hours')::int AS sessions_24h,
-                SUM(events) FILTER (WHERE first_seen >= NOW() - INTERVAL '24 hours')::int AS events_24h,
-                COUNT(*)::int AS sessions_30d,
-                SUM(events)::int AS events_30d,
-                ROUND(AVG(EXTRACT(EPOCH FROM (last_seen-first_seen))))::int AS session_duration_seconds,
-                MAX(last_seen) AS last_seen
-           FROM session_pages
-          WHERE page_url <> ''
-          GROUP BY page_url
-       ) SELECT * FROM page_agg ORDER BY events_24h DESC NULLS LAST, events_30d DESC LIMIT 150`,
-      args,
-    ),
-    query(
-      `SELECT DATE_TRUNC('day',received_at)::date AS day,
-              COUNT(DISTINCT ${occurrenceKey})::int AS hits,
-              COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions
-         FROM events
-        WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-        GROUP BY day ORDER BY day ASC`,
-      args,
-    ),
-    query(
-      `SELECT DATE_TRUNC('hour',received_at) AS hour,
-              COUNT(DISTINCT ${occurrenceKey}) FILTER (WHERE ${delivered})::int AS successful,
-              COUNT(DISTINCT ${occurrenceKey}) FILTER (WHERE ${networkObservation} AND delivery_outcome <> 'delivered')::int AS failed
-         FROM events
-        WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '24 hours'${vendorClause}
-        GROUP BY hour ORDER BY hour ASC`,
-      args,
-    ),
-    query(
-      `SELECT DATE_TRUNC('hour',detected_at) AS hour, COUNT(*)::int AS blocked
-         FROM adblock_events
-        WHERE site_id = $1 AND confidence IN ('confirmed','likely') AND ${noiseFilter} AND detected_at >= NOW() - INTERVAL '24 hours'
-          ${vendor ? 'AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(blocked_vendors)=\'array\' THEN blocked_vendors ELSE \'[]\'::jsonb END) b(v) WHERE LOWER(b.v)=LOWER($2))' : ''}
-        GROUP BY hour ORDER BY hour ASC`,
-      args,
-    ),
-    query(
-      `SELECT event_name, COUNT(*)::int AS blocked, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions
-         FROM adblock_events
-        WHERE site_id = $1 AND confidence IN ('confirmed','likely') AND ${noiseFilter} AND detected_at >= NOW() - INTERVAL '24 hours'
-          ${vendor ? 'AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(blocked_vendors)=\'array\' THEN blocked_vendors ELSE \'[]\'::jsonb END) b(v) WHERE LOWER(b.v)=LOWER($2))' : ''}
-        GROUP BY event_name ORDER BY blocked DESC LIMIT 150`,
-      args,
-    ),
-    query(
-      `SELECT COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions,
-              COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE COALESCE(consent_state->>'choice_recorded','false')='true')::int AS choice_sessions,
-              COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE consent_state ? 'analytics_storage' OR consent_state ? 'ad_storage' OR consent_state ? 'consent_gcs')::int AS signal_sessions,
-              COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE consent_state->>'consent_source' IN ('datalayer','network_gcs'))::int AS consent_mode_sessions,
-              COUNT(*) FILTER (WHERE consent_state->>'analytics_storage'='denied')::int AS analytics_denied_events,
-              COUNT(*) FILTER (WHERE consent_state->>'ad_storage'='denied')::int AS ad_denied_events
-         FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}`,
-      args,
-    ),
-    query(
-      `SELECT event_name, vendor, observation_kind, consent_state, delivery_outcome, gtm_tag_name, gtm_trigger_name, page_url, received_at
-         FROM events
-        WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'
-          AND (consent_state->>'analytics_storage'='denied' OR consent_state->>'ad_storage'='denied')
-          ${vendor ? 'AND vendor=$2' : ''}
-          AND vendor IN ('ga4','gads','meta','tiktok','linkedin','snapchat','bing')
-        ORDER BY received_at DESC LIMIT 250`,
-      args,
-    ),
-    query(
-      `SELECT COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions,
-              AVG((web_vitals->>'lcp')::numeric) FILTER (WHERE (web_vitals ? 'lcp') AND (web_vitals->>'lcp') ~ '^[0-9.]+$') AS lcp,
-              AVG((web_vitals->>'fcp')::numeric) FILTER (WHERE (web_vitals ? 'fcp') AND (web_vitals->>'fcp') ~ '^[0-9.]+$') AS fcp,
-              AVG((web_vitals->>'ttfb')::numeric) FILTER (WHERE (web_vitals ? 'ttfb') AND (web_vitals->>'ttfb') ~ '^[0-9.]+$') AS ttfb,
-              AVG((web_vitals->>'inp')::numeric) FILTER (WHERE (web_vitals ? 'inp') AND (web_vitals->>'inp') ~ '^[0-9.]+$') AS inp,
-              AVG((web_vitals->>'cls')::numeric) FILTER (WHERE (web_vitals ? 'cls') AND (web_vitals->>'cls') ~ '^[0-9.]+$') AS cls,
-              COUNT(*) FILTER (WHERE jsonb_typeof(web_vitals)='object' AND web_vitals <> '{}'::jsonb)::int AS vital_samples
-         FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}`,
-      args,
-    ),
-    query(
-      `SELECT COALESCE(source,'unknown') AS source, COUNT(DISTINCT ${occurrenceKey})::int AS hits, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions
-         FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-        GROUP BY COALESCE(source,'unknown') ORDER BY hits DESC LIMIT 50`,
-      args,
-    ),
-    query(
-      `SELECT ${occurrenceKey} AS occurrence_key, event_name, params, raw_url, page_url, received_at
-         FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}
-        ORDER BY received_at DESC LIMIT 5000`,
-      args,
-    ),
-    query(
-      `SELECT COUNT(*)::int AS pushes, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions,
-              COUNT(*) FILTER (WHERE observation_kind='datalayer')::int AS datalayer_pushes,
-              COUNT(*) FILTER (WHERE origin_source='gtm')::int AS gtm_pushes,
-              COUNT(*) FILTER (WHERE origin_source='website')::int AS website_pushes
-         FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '24 hours'${vendorClause}`,
-      args,
-    ),
-    query(
-      `SELECT COUNT(*)::int AS open_alerts,
-              COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '24 hours')::int AS new_alerts,
-              COUNT(*) FILTER (WHERE severity='critical')::int AS critical_alerts
-         FROM alerts WHERE site_id = $1 AND resolved=false${vendor ? ' AND (vendor IS NULL OR LOWER(vendor)=LOWER($2))' : ''}`,
-      args,
-    ),
+    query(`SELECT COUNT(DISTINCT ${occurrenceKey}) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS total_event_hits, COUNT(DISTINCT LOWER(COALESCE(event_name, ''))) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS event_total, COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS sessions, COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND ${delivered})::int AS successful_network_events, COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND ${networkObservation} AND delivery_outcome IN ('http_error','blocked','beacon_rejected','network_error','aborted','timeout'))::int AS failed_network_events, COUNT(DISTINCT LOWER(COALESCE(event_name,''))) FILTER (WHERE received_at >= NOW() - INTERVAL '30 days')::int AS active_event_types_30d, COUNT(DISTINCT LOWER(COALESCE(event_name,''))) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS active_event_types_24h, COUNT(DISTINCT LOWER(COALESCE(event_name,''))) FILTER (WHERE received_at >= NOW() - INTERVAL '30 days' AND received_at < NOW() - INTERVAL '29 days')::int AS active_event_types_30d_prior FROM events WHERE site_id = $1${vendorClause}`, args),
+    query(`SELECT LOWER(COALESCE(event_name,'')) AS event_name, event_type, observation_kind, MIN(received_at) AS first_seen, MAX(received_at) AS last_seen, COUNT(DISTINCT ${occurrenceKey})::int AS hits, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions, COUNT(*) FILTER (WHERE ${delivered})::int AS successful_deliveries, COUNT(*) FILTER (WHERE ${networkObservation} AND delivery_outcome <> 'delivered')::int AS delivery_problems, COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours')::int AS hits_24h, COUNT(*) FILTER (WHERE received_at >= NOW() - INTERVAL '24 hours' AND received_at < NOW() - INTERVAL '1 day')::int AS prior_24h_hits, ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(gtm_tag_name,'')), NULL) AS gtm_tags, ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(gtm_trigger_name,'')), NULL) AS gtm_triggers, BOOL_OR(is_synthetic) AS synthetic_observed FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause} GROUP BY LOWER(COALESCE(event_name,'')), event_type, observation_kind ORDER BY hits DESC, event_name ASC LIMIT 300`, args),
+    query(`WITH base AS (SELECT ${occurrenceKey} AS occurrence_key, event_name, observed_parameters, missing_parameters, params, received_at FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}), observed AS (SELECT occurrence_key, event_name, LOWER(TRIM(value)) AS parameter_name, true AS passed FROM base CROSS JOIN LATERAL jsonb_array_elements_text(${nonEmptyJsonArray('observed_parameters')}) AS item(value) WHERE NULLIF(TRIM(value), '') IS NOT NULL), missing AS (SELECT occurrence_key, event_name, LOWER(TRIM(value)) AS parameter_name, false AS passed FROM base CROSS JOIN LATERAL jsonb_array_elements_text(${nonEmptyJsonArray('missing_parameters')}) AS item(value) WHERE NULLIF(TRIM(value), '') IS NOT NULL), listed AS (SELECT occurrence_key, event_name, LOWER(key) AS parameter_name, true AS passed FROM base CROSS JOIN LATERAL jsonb_object_keys(CASE WHEN jsonb_typeof(params)='object' THEN params ELSE '{}'::jsonb END) AS item(key) WHERE NULLIF(TRIM(key), '') IS NOT NULL), all_rows AS (SELECT * FROM observed UNION ALL SELECT * FROM missing UNION ALL SELECT * FROM listed) SELECT parameter_name, COUNT(DISTINCT occurrence_key) FILTER (WHERE passed)::int AS reference_event_count, COUNT(DISTINCT occurrence_key)::int AS observed_or_expected_event_count, COUNT(DISTINCT occurrence_key) FILTER (WHERE NOT passed)::int AS missing_event_count, ROUND(100.0 * COUNT(DISTINCT occurrence_key) FILTER (WHERE passed) / NULLIF(COUNT(DISTINCT occurrence_key),0),1) AS coverage, ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(event_name,'')) FILTER (WHERE passed),NULL) AS passing_events, ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(event_name,'')) FILTER (WHERE NOT passed),NULL) AS failing_events FROM all_rows GROUP BY parameter_name ORDER BY missing_event_count DESC, observed_or_expected_event_count DESC, parameter_name ASC LIMIT 300`, args),
+    query(`WITH base AS (SELECT ${occurrenceKey} AS occurrence_key, event_name, params FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}), expanded AS (SELECT occurrence_key, event_name, key AS parameter_name, value FROM base CROSS JOIN LATERAL jsonb_each(CASE WHEN jsonb_typeof(params)='object' THEN params ELSE '{}'::jsonb END)) SELECT LOWER(parameter_name) AS parameter_name, ARRAY_AGG(DISTINCT ${valueType('value')}) AS observed_types, COUNT(DISTINCT occurrence_key)::int AS hits, ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(event_name,'')),NULL) AS events FROM expanded GROUP BY LOWER(parameter_name) ORDER BY hits DESC, parameter_name ASC LIMIT 300`, args),
+    query(`WITH session_pages AS (SELECT COALESCE(NULLIF(page_url,''),'') AS page_url, NULLIF(session_id,'') AS session_id, MIN(received_at) AS first_seen, MAX(received_at) AS last_seen, COUNT(DISTINCT ${occurrenceKey})::int AS events FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause} GROUP BY COALESCE(NULLIF(page_url,''),''), NULLIF(session_id,'')), page_agg AS (SELECT page_url, COUNT(*) FILTER (WHERE first_seen >= NOW() - INTERVAL '24 hours')::int AS sessions_24h, SUM(events) FILTER (WHERE first_seen >= NOW() - INTERVAL '24 hours')::int AS events_24h, COUNT(*)::int AS sessions_30d, SUM(events)::int AS events_30d, ROUND(AVG(EXTRACT(EPOCH FROM (last_seen-first_seen))))::int AS session_duration_seconds, MAX(last_seen) AS last_seen FROM session_pages WHERE page_url <> '' GROUP BY page_url) SELECT page_agg.*, COALESCE(gtm.page_gtm_tags, '[]'::jsonb) AS gtm_tags FROM page_agg LEFT JOIN (SELECT clean_page.page_url, JSONB_AGG(DISTINCT JSONB_BUILD_OBJECT('event_name', clean_page.event_name, 'tag_name', clean_page.tag_name)) FILTER (WHERE clean_page.tag_name IS NOT NULL) AS page_gtm_tags FROM (SELECT cleanPathForSql.page_url, LOWER(COALESCE(e.event_name,'')) AS event_name, NULLIF(e.gtm_tag_name,'') AS tag_name FROM events e CROSS JOIN LATERAL (SELECT regexp_replace(split_part(split_part(COALESCE(e.page_url,''),'?',1),'#',1),'^https?://[^/]+','') AS page_url) cleanPathForSql WHERE e.site_id = $1 AND e.received_at >= NOW() - INTERVAL '30 days'${vendorClause} AND NULLIF(e.gtm_tag_name,'') IS NOT NULL) clean_page GROUP BY clean_page.page_url) gtm ON gtm.page_url = page_agg.page_url ORDER BY page_agg.events_24h DESC NULLS LAST, page_agg.events_30d DESC LIMIT 150`, args),
+    query(`SELECT DATE_TRUNC('day',received_at)::date AS day, COUNT(DISTINCT ${occurrenceKey})::int AS hits, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause} GROUP BY day ORDER BY day ASC`, args),
+    query(`SELECT DATE_TRUNC('hour',received_at) AS hour, COUNT(DISTINCT ${occurrenceKey}) FILTER (WHERE ${delivered})::int AS successful, COUNT(DISTINCT ${occurrenceKey}) FILTER (WHERE ${networkObservation} AND delivery_outcome <> 'delivered')::int AS failed FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '24 hours'${vendorClause} GROUP BY hour ORDER BY hour ASC`, args),
+    query(`SELECT DATE_TRUNC('hour',detected_at) AS hour, COUNT(*)::int AS blocked FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed','likely') AND ${noiseFilter} AND detected_at >= NOW() - INTERVAL '24 hours' ${vendor ? 'AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(blocked_vendors)=\'array\' THEN blocked_vendors ELSE \'[]\'::jsonb END) b(v) WHERE LOWER(b.v)=LOWER($2))' : ''} GROUP BY hour ORDER BY hour ASC`, args),
+    query(`SELECT event_name, COUNT(*)::int AS blocked, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions FROM adblock_events WHERE site_id = $1 AND confidence IN ('confirmed','likely') AND ${noiseFilter} AND detected_at >= NOW() - INTERVAL '24 hours' ${vendor ? 'AND EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof(blocked_vendors)=\'array\' THEN blocked_vendors ELSE \'[]\'::jsonb END) b(v) WHERE LOWER(b.v)=LOWER($2))' : ''} GROUP BY event_name ORDER BY blocked DESC LIMIT 150`, args),
+    query(`SELECT COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions, COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE COALESCE(consent_state->>'choice_recorded','false')='true')::int AS choice_sessions, COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE consent_state ? 'analytics_storage' OR consent_state ? 'ad_storage' OR consent_state ? 'consent_gcs')::int AS signal_sessions, COUNT(DISTINCT NULLIF(session_id,'')) FILTER (WHERE consent_state->>'consent_source' IN ('datalayer','network_gcs'))::int AS consent_mode_sessions, COUNT(*) FILTER (WHERE consent_state->>'analytics_storage'='denied')::int AS analytics_denied_events, COUNT(*) FILTER (WHERE consent_state->>'ad_storage'='denied')::int AS ad_denied_events FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}`, args),
+    query(`SELECT event_name, vendor, observation_kind, consent_state, delivery_outcome, gtm_tag_name, gtm_trigger_name, page_url, received_at FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days' AND (consent_state->>'analytics_storage'='denied' OR consent_state->>'ad_storage'='denied') ${vendor ? 'AND vendor=$2' : ''} AND vendor IN ('ga4','gads','meta','tiktok','linkedin','snapchat','bing') ORDER BY received_at DESC LIMIT 250`, args),
+    query(`SELECT COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions, AVG((web_vitals->>'lcp')::numeric) FILTER (WHERE (web_vitals ? 'lcp') AND (web_vitals->>'lcp') ~ '^[0-9.]+$') AS lcp, AVG((web_vitals->>'fcp')::numeric) FILTER (WHERE (web_vitals ? 'fcp') AND (web_vitals->>'fcp') ~ '^[0-9.]+$') AS fcp, AVG((web_vitals->>'ttfb')::numeric) FILTER (WHERE (web_vitals ? 'ttfb') AND (web_vitals->>'ttfb') ~ '^[0-9.]+$') AS ttfb, AVG((web_vitals->>'inp')::numeric) FILTER (WHERE (web_vitals ? 'inp') AND (web_vitals->>'inp') ~ '^[0-9.]+$') AS inp, AVG((web_vitals->>'cls')::numeric) FILTER (WHERE (web_vitals ? 'cls') AND (web_vitals->>'cls') ~ '^[0-9.]+$') AS cls, COUNT(*) FILTER (WHERE jsonb_typeof(web_vitals)='object' AND web_vitals <> '{}'::jsonb)::int AS vital_samples FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause}`, args),
+    query(`SELECT COALESCE(source,'unknown') AS source, COUNT(DISTINCT ${occurrenceKey})::int AS hits, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause} GROUP BY COALESCE(source,'unknown') ORDER BY hits DESC LIMIT 50`, args),
+    query(`SELECT ${occurrenceKey} AS occurrence_key, event_name, params, raw_url, page_url, received_at FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '30 days'${vendorClause} ORDER BY received_at DESC LIMIT 5000`, args),
+    query(`SELECT COUNT(*)::int AS pushes, COUNT(DISTINCT NULLIF(session_id,''))::int AS sessions, COUNT(*) FILTER (WHERE observation_kind='datalayer')::int AS datalayer_pushes, COUNT(*) FILTER (WHERE origin_source='gtm')::int AS gtm_pushes, COUNT(*) FILTER (WHERE origin_source='website')::int AS website_pushes FROM events WHERE site_id = $1 AND received_at >= NOW() - INTERVAL '24 hours'${vendorClause}`, args),
+    query(`SELECT COUNT(*)::int AS open_alerts, COUNT(*) FILTER (WHERE created_at >= NOW()-INTERVAL '24 hours')::int AS new_alerts, COUNT(*) FILTER (WHERE severity='critical')::int AS critical_alerts FROM alerts WHERE site_id = $1 AND resolved=false${vendor ? ' AND (vendor IS NULL OR LOWER(vendor)=LOWER($2))' : ''}`, args),
   ]);
 
-  const rawOverview = results[0].rows[0] || {};
-  const eventRows = results[1].rows;
-  const parameterRows = results[2].rows.map((row: any) => ({
-    ...row,
-    reference_event_count: Number(row.reference_event_count || 0),
-    observed_or_expected_event_count: Number(row.observed_or_expected_event_count || 0),
-    missing_event_count: Number(row.missing_event_count || 0),
-    coverage: Number(row.coverage || 0),
-    passing_events: row.passing_events || [],
-    failing_events: row.failing_events || [],
-  }));
-  const typeRows = results[3].rows.map((row: any) => ({ ...row, hits: Number(row.hits || 0), observed_types: row.observed_types || [], events: row.events || [] }));
-  const typeByName = new Map(typeRows.map((row: any) => [String(row.parameter_name), row]));
-
-  const eventsByName = new Map<string, any>();
-  for (const row of eventRows) {
-    const key = String(row.event_name || 'unnamed');
-    const current = eventsByName.get(key) || {
-      event_name: key,
-      event_type: row.event_type,
-      first_seen: row.first_seen,
-      last_seen: row.last_seen,
-      cnt: 0,
-      sessions: 0,
-      successful_deliveries: 0,
-      delivery_problems: 0,
-      hits_24h: 0,
-      prior_24h_hits: 0,
-      gtm_tag_names: [],
-      gtm_trigger_names: [],
-      offline: false,
-      synthetic_observed: false,
-    };
-    current.cnt += Number(row.hits || 0);
-    current.sessions += Number(row.sessions || 0);
-    current.successful_deliveries += Number(row.successful_deliveries || 0);
-    current.delivery_problems += Number(row.delivery_problems || 0);
-    current.hits_24h += Number(row.hits_24h || 0);
-    current.prior_24h_hits += Number(row.prior_24h_hits || 0);
-    current.gtm_tag_names = [...new Set([...current.gtm_tag_names, ...(row.gtm_tags || [])])];
-    current.gtm_trigger_names = [...new Set([...current.gtm_trigger_names, ...(row.gtm_triggers || [])])];
-    current.synthetic_observed ||= Boolean(row.synthetic_observed);
-    if (!current.first_seen || new Date(row.first_seen) < new Date(current.first_seen)) current.first_seen = row.first_seen;
-    if (!current.last_seen || new Date(row.last_seen) > new Date(current.last_seen)) current.last_seen = row.last_seen;
-    eventsByName.set(key, current);
-  }
-
-  const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
-  const normalizedEvents = [...eventsByName.values()].map((row: any) => {
-    const last = new Date(row.last_seen || 0).getTime();
-    const offline = last > 0 && Date.now() - last >= 3 * 24 * 60 * 60 * 1000;
-    const drop = row.prior_24h_hits > 0 ? Math.round((1 - row.hits_24h / row.prior_24h_hits) * 1000) / 10 : null;
-    return { ...row, is_new: row.first_seen && Date.now() - new Date(row.first_seen).getTime() <= thirtyDaysMs && row.hits_24h > 0, offline, traffic_drop_pct: drop, event_type: String(row.event_type || '').toLowerCase() === 'custom' ? 'custom' : 'standard' };
-  }).sort((a, b) => Number(b.hits_24h) - Number(a.hits_24h) || String(a.event_name).localeCompare(String(b.event_name)));
-
-  const typeCollision = new Map<string, any>();
-  for (const row of typeRows) if (Array.isArray(row.observed_types) && row.observed_types.length > 1) typeCollision.set(String(row.parameter_name), row);
-  const parameterIssueMap = new Map<string, any>();
-  for (const row of parameterRows) {
-    const name = String(row.parameter_name);
-    parameterIssueMap.set(name, { ...row, type: typeByName.get(name)?.observed_types?.length === 1 ? typeByName.get(name).observed_types[0] : 'mixed', type_collision: typeCollision.has(name) });
-  }
-
-  const parameterIssues = [...parameterIssueMap.values()].map((row: any) => ({
-    ...row,
-    status: row.missing_event_count > 0 || row.coverage < 100 || row.type_collision ? 'Needs attention' : 'Healthy',
-    notes: row.type_collision ? `Observed multiple value types: ${(row.typeRows?.observed_types || typeByName.get(row.parameter_name)?.observed_types || []).join(', ')}` : row.missing_event_count > 0 ? `Missing or empty in ${row.missing_event_count} event occurrence(s).` : 'No current issue observed.',
-  }));
-
-  const pages = results[4].rows.map((row: any) => ({ ...row, page_path: cleanPath(row.page_url), events: Number(row.events_24h || 0), sessions: Number(row.sessions_24h || 0), events_30d: Number(row.events_30d || 0), sessions_30d: Number(row.sessions_30d || 0), session_duration_seconds: Number(row.session_duration_seconds || 0) }));
-  const pageTrends = results[5].rows.map((row: any) => ({ day: row.day, hits: Number(row.hits || 0), sessions: Number(row.sessions || 0) }));
-  const trafficTrend = results[6].rows.map((row: any) => ({ hour: row.hour, successful: Number(row.successful || 0), blocked: 0, failed: Number(row.failed || 0) }));
-  const blockerTrend = results[7].rows.map((row: any) => ({ hour: row.hour, blocked: Number(row.blocked || 0) }));
-  const blockerRows = results[8].rows.map((row: any) => ({ ...row, blocked: Number(row.blocked || 0), sessions: Number(row.sessions || 0), notes: 'Confirmed or likely blocker evidence. Correlation-only signals are excluded.' }));
-
-  const acquisitionEvents = results[13].rows;
-  const acquisitionMap = new Map<string, any>();
-  const utmViolations: Array<{ name: string; value: string; problems: string[]; last_seen: any }> = [];
-  for (const row of acquisitionEvents) {
-    const params = row.params && typeof row.params === 'object' ? row.params : {};
-    let rawUrl = String(row.raw_url || row.page_url || '');
-    try { const parsed = new URL(rawUrl); ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach((key) => { if (parsed.searchParams.get(key) && params[key] == null) params[key] = parsed.searchParams.get(key); }); } catch {}
-    const source = text(params.utm_source || params.source || '');
-    const medium = text(params.utm_medium || params.medium || '');
-    const campaign = text(params.utm_campaign || params.campaign || '');
-    const referrer = text(params.utm_referrer || params.referrer || '');
-    const landing = cleanPath(row.page_url);
-    const dims: Array<[string,string]> = [['campaign',campaign],['source',source],['medium',medium],['referrer',referrer],['landing',landing]];
-    for (const [dimension,value] of dims) {
-      if (!value) continue;
-      const key = `${dimension}:${value.toLowerCase()}`;
-      const current = acquisitionMap.get(key) || { dimension, name:value, hits:0, sessions:new Set<string>(), first_seen:row.received_at, last_seen:row.received_at };
-      current.hits += 1;
-      if (row.occurrence_key) current.occurrence_key = row.occurrence_key;
-      if (dimension === 'campaign' || dimension === 'source' || dimension === 'medium') {
-        const problems = classifyUtmRule(dimension, value);
-        if (problems.length) utmViolations.push({ name:dimension,value,problems,last_seen:row.received_at });
-      }
-      current.last_seen = row.received_at;
-      acquisitionMap.set(key,current);
-    }
-  }
-  const acquisition = ['campaign','source','medium','referrer','landing'].map((dimension) => ({
-    dimension,
-    rows: [...acquisitionMap.values()].filter((row) => row.dimension === dimension).sort((a,b)=>b.hits-a.hits).slice(0,50).map((row)=>({ ...row, sessions: row.sessions instanceof Set ? row.sessions.size : 0 })),
-  }));
-
-  const consentRaw = results[9].rows[0] || {};
-  const totalSessions = Number(consentRaw.sessions || 0);
-  const choiceSessions = Number(consentRaw.choice_sessions || 0);
-  const consentSignalSessions = Number(consentRaw.signal_sessions || 0);
-  const consentModeSessions = Number(consentRaw.consent_mode_sessions || 0);
-  const choicePct = totalSessions ? Math.round(choiceSessions / totalSessions * 1000) / 10 : null;
-  const signalPct = totalSessions ? Math.round(consentSignalSessions / totalSessions * 1000) / 10 : null;
-  const cmpCounts = new Map<string, number>();
-  for (const row of results[10].rows) {
-    const state = row.consent_state || {};
-    const provider = text(state.cmp || state.cmp_name || state.consent_provider);
-    if (provider) cmpCounts.set(provider, (cmpCounts.get(provider) || 0) + 1);
-  }
-  const cmp = [...cmpCounts.entries()].sort((a,b)=>b[1]-a[1])[0];
-  const consentIssues = results[10].rows.map((row: any) => {
-    const compliant = row.vendor === 'ga4' && consentModeSessions > 0;
-    return {
-      status: compliant ? 'Healthy' : 'Needs attention',
-      event_name: row.event_name || 'Unnamed event', vendor: row.vendor, compliant,
-      gtm_tag_name: row.gtm_tag_name, gtm_trigger_name: row.gtm_trigger_name,
-      page_url: row.page_url, consent_state: row.consent_state || {}, received_at: row.received_at,
-      notes: compliant ? 'Google Consent Mode evidence is present; denied storage can be compatible with cookieless measurement.' : 'A vendor event was observed while analytics or advertising storage was denied. Review the consent check/blocking rule and the banner choice.'
-    };
-  });
-
-  const vitals = results[11].rows[0] || {};
-  const metric = (value: unknown) => value == null ? null : Math.round(Number(value) * 10) / 10;
-  const metrics = {
-    sessions: Number(vitals.sessions || 0), samples: Number(vitals.vital_samples || 0),
-    lcp_ms: metric(vitals.lcp), fcp_ms: metric(vitals.fcp), ttfb_ms: metric(vitals.ttfb), inp_ms: metric(vitals.inp), cls: metric(vitals.cls),
-    thresholds: { lcp_ms: 2500, fcp_ms: 1800, ttfb_ms: 800, inp_ms: 200, cls: 0.1 },
-  };
-
-  const dataLayerSummary = results[14].rows[0] || {};
-  const dataLayer = {
-    pushes: Number(dataLayerSummary.pushes || 0), sessions: Number(dataLayerSummary.sessions || 0),
-    datalayer_pushes: Number(dataLayerSummary.datalayer_pushes || 0),
-    gtm_pushes: Number(dataLayerSummary.gtm_pushes || 0), website_pushes: Number(dataLayerSummary.website_pushes || 0),
-    provenance: normalizedEvents.slice(0, 100).map((event: any) => ({ event_name:event.event_name, gtm_tags:event.gtm_tag_names, gtm_triggers:event.gtm_trigger_names, first_seen:event.first_seen, last_seen:event.last_seen })),
-  };
-
-  const rawAlert = results[15].rows[0] || {};
-  const alertsSummary = { open: Number(rawAlert.open_alerts || 0), new_24h: Number(rawAlert.new_alerts || 0), critical: Number(rawAlert.critical_alerts || 0) };
-
-  const connected = owner.rows[0];
-  const configuredDestinations = [
-    ['ga4', connected.ga4_measurement_id], ['gads', connected.gads_conversion_id], ['meta', connected.meta_pixel_id],
-    ['tiktok', connected.tiktok_pixel_id], ['linkedin', connected.linkedin_partner_id], ['bing', connected.bing_uet_tag_id], ['snapchat', connected.snapchat_pixel_id],
-  ];
-  const destinationSummary = configuredDestinations.map(([key, id]) => ({ vendor:key, configured:Boolean(id), identifier:id || null, observed:normalizedEvents.some((event:any)=>String(event.event_name||'') && vendor ? true : true && false) })).map((row) => ({ ...row, observed: vendor ? vendor === row.vendor || normalizedEvents.length > 0 : normalizedEvents.length > 0 }));
-
-  return NextResponse.json({
-    site: { id: connected.id, domain: connected.domain, first_party_domain: connected.first_party_domain },
-    overview: {
-      total_event_hits: Number(rawOverview.total_event_hits || 0), event_total: Number(rawOverview.event_total || 0), parameter_number: parameterIssues.length,
-      sessions: Number(rawOverview.sessions || 0), successful_network_events: Number(rawOverview.successful_network_events || 0), failed_network_events: Number(rawOverview.failed_network_events || 0),
-      active_event_types_30d: Number(rawOverview.active_event_types_30d || 0), active_event_types_24h: Number(rawOverview.active_event_types_24h || 0),
-      active_event_types_30d_prior: Number(rawOverview.active_event_types_30d_prior || 0),
-    },
-    events: normalizedEvents,
-    eventTrends: results[5].rows.map((row:any)=>({ event_name: '', day: row.day, count: Number(row.hits||0) })),
-    parameters: parameterIssues,
-    parameterTypes: typeRows,
-    parameterTypeCollisions: [...typeCollision.values()],
-    pages,
-    pageTrends,
-    consent: {
-      cmp: cmp ? { name:cmp[0], observations:cmp[1], detected:true } : { name:'Not detected', observations:0, detected:false },
-      consentMode: { detected:consentModeSessions > 0, sessions:consentModeSessions, signalSessions:consentSignalSessions, signalPct },
-      choiceRecorded: { sessions:choiceSessions, totalSessions, percent:choicePct, status:choicePct === null ? 'Collecting evidence' : `${choicePct}% of observed sessions` },
-      eventsOutsideConsent: consentIssues,
-      denied: { analytics:Number(consentRaw.analytics_denied_events||0), ads:Number(consentRaw.ad_denied_events||0) },
-    },
-    adblocks: { total:Number(rawOverview.total_event_hits||0), successful:Number(rawOverview.successful_network_events||0), blocked:blockerRows.reduce((sum:number,row:any)=>sum+Number(row.blocked||0),0), rows:blockerRows, trend:blockerTrend },
-    traffic: { daily:pageTrends, hourly:trafficTrend },
-    acquisition: { dimensions:acquisition, utm_violations:utmViolations.slice(0,200), supported:['campaign','source','medium','referrer','landing'] },
-    platformMetrics: metrics,
-    dataLayer,
-    alerts: alertsSummary,
-    destinations: destinationSummary,
-    generatedAt: new Date().toISOString(),
-  });
+  const rawOverview = results[0].rows[0] || {}; const eventRows = results[1].rows;
+  const parameterRows = results[2].rows.map((row: any) => ({ ...row, reference_event_count:Number(row.reference_event_count||0), observed_or_expected_event_count:Number(row.observed_or_expected_event_count||0), missing_event_count:Number(row.missing_event_count||0), coverage:Number(row.coverage||0), passing_events:row.passing_events||[], failing_events:row.failing_events||[] }));
+  const typeRows = results[3].rows.map((row:any)=>({...row,hits:Number(row.hits||0),observed_types:row.observed_types||[],events:row.events||[]})); const typeByName=new Map(typeRows.map((row:any)=>[String(row.parameter_name),row]));
+  const eventsByName=new Map<string,any>();
+  for(const row of eventRows){const key=String(row.event_name||'unnamed');const current=eventsByName.get(key)||{event_name:key,event_type:row.event_type,first_seen:row.first_seen,last_seen:row.last_seen,cnt:0,sessions:0,successful_deliveries:0,delivery_problems:0,hits_24h:0,prior_24h_hits:0,gtm_tag_names:[],gtm_trigger_names:[],offline:false,synthetic_observed:false};current.cnt+=Number(row.hits||0);current.sessions+=Number(row.sessions||0);current.successful_deliveries+=Number(row.successful_deliveries||0);current.delivery_problems+=Number(row.delivery_problems||0);current.hits_24h+=Number(row.hits_24h||0);current.prior_24h_hits+=Number(row.prior_24h_hits||0);current.gtm_tag_names=[...new Set([...current.gtm_tag_names,...(row.gtm_tags||[])])];current.gtm_trigger_names=[...new Set([...current.gtm_trigger_names,...(row.gtm_triggers||[])])];current.synthetic_observed ||= Boolean(row.synthetic_observed);if(!current.first_seen||new Date(row.first_seen)<new Date(current.first_seen))current.first_seen=row.first_seen;if(!current.last_seen||new Date(row.last_seen)>new Date(current.last_seen))current.last_seen=row.last_seen;eventsByName.set(key,current);}
+  const thirtyDaysMs=30*24*60*60*1000; const normalizedEvents=[...eventsByName.values()].map((row:any)=>{const last=new Date(row.last_seen||0).getTime();const offline=last>0&&Date.now()-last>=3*24*60*60*1000;const drop=row.prior_24h_hits>0?Math.round((1-row.hits_24h/row.prior_24h_hits)*1000)/10:null;return{...row,is_new:row.first_seen&&Date.now()-new Date(row.first_seen).getTime()<=thirtyDaysMs&&row.hits_24h>0,offline,traffic_drop_pct:drop,event_type:String(row.event_type||'').toLowerCase()==='custom'?'custom':'standard'};}).sort((a,b)=>Number(b.hits_24h)-Number(a.hits_24h)||String(a.event_name).localeCompare(String(b.event_name)));
+  const typeCollision=new Map<string,any>();for(const row of typeRows)if(Array.isArray(row.observed_types)&&row.observed_types.length>1)typeCollision.set(String(row.parameter_name),row);const parameterIssueMap=new Map<string,any>();for(const row of parameterRows)parameterIssueMap.set(String(row.parameter_name),{...row,type:typeByName.get(String(row.parameter_name))?.observed_types?.length===1?typeByName.get(String(row.parameter_name)).observed_types[0]:'mixed',type_collision:typeCollision.has(String(row.parameter_name))});
+  const parameterIssues=[...parameterIssueMap.values()].map((row:any)=>({...row,status:row.missing_event_count>0||row.coverage<100||row.type_collision?'Needs attention':'Healthy',notes:row.type_collision?`Observed multiple value types: ${(row.typeRows?.observed_types||typeByName.get(row.parameter_name)?.observed_types||[]).join(', ')}`:row.missing_event_count>0?`Missing or empty in ${row.missing_event_count} event occurrence(s).`:'No current issue observed.'}));
+  const pages=results[4].rows.map((row:any)=>({...row,page_path:cleanPath(row.page_url),events:Number(row.events_24h||0),sessions:Number(row.sessions_24h||0),events_30d:Number(row.events_30d||0),sessions_30d:Number(row.sessions_30d||0),session_duration_seconds:Number(row.session_duration_seconds||0),gtm_tags:Array.isArray(row.gtm_tags)?row.gtm_tags:[]}));
+  const pageTrends=results[5].rows.map((row:any)=>({day:row.day,hits:Number(row.hits||0),sessions:Number(row.sessions||0)})); const trafficTrend=results[6].rows.map((row:any)=>({hour:row.hour,successful:Number(row.successful||0),blocked:0,failed:Number(row.failed||0)})); const blockerTrend=results[7].rows.map((row:any)=>({hour:row.hour,blocked:Number(row.blocked||0)})); const blockerRows=results[8].rows.map((row:any)=>({...row,blocked:Number(row.blocked||0),sessions:Number(row.sessions||0),notes:'Confirmed or likely blocker evidence. Correlation-only signals are excluded.'}));
+  const acquisitionEvents=results[13].rows; const acquisitionMap=new Map<string,any>(); const utmViolations:Array<{name:string;value:string;problems:string[];last_seen:any}>=[];
+  for(const row of acquisitionEvents){const params=row.params&&typeof row.params==='object'?row.params:{};let rawUrl=String(row.raw_url||row.page_url||'');try{const parsed=new URL(rawUrl);['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach((key)=>{if(parsed.searchParams.get(key)&&params[key]==null)params[key]=parsed.searchParams.get(key)});}catch{}const source=text(params.utm_source||params.source||'');const medium=text(params.utm_medium||params.medium||'');const campaign=text(params.utm_campaign||params.campaign||'');const referrer=text(params.utm_referrer||params.referrer||'');const landing=cleanPath(row.page_url);const dims:Array<[string,string]>=[['campaign',campaign],['source',source],['medium',medium],['referrer',referrer],['landing',landing]];for(const[dimension,value]of dims){if(!value)continue;const key=`${dimension}:${value.toLowerCase()}`;const current=acquisitionMap.get(key)||{dimension,name:value,hits:0,sessions:new Set<string>(),first_seen:row.received_at,last_seen:row.received_at};current.hits+=1;if(row.occurrence_key)current.occurrence_key=row.occurrence_key;if(dimension==='campaign'||dimension==='source'||dimension==='medium'){const problems=classifyUtmRule(dimension,value);if(problems.length)utmViolations.push({name:dimension,value,problems,last_seen:row.received_at});}current.last_seen=row.received_at;acquisitionMap.set(key,current);}}
+  const acquisition=['campaign','source','medium','referrer','landing'].map((dimension)=>({dimension,rows:[...acquisitionMap.values()].filter((row)=>row.dimension===dimension).sort((a,b)=>b.hits-a.hits).slice(0,50).map((row)=>({...row,sessions:row.sessions instanceof Set?row.sessions.size:0}))}));
+  const consentRaw=results[9].rows[0]||{};const totalSessions=Number(consentRaw.sessions||0);const choiceSessions=Number(consentRaw.choice_sessions||0);const consentSignalSessions=Number(consentRaw.signal_sessions||0);const consentModeSessions=Number(consentRaw.consent_mode_sessions||0);const choicePct=totalSessions?Math.round(choiceSessions/totalSessions*1000)/10:null;const signalPct=totalSessions?Math.round(consentSignalSessions/totalSessions*1000)/10:null;const cmpCounts=new Map<string,number>();for(const row of results[10].rows){const state=row.consent_state||{};const provider=text(state.cmp||state.cmp_name||state.consent_provider);if(provider)cmpCounts.set(provider,(cmpCounts.get(provider)||0)+1);}const cmp=[...cmpCounts.entries()].sort((a,b)=>b[1]-a[1])[0];
+  const consentIssues=results[10].rows.map((row:any)=>{const compliant=row.vendor==='ga4'&&consentModeSessions>0;return{status:compliant?'Healthy':'Needs attention',event_name:row.event_name||'Unnamed event',vendor:row.vendor,compliant,gtm_tag_name:row.gtm_tag_name,gtm_trigger_name:row.gtm_trigger_name,page_url:row.page_url,consent_state:row.consent_state||{},received_at:row.received_at,notes:compliant?'Google Consent Mode evidence is present; denied storage can be compatible with cookieless measurement.':'A vendor event was observed while analytics or advertising storage was denied. Review the consent check/blocking rule and the banner choice.'}});
+  const vitals=results[11].rows[0]||{};const metric=(value:unknown)=>value==null?null:Math.round(Number(value)*10)/10;const metrics={sessions:Number(vitals.sessions||0),samples:Number(vitals.vital_samples||0),lcp_ms:metric(vitals.lcp),fcp_ms:metric(vitals.fcp),ttfb_ms:metric(vitals.ttfb),inp_ms:metric(vitals.inp),cls:metric(vitals.cls),thresholds:{lcp_ms:2500,fcp_ms:1800,ttfb_ms:800,inp_ms:200,cls:0.1}};
+  const dataLayerSummary=results[14].rows[0]||{};const dataLayer={pushes:Number(dataLayerSummary.pushes||0),sessions:Number(dataLayerSummary.sessions||0),datalayer_pushes:Number(dataLayerSummary.datalayer_pushes||0),gtm_pushes:Number(dataLayerSummary.gtm_pushes||0),website_pushes:Number(dataLayerSummary.website_pushes||0),provenance:normalizedEvents.slice(0,100).map((event:any)=>({event_name:event.event_name,gtm_tags:event.gtm_tag_names,gtm_triggers:event.gtm_trigger_names,first_seen:event.first_seen,last_seen:event.last_seen}))};
+  const rawAlert=results[15].rows[0]||{};const alertsSummary={open:Number(rawAlert.open_alerts||0),new_24h:Number(rawAlert.new_alerts||0),critical:Number(rawAlert.critical_alerts||0)};const connected=owner.rows[0];const configuredDestinations=[['ga4',connected.ga4_measurement_id],['gads',connected.gads_conversion_id],['meta',connected.meta_pixel_id],['tiktok',connected.tiktok_pixel_id],['linkedin',connected.linkedin_partner_id],['bing',connected.bing_uet_tag_id],['snapchat',connected.snapchat_pixel_id]];const destinationSummary=configuredDestinations.map(([key,id])=>({vendor:key,configured:Boolean(id),identifier:id||null,observed:vendor?vendor===key||normalizedEvents.length>0:normalizedEvents.length>0}));
+  return NextResponse.json({site:{id:connected.id,domain:connected.domain,first_party_domain:connected.first_party_domain},overview:{total_event_hits:Number(rawOverview.total_event_hits||0),event_total:Number(rawOverview.event_total||0),parameter_number:parameterIssues.length,sessions:Number(rawOverview.sessions||0),successful_network_events:Number(rawOverview.successful_network_events||0),failed_network_events:Number(rawOverview.failed_network_events||0),active_event_types_30d:Number(rawOverview.active_event_types_30d||0),active_event_types_24h:Number(rawOverview.active_event_types_24h||0),active_event_types_30d_prior:Number(rawOverview.active_event_types_30d_prior||0)},events:normalizedEvents,eventTrends:[],parameters:parameterIssues,parameterTypes:typeRows,parameterTypeCollisions:[...typeCollision.values()],pages,pageTrends,consent:{cmp:cmp?{name:cmp[0],observations:cmp[1],detected:true}:{name:'Not detected',observations:0,detected:false},consentMode:{detected:consentModeSessions>0,sessions:consentModeSessions,signalSessions:consentSignalSessions,signalPct},choiceRecorded:{sessions:choiceSessions,totalSessions,percent:choicePct,status:choicePct===null?'Collecting evidence':`${choicePct}% of observed sessions`},eventsOutsideConsent:consentIssues,denied:{analytics:Number(consentRaw.analytics_denied_events||0),ads:Number(consentRaw.ad_denied_events||0)}},adblocks:{total:Number(rawOverview.total_event_hits||0),successful:Number(rawOverview.successful_network_events||0),blocked:blockerRows.reduce((sum:number,row:any)=>sum+Number(row.blocked||0),0),rows:blockerRows,trend:blockerTrend},traffic:{daily:pageTrends,hourly:trafficTrend},acquisition:{dimensions:acquisition,utm_violations:utmViolations.slice(0,200),supported:['campaign','source','medium','referrer','landing']},platformMetrics:metrics,dataLayer,alerts:alertsSummary,destinations:destinationSummary,generatedAt:new Date().toISOString()});
 }
