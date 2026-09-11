@@ -25,7 +25,57 @@ const platformId = `CASE
   ELSE NULL END`;
 // fix_steps is JSONB in current schema. Cast it to text before applying text functions;
 // COALESCE(fix_steps, '') would make PostgreSQL attempt to parse '' as JSON.
-const consentAlertFilter = `(LOWER(COALESCE(code,'')) LIKE '%consent%' OR LOWER(COALESCE(category,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_user_data%' OR LOWER(COALESCE(message,'')) LIKE '%ad_personalization%' OR LOWER(COALESCE(message,'')) LIKE '%g100%' OR LOWER(COALESCE(root_cause,'')) LIKE '%consent%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(fix_steps::text,'')) LIKE '%consent%')`;
+const consentAlertFilter = `(LOWER(COALESCE(code,'')) LIKE '%consent%' OR LOWER(COALESCE(category,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%consent%' OR LOWER(COALESCE(message,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_storage%' OR LOWER(COALESCE(message,'')) LIKE '%ad_user_data%' OR LOWER(COALESCE(message,'')) LIKE '%ad_personalization%' OR LOWER(COALESCE(message,'')) LIKE '%g100%' OR LOWER(COALESCE(root_cause,'')) LIKE '%consent%' OR LOWER(COALESCE(root_cause,'')) LIKE '%analytics_storage%' OR LOWER(COALESCE(fix_steps::text,'')) LIKE '%consent%')`;
+
+function normaliseName(value: unknown) { return String(value || '').trim().toLowerCase(); }
+function parseJsonArray(value: unknown): any[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') { try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; } }
+  return [];
+}
+function vendorFromTag(tag: any): string {
+  const type = normaliseName(tag?.type); const name = normaliseName(tag?.name);
+  if (type.includes('googleanalytics') || ['gaawe','gaawc'].includes(type)) return 'ga4';
+  if (type.includes('googleads') || type === 'awct' || type === 'sp' || name.includes('google ads')) return 'gads';
+  if (type.includes('facebook') || type.includes('meta') || name.includes('facebook') || name.includes('meta pixel')) return 'meta';
+  if (type.includes('tiktok') || type.includes('tik_tok') || name.includes('tiktok') || name.includes('tik tok')) return 'tiktok';
+  if (type.includes('linkedin') || name.includes('linkedin') || name.includes('insight tag')) return 'linkedin';
+  if (type.includes('microsoft') || type.includes('bing') || name.includes('bing') || name.includes('uet')) return 'bing';
+  if (type.includes('snapchat') || type.includes('snap') || name.includes('snapchat') || name.includes('snap pixel')) return 'snapchat';
+  return 'other';
+}
+function triggerEventNames(trigger: any): string[] {
+  const names: string[] = [];
+  const direct = String(trigger?.customEventName || '').trim(); if (direct) names.push(direct);
+  const filters = Array.isArray(trigger?.customEventFilter) ? trigger.customEventFilter : [];
+  for (const filter of filters) {
+    const parameters = Array.isArray(filter?.parameter) ? filter.parameter : [];
+    const arg1 = parameters.find((p: any) => String(p?.key || '').toLowerCase() === 'arg1');
+    const value = String(arg1?.value || '').trim();
+    if (value && !value.includes('{{')) names.push(value);
+  }
+  return Array.from(new Set(names.map(normaliseName).filter(Boolean)));
+}
+function gtmEventMap(snapshot: any, vendor: string) {
+  const tags = parseJsonArray(snapshot?.tags); const triggers = parseJsonArray(snapshot?.triggers);
+  const triggerById = new Map(triggers.map((t: any) => [String(t.triggerId || t.id || ''), t]));
+  const map = new Map<string, { tag_names: string[]; trigger_names: string[] }>();
+  for (const tag of tags) {
+    if (vendorFromTag(tag) !== vendor) continue;
+    const tagName = String(tag?.name || '').trim(); if (!tagName || /gafix|monitor/i.test(tagName)) continue;
+    const ids = Array.isArray(tag?.firingTriggerIds) ? tag.firingTriggerIds : (Array.isArray(tag?.firingTriggerId) ? tag.firingTriggerId : []);
+    const linkedTriggers = ids.map((id: any) => triggerById.get(String(id))).filter(Boolean);
+    const triggerNames = linkedTriggers.map((t: any) => String(t?.name || t?.triggerId || '').trim()).filter(Boolean);
+    const eventNames = [String(tag?.eventName || '').trim(), ...linkedTriggers.flatMap(triggerEventNames)].map(normaliseName).filter(Boolean);
+    for (const eventName of Array.from(new Set(eventNames))) {
+      const key = `${vendor}:${eventName}`; const current = map.get(key) || { tag_names: [], trigger_names: [] };
+      if (!current.tag_names.includes(tagName)) current.tag_names.push(tagName);
+      for (const triggerName of triggerNames) if (!current.trigger_names.includes(triggerName)) current.trigger_names.push(triggerName);
+      map.set(key, current);
+    }
+  }
+  return map;
+}
 
 export async function GET(req: NextRequest) {
   const session = await getSession();
@@ -92,6 +142,19 @@ export async function GET(req: NextRequest) {
        FROM events WHERE site_id = $1 AND received_at > NOW() - INTERVAL '24 hours'
        GROUP BY ${displayName}, event_type, vendor ORDER BY cnt DESC LIMIT 100`;
   const eventsRes = vendor ? await query(eventsQ, [siteId, vendor]) : await query(eventsQ, [siteId]);
+  const snapshotRes = await query(`SELECT tags, triggers, fetched_at, environment, snapshot_stale FROM gtm_config_snapshots WHERE site_id = $1 AND user_id = $2 ORDER BY fetched_at DESC LIMIT 1`, [siteId, session.uid]);
+  const gtmMap = gtmEventMap(snapshotRes.rows[0] || null, String(vendor || '').toLowerCase());
+  for (const row of eventsRes.rows as any[]) {
+    const key = `${String(row.vendor || vendor || '').toLowerCase()}:${normaliseName(row.event_name)}`;
+    const configured = gtmMap.get(key);
+    const observedTags = Array.isArray(row.gtm_tag_names) ? row.gtm_tag_names : [];
+    const observedTriggers = Array.isArray(row.gtm_trigger_names) ? row.gtm_trigger_names : [];
+    if (configured) {
+      row.gtm_tag_names = Array.from(new Set([...observedTags, ...configured.tag_names]));
+      row.gtm_trigger_names = Array.from(new Set([...observedTriggers, ...configured.trigger_names]));
+      row.gtm_correlation_confidence = row.gtm_tag_names.length ? (row.gtm_correlation_confidence || 'configured') : row.gtm_correlation_confidence;
+    }
+  }
   const flow = await query(
     `SELECT CASE WHEN delivery_mode IN ('server_side','first_party') THEN 'first_party' WHEN delivery_mode IN ('client_side','third_party') THEN 'third_party' ELSE 'unknown' END AS delivery_mode,
             COUNT(DISTINCT ${occurrenceKey})::int AS events,
