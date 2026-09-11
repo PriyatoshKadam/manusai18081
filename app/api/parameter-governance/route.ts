@@ -40,7 +40,6 @@ const CATALOG: Record<string, Record<string, ParameterSpec>> = {
 
 function asArray(value: unknown): any[] { return Array.isArray(value) ? value : []; }
 function norm(value: unknown): string { return String(value ?? '').trim().toLowerCase(); }
-function typeOf(value: any): string { if (value === null) return 'null'; if (Array.isArray(value)) return 'array'; if (typeof value === 'number') return 'number'; if (typeof value === 'boolean') return 'boolean'; if (typeof value === 'string') return 'string'; if (value && typeof value === 'object') return 'object'; return 'unknown'; }
 
 function collectExplicitSpecs(value: unknown, eventHint = '') {
   const specs = new Map<string, any>();
@@ -84,44 +83,43 @@ export async function GET(req: NextRequest) {
   const gtmSpecs = snapshot ? collectExplicitSpecs({tags:snapshot.tags,triggers:snapshot.triggers}) : [];
   const catalog = CATALOG[vendor] || {};
 
-  // Parameter governance is GTM-first. We start with parameters configured in GTM and
-  // only ask whether those configured parameters are present/correct in network traffic.
-  // A network-only property is NOT an unexpected parameter and is deliberately excluded.
-  // Auto-generated platform parameters are also excluded from this UI.
+  // The Parameters tab should show real governance data. GTM remains the source of
+  // explicit specifications, while the platform catalog supplies required/optional
+  // classifications when GTM does not expose parameter metadata. Auto parameters are
+  // the only catalog parameters intentionally hidden from this UI.
   const configured = new Map<string, any>();
   for (const spec of gtmSpecs) {
     const platform = catalog[spec.name];
     if (platform?.status === 'auto') continue;
-    const key = `${spec.event}|${spec.name}`;
-    configured.set(key, {...spec, platform});
+    configured.set(`${spec.event}|${spec.name}`, {...spec, platform});
   }
 
-  // If GTM exposes no explicit parameter metadata, do not manufacture a specification
-  // from observed network traffic. This prevents network payloads from becoming false GTM errors.
+  // Add platform-defined required/optional/conditional parameters so the table does
+  // not disappear when the GTM export contains no explicit parameter metadata. These
+  // are evaluated against network traffic; network-only properties are not errors.
+  for (const [name, platform] of Object.entries(catalog)) {
+    if (platform.status === 'auto' || platform.status === 'undocumented') continue;
+    const observedMatches = observed.rows.filter((r:any) => norm(r.parameter_name) === norm(name));
+    const events = Array.from(new Set(observedMatches.map((r:any)=>String(r.event_name||'')).filter(Boolean)));
+    const key = `|${norm(name)}`;
+    if (!configured.has(key)) configured.set(key, {event:'', name:norm(name), type:platform.type, presence:platform.status, platform, catalogOnly:true, observedEvents:events});
+  }
+
   const output = Array.from(configured.values()).map((spec:any) => {
     const matching = observed.rows.filter((r:any) => norm(r.parameter_name) === spec.name && (!spec.event || norm(r.event_name) === spec.event));
     const hits = matching.reduce((n:any,r:any)=>n+Number(r.hits||0),0);
     const hits24 = matching.reduce((n:any,r:any)=>n+Number(r.hits_24h||0),0);
     const hits7 = matching.reduce((n:any,r:any)=>n+Number(r.hits_7d||0),0);
-    const missingHits = matching.length ? 0 : 0;
     const observedTypes = Array.from(new Set(matching.flatMap((r:any)=>asArray(r.observed_types)))) as string[];
     const expectedType = spec.type || spec.platform?.type || null;
     const presence = spec.presence || spec.platform?.status || 'optional';
     const issues:any[] = [];
-
-    // Validate only the GTM-defined parameter against what actually arrived on the wire.
-    if (expectedType && observedTypes.some(t=>t!=='null' && t!==expectedType)) {
-      issues.push({code:'type_collision',severity:'warning',title:'Type collision',message:`GTM defines ${spec.name} as ${expectedType}; network traffic observed ${observedTypes.join(', ')}.`});
-    }
-    if (presence === 'required' && hits === 0) {
-      issues.push({code:'missing_property',severity:'warning',title:'Required GTM parameter missing',message:`GTM requires ${spec.name} for ${spec.event || 'this event'}, but it was not observed in the network payload.`});
-    }
-    if (presence === 'forbidden') {
-      issues.push({code:'forbidden_property',severity:'warning',title:'Forbidden parameter',message:'This parameter is explicitly forbidden by the GTM specification.'});
-    }
+    if (expectedType && observedTypes.some(t=>t!=='null' && t!==expectedType)) issues.push({code:'type_collision',severity:'warning',title:'Type collision',message:`Expected ${expectedType}; network traffic observed ${observedTypes.join(', ')}.`});
+    if (presence === 'required' && hits === 0) issues.push({code:'missing_property',severity:'warning',title:'Required parameter missing',message:`Required parameter ${spec.name} was not observed in the network payload.`});
+    if (presence === 'forbidden') issues.push({code:'forbidden_property',severity:'warning',title:'Forbidden parameter',message:'This parameter is explicitly forbidden by the GTM specification.'});
     if (spec.enum?.length) issues.push({code:'enum_validation',severity:'warning',title:'Enum validation',message:`GTM expects one of: ${spec.enum.join(', ')}.`});
     if (spec.regex) issues.push({code:'regex_validation',severity:'warning',title:'Regex validation',message:`GTM defines a value pattern: ${spec.regex}.`});
-    if (spec.conditional) issues.push({code:'conditional_property',severity:'info',title:'Conditional parameter',message:'This GTM parameter is governed by a conditional rule; absence is not treated as an error unless the condition is active.'});
+    if (spec.conditional) issues.push({code:'conditional_property',severity:'info',title:'Conditional parameter',message:'This parameter is governed by a conditional rule; absence is not treated as an error unless the condition is active.'});
 
     const status = issues.some(i=>i.severity==='warning') ? 'Warn' : hits24>0 ? 'OK' : hits>0 ? 'Off' : presence==='required' ? 'Warn' : 'Off';
     const sources = Array.from(new Set(matching.flatMap((r:any)=>asArray(r.sources).map(String))));
@@ -132,7 +130,7 @@ export async function GET(req: NextRequest) {
       hits,
       hits_24h:hits24,
       hits_7d:hits7,
-      missing_hits:missingHits,
+      missing_hits:matching.length ? 0 : 0,
       coverage:hits>0?100:0,
       events:spec.event?[spec.event]:Array.from(new Set(matching.map((r:any)=>String(r.event_name||'')).filter(Boolean))),
       sources,
