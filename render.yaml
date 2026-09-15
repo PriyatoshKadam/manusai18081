@@ -3,7 +3,7 @@ services:
     name: ga4fix
     env: node
     plan: starter
-    buildCommand: npm install && npm run build && npm run migrate
+    buildCommand: npm install --legacy-peer-deps --include=dev && npm run build && npm run migrate
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
