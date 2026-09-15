@@ -9,7 +9,23 @@ function formatTimestamp(value: unknown) {
   if (!value) return '—';
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return '—';
-  return date.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const localZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time';
+  const local = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short',
+  }).format(date);
+  const utc = new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC', timeZoneName: 'short',
+  }).format(date);
+  return `${local} (${localZone}) · ${utc}`;
+}
+
+function visibleIssues(issues: GovernanceIssue[]) {
+  const duplicate = issues.some((issue) => issue.code === 'duplicate_event');
+  return issues.filter((issue) => {
+    // Fan-out is supporting evidence for the duplicate incident. Do not show it as a second issue.
+    if (duplicate && issue.code === 'gtm_multiple_tags_or_triggers') return false;
+    return true;
+  });
 }
 
 export default function EventIssueTimestampEnhancer({ vendor }: { vendor: string }) {
@@ -39,7 +55,7 @@ export default function EventIssueTimestampEnhancer({ vendor }: { vendor: string
             if (!eventCell || !issueCell || !timestampCell) return;
             const eventName = String(eventCell.querySelector('.font-mono')?.textContent || '').trim().toLowerCase();
             const governanceRow = byName.get(eventName);
-            const issues: GovernanceIssue[] = Array.isArray(governanceRow?.issues) ? governanceRow.issues : [];
+            const issues = visibleIssues(Array.isArray(governanceRow?.issues) ? governanceRow.issues : []);
             if (!issues.length) return;
             const issueWrap = document.createElement('div');
             issueWrap.className = 'space-y-3';
