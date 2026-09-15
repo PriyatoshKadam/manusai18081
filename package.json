@@ -5,16 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "node server.js",
+    "start": "node db/migrate.js && node server.js",
     "migrate": "node db/migrate.js",
+    "build:start": "node db/migrate.js && node server.js",
     "test": "vitest run"
   },
   "dependencies": {
     "@types/bcryptjs": "2.4.6",
     "@types/node": "20.14.11",
     "@types/pg": "8.11.6",
-    "@types/react": "18.3.3",
-    "@types/react-dom": "18.3.0",
     "autoprefixer": "10.4.19",
     "bcryptjs": "2.4.3",
     "jose": "5.6.3",
@@ -25,7 +24,7 @@
     "react-dom": "18.3.1",
     "recharts": "2.12.7",
     "tailwindcss": "3.4.6",
-    "typescript": "5.5.3"
+    "pg": "8.12.0"
   },
   "engines": {
     "node": ">=20.9.0"
