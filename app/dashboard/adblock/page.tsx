@@ -43,7 +43,6 @@ export default function AdblockPage() {
   const sufficient = totals.data_sufficiency === 'sufficient';
   const maxTrend = Math.max(1, ...trends.map((r) => Number(r.actionable_signals) || 0));
   const maxVendor = Math.max(1, ...vendors.map((r) => Number(r.blocked_sessions) || 0));
-  const maxPage = Math.max(1, ...pages.map((r) => Number(r.blocked_sessions) || 0));
   const confirmedRate = totals.total_sessions_24h >= Number(totals.min_sample_size || 30) && totals.total_sessions_24h
     ? `${Number(totals.actionable_rate_pct || 0).toFixed(1)}%` : `Collecting (${Number(totals.total_sessions_24h || 0)}/${Number(totals.min_sample_size || 30)})`;
   const actionableShare = useMemo(() => {
@@ -83,7 +82,7 @@ export default function AdblockPage() {
             <QualityRow label="Correlation gaps" value={Number(totals.correlation_gaps_24h || 0)} tone="neutral" />
             <QualityRow label="Telemetry gaps" value={Number(totals.telemetry_gaps_24h || 0)} tone="neutral" />
           </div>
-          <p className="text-[11px] text-ink-400 mt-4">HTTP errors, CORS failures, timeouts and missing vendor matches remain investigation evidence unless the browser supplies an explicit blocking signal.</p>
+          <p className="text-[11px] text-ink-400 mt-4">HTTP errors, CORS failures, timeouts and missing vendor matches remain investigation evidence, not as proof of ad blocking, unless the browser supplies an explicit blocking signal.</p>
         </Card>
       </section>
 
