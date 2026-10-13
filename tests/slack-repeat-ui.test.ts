@@ -24,7 +24,10 @@ describe('Slack and repeated-event regressions', () => {
   });
 
   it('keeps the customer dashboard focused on the requested platform destinations', () => {
-    const page = read('app/dashboard/page.tsx');
+    const home = read('app/dashboard/page.tsx');
+    const page = read('app/dashboard/monitoring/page.tsx');
+    expect(home).toContain('Run a GA4 + GTM audit');
+    expect(home).toContain('Open Live Monitoring');
     expect(page).toContain('Tracking overview');
     expect(page).toContain("vendor: 'ga4'");
     expect(page).toContain("vendor: 'gads'");
