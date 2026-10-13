@@ -123,6 +123,7 @@ export async function GET(req: NextRequest) {
   if (!vendor) return NextResponse.json({ error: 'vendor required' }, { status: 400 });
   const owner = await query('SELECT id FROM sites WHERE id = $1 AND user_id = $2 LIMIT 1', [siteId, session.uid]);
   if (!owner.rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const governanceVendor = normaliseGovernanceVendor(vendor);
 
   const [events, params, alerts, snapshotResult, duplicateResult] = await Promise.all([
     query(`SELECT LOWER(COALESCE(event_name,'')) AS event_name, event_type, vendor,
@@ -184,7 +185,6 @@ export async function GET(req: NextRequest) {
     if (firstSeen && firstSeen.getTime() >= Date.now() - 86400000) add('new_event','info','New event detected',`First observed ${firstSeen.toLocaleString()}. Review it against the GTM configuration and tracking plan.`,undefined,row.first_seen);
     if (firstSeen && Array.isArray(row.observed_event_names) && row.observed_event_names.length > 1) add('event_naming_inconsistency','warning','Event naming inconsistency detected',`The same logical event was observed under multiple names: ${row.observed_event_names.join(', ')}. Normalize casing, separators and implementation naming so the event has one canonical name.`,{ observedNames: row.observed_event_names },row.last_seen);
     const rawNames = Array.isArray(row.observed_event_names) ? row.observed_event_names.map((n:any)=>String(n||'').trim()).filter(Boolean) : [String(row.event_name || '').trim()].filter(Boolean);
-    const governanceVendor = normaliseGovernanceVendor(vendor);
     for (const rawName of rawNames) {
       if (!governanceVendor) continue;
       const validation = eventNameValidation(governanceVendor, rawName);
