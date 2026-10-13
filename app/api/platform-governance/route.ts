@@ -18,7 +18,7 @@ export async function GET(req:NextRequest){
  const selected=requested&&vendors.includes(requested)?[requested]:vendors;
  const out:any[]=[];
  for(const vendor of selected){
-  const eventsRes=await query(`SELECT id,event_name,event_type,params,received_at,session_id,occurrence_id,network_occurrence_id,page_url,resource_domain,status_code,delivery_outcome,failure_reason,observation_kind,delivery_mode,origin_source,request_signature,gtm_tag_name,gtm_trigger_name,consent_state,client_id FROM events WHERE site_id=$1 AND vendor=$2 AND received_at>NOW()-INTERVAL '30 days' ORDER BY received_at DESC LIMIT 5000`,[siteId,vendor]);
+  const eventsRes=await query(`SELECT id,event_name,event_type,params,received_at,session_id,occurrence_id,network_occurrence_id,page_url,resource_domain,status_code,delivery_outcome,failure_reason,observation_kind,delivery_mode,transport,origin_source,request_signature,raw_url,gtm_tag_name,gtm_trigger_name,consent_state,client_id FROM events WHERE site_id=$1 AND vendor=$2 AND received_at>NOW()-INTERVAL '30 days' ORDER BY received_at DESC LIMIT 5000`,[siteId,vendor]);
   const rows=eventsRes.rows as any[]; const observedNames=new Map<string,{raw:string;count:number;last:string|null;rows:any[];occurrences:Set<string>}>();
   for(const row of rows){const rawName=norm(row.event_name);if(!rawName)continue;const n=norm(platformEventName(vendor,row.event_name));const x=observedNames.get(n)||{raw:String(row.event_name),count:0,last:null,rows:[],occurrences:new Set<string>()};x.rows.push(row);x.occurrences.add(logicalOccurrenceKey(row));x.count=x.occurrences.size;x.last=x.last||row.received_at;observedNames.set(n,x);}
   const eventRows:any[]=[]; let issueCount=0,missingEventCount=0,duplicateCount=0,deliveryFailures=0,consentIssues=0;
