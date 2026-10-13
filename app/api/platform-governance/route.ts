@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '../../../lib/auth';
 import { query } from '../../../lib/db';
-import { PLATFORM_GOVERNANCE, PLATFORM_DETECTION, canonicalEvent, canonicalParameter, normaliseGovernanceVendor, platformEventName, GovernanceVendor } from '../../../lib/platform-governance';
+import { PLATFORM_GOVERNANCE, PLATFORM_DETECTION, canonicalEvent, canonicalParameter, eventNameValidation, normaliseGovernanceVendor, platformEventName, GovernanceVendor } from '../../../lib/platform-governance';
 
 export const dynamic='force-dynamic';
 const vendors=Object.keys(PLATFORM_GOVERNANCE) as GovernanceVendor[];
