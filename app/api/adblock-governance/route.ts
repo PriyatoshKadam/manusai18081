@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
       SELECT ${PAGE_EXPR} AS page, COUNT(*)::int AS signals, COUNT(DISTINCT ${SESSION_EXPR})::int AS blocked_sessions
       FROM adblock_events WHERE site_id=$1 AND detected_at>NOW()-INTERVAL '30 days' AND ${noise} AND ${ACTIONABLE} GROUP BY 1
     ) SELECT b.page, b.signals, b.blocked_sessions, COALESCE(t.sessions,0)::int AS sessions, COALESCE(t.events,0)::int AS events,
-      ROUND(100.0*b.blocked_sessions/NULLIF(t.sessions,0),1) AS blocked_rate_pct
+      CASE WHEN COALESCE(t.sessions,0) < ${MIN_SAMPLE_SIZE} THEN NULL ELSE ROUND(100.0*b.blocked_sessions/NULLIF(t.sessions,0),1) END AS blocked_rate_pct
       FROM blocked b LEFT JOIN totals t ON t.page=b.page WHERE b.page<>'' ORDER BY b.blocked_sessions DESC,b.signals DESC LIMIT 50`, [siteId]),
     query(`WITH blocked AS (
       SELECT LOWER(COALESCE(event_name,'')) AS event_name, COUNT(*)::int AS signals, COUNT(DISTINCT ${SESSION_EXPR})::int AS blocked_sessions,
@@ -95,11 +95,23 @@ export async function GET(req: NextRequest) {
     ) SELECT d.day, COALESCE(a.actionable_signals,0)::int AS actionable_signals, COALESCE(a.confirmed_signals,0)::int AS confirmed_signals,
       COALESCE(a.likely_signals,0)::int AS likely_signals, COALESCE(a.correlation_gaps,0)::int AS correlation_gaps,
       COALESCE(a.telemetry_gaps,0)::int AS telemetry_gaps, COALESCE(a.blocked_sessions,0)::int AS blocked_sessions,
-      COALESCE(s.sessions,0)::int AS total_sessions, ROUND(100.0*COALESCE(a.blocked_sessions,0)/NULLIF(s.sessions,0),1) AS blocked_rate_pct
+      COALESCE(s.sessions,0)::int AS total_sessions, CASE WHEN COALESCE(s.sessions,0) < ${MIN_SAMPLE_SIZE} THEN NULL ELSE ROUND(100.0*COALESCE(a.blocked_sessions,0)/NULLIF(s.sessions,0),1) END AS blocked_rate_pct
       FROM days d LEFT JOIN agg a USING(day) LEFT JOIN sessions s USING(day) ORDER BY d.day`, [siteId]),
     query(`SELECT detection_method,vendor,signal,sample_count,first_seen,last_seen,last_page_url,last_blocked_url,raw_error,status
       FROM blocker_pattern_candidates WHERE site_id=$1 ORDER BY CASE status WHEN 'candidate' THEN 0 ELSE 1 END,sample_count DESC,last_seen DESC LIMIT 75`, [siteId]),
-    query(`SELECT LEFT(COALESCE(user_agent,''),180) AS user_agent, COUNT(*)::int AS signals, COUNT(DISTINCT ${SESSION_EXPR})::int AS sessions
+    query(`SELECT CASE
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(edg/|edge/)' THEN 'Edge'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(opr/|opera)' THEN 'Opera'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(firefox|fxios)' THEN 'Firefox'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(crios|chrome|chromium)' AND LOWER(COALESCE(user_agent,'')) ~ 'android' THEN 'Chrome on Android'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(crios|chrome|chromium)' THEN 'Chrome / Chromium'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(safari|webkit)' AND LOWER(COALESCE(user_agent,'')) ~ '(iphone|ipad|ipod)' THEN 'Safari on iOS'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(safari|webkit)' THEN 'Safari / WebKit'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(wv|; wv\\))' THEN 'Android WebView'
+        WHEN LOWER(COALESCE(user_agent,'')) ~ '(instagram|fbav|fban|tiktok|snapchat|line/)' THEN 'In-app browser'
+        WHEN COALESCE(user_agent,'')='' THEN 'Unknown'
+        ELSE 'Other browser family'
+      END AS user_agent_family, COUNT(*)::int AS signals, COUNT(DISTINCT ${SESSION_EXPR})::int AS sessions
       FROM adblock_events WHERE site_id=$1 AND detected_at>NOW()-INTERVAL '30 days' AND ${noise} AND ${ACTIONABLE}
       GROUP BY 1 ORDER BY sessions DESC LIMIT 30`, [siteId]),
     query(`SELECT detection_method,signal,confidence,event_name,blocked_url,page_url,session_id,detected_at,
