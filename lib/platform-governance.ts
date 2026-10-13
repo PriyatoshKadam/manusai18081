@@ -25,10 +25,10 @@ export const PLATFORM_GOVERNANCE: Record<GovernanceVendor,{label:string;events:G
   e('lead','lead',[r('conversion_id','required','string',['aw-id']),r('conversion_label','required','string',['label']),r('value','optional','number'),r('currency','conditional','string')]),
  ]},
  meta:{label:'Meta',common:[r('event_name','required','string',['ev']),r('event_id','conditional','string',['eid']),r('event_source_url','optional','string'),r('action_source','optional','string'),r('fbp','optional','string'),r('fbc','conditional','string')],events:[
-  e('PageView','standard',[r('event_name','required','string',['ev']),r('event_id','required','string',['eid'])]),e('ViewContent','engagement',[r('content_ids','optional','array'),r('content_type','optional','string'),r('content_name','optional','string'),r('value','conditional','number'),r('currency','conditional','string')]),e('Search','engagement',[r('search_string','optional','string')]),
+  e('PageView','standard',[r('event_name','required','string',['ev']),r('event_id','conditional','string',['eid'])]),e('ViewContent','engagement',[r('content_ids','optional','array'),r('content_type','optional','string'),r('content_name','optional','string'),r('value','conditional','number'),r('currency','conditional','string')]),e('Search','engagement',[r('search_string','optional','string')]),
   e('AddToCart','commerce',[r('content_ids','optional','array'),r('content_type','optional','string'),r('contents','optional','array'),r('value','conditional','number'),r('currency','conditional','string')]),e('InitiateCheckout','commerce',[r('content_ids','optional','array'),r('contents','optional','array'),r('num_items','optional','number'),r('value','conditional','number'),r('currency','conditional','string')]),e('AddPaymentInfo','commerce',[r('content_ids','optional','array'),r('contents','optional','array'),r('value','conditional','number'),r('currency','conditional','string')]),
   e('Purchase','commerce',[r('value','required','number'),r('currency','required','string'),r('event_id','conditional','string',['eid']),r('content_ids','optional','array'),r('contents','optional','array'),r('order_id','optional','string')],{revenue:true,dedupe:['event_id','order_id']}),
-  e('Lead','lead',[r('event_id','required','string',['eid']),r('value','optional','number'),r('currency','conditional','string'),r('lead_id','optional','string')]),e('CompleteRegistration','conversion',[r('event_id','required','string',['eid']),r('status','optional','string')]),e('Subscribe','conversion',[r('value','optional','number'),r('currency','conditional','string'),r('subscription_id','optional','string')])
+  e('Lead','lead',[r('event_id','conditional','string',['eid']),r('value','optional','number'),r('currency','conditional','string'),r('lead_id','optional','string')]),e('CompleteRegistration','conversion',[r('event_id','conditional','string',['eid']),r('status','optional','string')]),e('Subscribe','conversion',[r('value','optional','number'),r('currency','conditional','string'),r('subscription_id','optional','string')])
  ]},
  bing:{label:'Microsoft Ads',common:[r('ti','required','string'),r('msclkid','conditional','string'),r('asc','conditional','string')],events:[
   e('pageLoad','standard',[r('ti','required','string')]),e('custom','conversion',[r('ec','optional','string',['event_category']),r('ea','optional','string',['event_action']),r('el','optional','string',['event_label']),r('ev','optional','number',['event_value']),r('gv','conditional','number',['revenue_value']),r('gc','conditional','string',['currency']),r('transaction_id','optional','string')],{revenue:true,dedupe:['transaction_id']}),
@@ -158,7 +158,7 @@ export const PLATFORM_DETECTION: Record<GovernanceVendor, PlatformDetectionProfi
 };
 
 export function normaliseGovernanceVendor(value: unknown): GovernanceVendor | null {
-  const raw=String(value??'').trim().toLowerCase().replace(/[\\s-]+/g,'_');
+  const raw=String(value??'').trim().toLowerCase().replace(/[\s-]+/g,'_');
   const aliases:Record<string,GovernanceVendor>={ga4:'ga4',google_analytics:'ga4',google_analytics_4:'ga4',gads:'gads',google_ads:'gads',googleads:'gads',meta:'meta',facebook:'meta',facebook_pixel:'meta',microsoft_ads:'bing',microsoft_advertising:'bing',bing:'bing',microsoftads:'bing',tiktok:'tiktok',tik_tok:'tiktok',linkedin:'linkedin',snapchat:'snapchat',snap:'snapchat'};
   return aliases[raw]||null;
 }
@@ -167,8 +167,10 @@ export function platformEventName(vendor: GovernanceVendor, raw: unknown): strin
   const name=String(raw??'').trim();
   if (!name) return '';
   const profile=PLATFORM_DETECTION[vendor];
-  const mapped=profile.eventAliases?.[name]||profile.eventAliases?.[name.toLowerCase()];
-  return mapped||name;
+  const alias=Object.entries(profile.eventAliases||{}).find(([source])=>source.toLowerCase()===name.toLowerCase());
+  if (alias) return alias[1];
+  const canonical=profile.standardEvents.find((value)=>value.toLowerCase()===name.toLowerCase());
+  return canonical||name;
 }
 
 export function eventNameValidation(vendor: GovernanceVendor, raw: unknown): { valid: boolean; issueCode?: string; message?: string; suggestion?: string } {
