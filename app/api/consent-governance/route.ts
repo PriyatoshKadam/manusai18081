@@ -44,6 +44,7 @@ export async function GET(req: NextRequest) {
         COUNT(*) FILTER (WHERE NOT signal)::int AS no_signal,
         COUNT(*) FILTER (WHERE first_seen>=NOW()-INTERVAL '24 hours' AND NOT signal AND cmp_observed)::int AS first_request_missing,
         COUNT(*) FILTER (WHERE cmp_observed)::int AS cmp_observed_sessions,
+        COUNT(*) FILTER (WHERE cmp_observed AND NOT choice)::int AS cmp_no_choice,
         COUNT(*) FILTER (WHERE cmp_observed AND choice AND (analytics_granted OR ads_granted))::int AS cmp_accepted,
         COUNT(*) FILTER (WHERE cmp_observed AND choice AND NOT analytics_granted AND NOT ads_granted)::int AS cmp_rejected
       FROM s`,args),
@@ -122,7 +123,7 @@ export async function GET(req: NextRequest) {
   if (recent.cmp_sessions>=20 && prior.cmp_sessions>=20 && rateDrop <= -10) issues.push({code:'consent_acceptance_drop',severity:'warning',title:'Consent acceptance rate dropped',message:`Acceptance is ${currentRate}% versus ${priorRate}% in the preceding comparison window (${Math.abs(rateDrop).toFixed(1)} percentage points lower).`,timestamp:issueTime});
   const currentRejected=pct(Number(summary.cmp_rejected||0),cmpObservedSessions); const priorRejected=100-priorRate;
   if (recent.cmp_sessions>=20 && prior.cmp_sessions>=20 && currentRejected-priorRejected>=10) issues.push({code:'consent_rejection_spike',severity:'warning',title:'Consent rejection rate increased',message:`Rejection is ${currentRejected}% versus approximately ${priorRejected.toFixed(1)}% in the preceding comparison window.`,timestamp:issueTime});
-  const ignoredRate=pct(Number(summary.no_choice_with_signal||0),Number(summary.signalled||0));
+  const ignoredRate=pct(Number(summary.cmp_no_choice||0),cmpObservedSessions);
   if (ignoredRate>=20 && Number(summary.sessions||0)>=20) issues.push({code:'consent_no_choice_spike',severity:'warning',title:'Consent choices are missing',message:`${ignoredRate}% of observed sessions have consent telemetry but no recorded choice. Check CMP initialization and consent update timing.`,timestamp:issueTime});
   const noSignalRate=pct(Number(summary.no_signal||0),Number(summary.sessions||0));
   if ((Number(cmp.cmp_events||0)>0 || Number(summary.signalled||0)>0) && noSignalRate>=20 && Number(summary.sessions||0)>=20) issues.push({code:'consent_never_detected',severity:'warning',title:'Consent signal not detected',message:`${noSignalRate}% of sessions contain no analytics_storage, ad_storage or consent_gcs signal anywhere in the observed session.`,timestamp:issueTime});
