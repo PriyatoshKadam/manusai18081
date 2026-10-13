@@ -81,7 +81,7 @@ export default function DashboardShell({ children, email, sites }: { children: R
   };
   const logout = async () => { await fetch('/api/auth/logout', { method: 'POST' }); router.push('/'); };
 
-  const inMonitoring = monitoredPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
+  const inMonitoring = pathname.startsWith('/dashboard/gtm-connect') || monitoredPrefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const inAudit = pathname.startsWith('/dashboard/audit');
   const primaryHref = pathname === '/dashboard' ? '/dashboard'
     : inAudit ? '/dashboard/audit'
