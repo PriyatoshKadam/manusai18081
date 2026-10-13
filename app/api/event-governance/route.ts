@@ -254,24 +254,6 @@ export async function GET(req: NextRequest) {
     if (issueOutput.length > 1) issueOutput.splice(1);
     byName.set(key, { event_name: row.event_name || 'unnamed event', vendor, event_type: row.event_type || 'standard', status, hits_24h: Number(row.hits_24h || 0), prior_hits_24h: Number(row.prior_hits_24h || 0), lifetime_hits: Number(row.lifetime_hits || 0), hits_30d: Number(row.hits_30d || 0), first_seen: row.first_seen, last_seen: row.last_seen, gtm: { configured: Boolean(config), tag_names: config?.tag_names || row.observed_gtm_tags || [], trigger_names: config?.trigger_names || row.observed_gtm_triggers || [], correlation_confidences: row.correlation_confidences || [], snapshot_fetched_at: snapshot?.fetched_at || null, snapshot_environment: snapshot?.environment || null, snapshot_stale: Boolean(snapshot?.snapshot_stale) }, issues: issueOutput, properties: props.map((p: any) => ({ parameter_name: p.parameter_name, hits: Number(p.hits || 0), types: p.types || [] })) });
   }
-  if (snapshotUsableForMissing) {
-    for (const [key, config] of configured.entries()) {
-      const observed = byName.get(key);
-      const matchingOpportunityCount = (config.opportunity_names || []).reduce((sum:number, name:string) => sum + Number(opportunities.get(normaliseName(governanceVendor ? platformEventName(governanceVendor, name) : name)) || 0), 0);
-      const hasOpportunity = matchingOpportunityCount > 0 || (config.all_pages_opportunity && siteActivity > 0);
-      const missingInThirtyDays = !observed || Number(observed.hits_30d || 0) === 0;
-      if (!hasOpportunity || !missingInThirtyDays) continue;
-      const issue = { code: 'missing_event', severity: 'warning', message: `Expected event not observed: ${config.event_name}`, detail: `The fresh live GTM snapshot contains ${config.tag_names.join(', ') || 'an active tag'} with trigger(s) ${config.trigger_names.join(', ') || 'that could not be named'}, and a matching execution opportunity was observed ${matchingOpportunityCount ? `(${matchingOpportunityCount} matching trigger opportunities)` : '(site activity matched an all-pages trigger)'}; however, no matching destination event was observed in the last 30 days. This is a tracking gap candidate, not proof of network delivery failure or ad blocking.`, evidence: { gtmTags: config.tag_names, gtmTriggers: config.trigger_names, opportunities: matchingOpportunityCount, allPagesOpportunity: Boolean(config.all_pages_opportunity && siteActivity > 0), snapshotFetchedAt: snapshot?.fetched_at, liveVersionId: snapshot?.live_version_id }, timestamp: snapshot?.fetched_at || null };
-      if (observed) {
-        observed.issues = [...(observed.issues || []).filter((i:any) => i.code !== 'missing_event'), issue];
-        observed.status = 'Warn';
-      } else {
-        byName.set(key, { event_name: config.event_name, vendor, event_type: 'configured', status: 'Warn', hits_24h: 0, prior_hits_24h: 0, lifetime_hits: 0, hits_30d: 0, first_seen: null, last_seen: null, gtm: { configured: true, tag_names: config.tag_names, trigger_names: config.trigger_names, correlation_confidences: [], snapshot_fetched_at: snapshot?.fetched_at || null, snapshot_environment: snapshot?.environment || null, snapshot_stale: false }, issues: [issue], properties: [] });
-      }
-    }
-  }
-  const summary = Array.from(byName.values());
-  return NextResponse.json({ events: summary, gtm: { connected: Boolean(sna
   const opportunityRowsResult = await query(`
     SELECT event_name, event_type, source, observation_kind, page_url, received_at, params
       FROM events
@@ -295,5 +277,57 @@ export async function GET(req: NextRequest) {
   const snapshotAgeMs = snapshot?.fetched_at ? Date.now() - new Date(snapshot.fetched_at).getTime() : Number.POSITIVE_INFINITY;
   const snapshotUsableForMissing = Boolean(snapshot && !snapshot.snapshot_stale && snapshot.environment !== 'workspace' && snapshotAgeMs >= 0 && snapshotAgeMs <= 24 * 60 * 60 * 1000);
 
-pshot), fetched_at: snapshot?.fetched_at || null, environment: snapshot?.environment || null, snapshot_version_id: snapshot?.snapshot_version_id || null, live_version_id: snapshot?.live_version_id || null, live_version_name: snapshot?.live_version_name || null, snapshot_stale: Boolean(snapshot?.snapshot_stale) }, summary: { total: summary.length, ok: summary.filter((r) => r.status === 'OK').length, new: summary.filter((r) => r.status === 'New').length, warn: summary.filter((r) => r.status === 'Warn').length, off: summary.filter((r) => r.status === 'Off').length, missing: summary.filter((r) => r.issues.some((i: any) => i.code === 'missing_event')).length, duplicates: summary.filter((r) => r.issues.some((i: any) => i.code === 'duplicate_event')).length, naming: summary.filter((r) => r.issues.some((i: any) => i.code === 'event_name_validation' || i.code === 'event_naming_inconsistency')).length, typeValidation: summary.filter((r) => r.issues.some((i: any) => i.code === 'property_type_validation')).length, unexpectedProperties: 0 } });
+  if (snapshotUsableForMissing) {
+    for (const [key, config] of configured.entries()) {
+      const observed = byName.get(key);
+      const matchingOpportunityCount = (config.opportunity_names || []).reduce((sum:number, name:string) => {
+        const canonical = governanceVendor ? platformEventName(governanceVendor, name) : name;
+        return sum + Number(opportunities.get(normaliseName(canonical)) || 0);
+      }, 0);
+      const hasOpportunity = matchingOpportunityCount > 0 || (config.all_pages_opportunity && siteActivity > 0);
+      const missingInThirtyDays = !observed || Number(observed.hits_30d || 0) === 0;
+      if (!hasOpportunity || !missingInThirtyDays) continue;
+      const issue = {
+        code: 'missing_event',
+        severity: 'warning',
+        message: `Expected event not observed: ${config.event_name}`,
+        detail: `The fresh live GTM snapshot contains ${config.tag_names.join(', ') || 'an active tag'} with trigger(s) ${config.trigger_names.join(', ') || 'that could not be named'}, and a matching execution opportunity was observed ${matchingOpportunityCount ? `(${matchingOpportunityCount} matching trigger opportunities)` : '(site activity matched an all-pages trigger)'}; however, no matching destination event was observed in the last 30 days. This is a tracking-gap candidate, not proof of network delivery failure or ad blocking.`,
+        evidence: { gtmTags: config.tag_names, gtmTriggers: config.trigger_names, opportunities: matchingOpportunityCount, allPagesOpportunity: Boolean(config.all_pages_opportunity && siteActivity > 0), snapshotFetchedAt: snapshot?.fetched_at, liveVersionId: snapshot?.live_version_id },
+        timestamp: snapshot?.fetched_at || null
+      };
+      if (observed) {
+        observed.issues = [...(observed.issues || []).filter((i:any) => i.code !== 'missing_event'), issue];
+        observed.status = 'Warn';
+      } else {
+        byName.set(key, {
+          event_name: config.event_name, vendor, event_type: 'configured', status: 'Warn',
+          hits_24h: 0, prior_hits_24h: 0, lifetime_hits: 0, hits_30d: 0, first_seen: null, last_seen: null,
+          gtm: { configured: true, tag_names: config.tag_names, trigger_names: config.trigger_names, correlation_confidences: [], snapshot_fetched_at: snapshot?.fetched_at || null, snapshot_environment: snapshot?.environment || null, snapshot_stale: false },
+          issues: [issue], properties: []
+        });
+      }
+    }
+  }
+
+  const summary = Array.from(byName.values());
+  return NextResponse.json({
+    events: summary,
+    gtm: {
+      connected: Boolean(snapshot), fetched_at: snapshot?.fetched_at || null, environment: snapshot?.environment || null,
+      snapshot_version_id: snapshot?.snapshot_version_id || null, live_version_id: snapshot?.live_version_id || null,
+      live_version_name: snapshot?.live_version_name || null, snapshot_stale: Boolean(snapshot?.snapshot_stale)
+    },
+    summary: {
+      total: summary.length,
+      ok: summary.filter((r) => r.status === 'OK').length,
+      new: summary.filter((r) => r.status === 'New').length,
+      warn: summary.filter((r) => r.status === 'Warn').length,
+      off: summary.filter((r) => r.status === 'Off').length,
+      missing: summary.filter((r) => r.issues.some((i: any) => i.code === 'missing_event')).length,
+      duplicates: summary.filter((r) => r.issues.some((i: any) => i.code === 'duplicate_event')).length,
+      naming: summary.filter((r) => r.issues.some((i: any) => i.code === 'event_name_validation' || i.code === 'event_naming_inconsistency')).length,
+      typeValidation: summary.filter((r) => r.issues.some((i: any) => i.code === 'property_type_validation')).length,
+      unexpectedProperties: 0
+    }
+  });
 }
