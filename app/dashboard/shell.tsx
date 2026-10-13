@@ -88,7 +88,7 @@ export default function DashboardShell({ children, email, sites }: { children: R
     : ['/dashboard/plans','/dashboard/billing','/dashboard/admin','/dashboard/help'].find((p) => pathname.startsWith(p)) ||
       (inMonitoring ? '/dashboard/monitoring' : '/dashboard');
   const activeSite = sites.find((s) => s.id === siteId);
-  const title = pageTitle(pathname);
+  const title = titleFor(pathname);
 
   return <div className="dashboard-shell min-h-screen">
     <div className="flex h-screen w-full overflow-hidden bg-[var(--canvas)]">
