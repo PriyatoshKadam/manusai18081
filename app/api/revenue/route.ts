@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   }
 
   const records = Array.from(groups.entries()).map(([key, rows]) => {
-    const values = rows.map(r => Number(r.raw_value)).filter(Number.isFinite);
+    const values = rows.map(r => r.raw_value === null || r.raw_value === undefined || r.raw_value === '' ? Number.NaN : Number(r.raw_value)).filter(Number.isFinite);
     const currencies = Array.from(new Set(rows.map(r => String(r.currency || '').trim().toUpperCase()).filter(Boolean)));
     const vendors = Array.from(new Set(rows.map(r => String(r.vendor || '').trim()).filter(Boolean)));
     const tags = Array.from(new Set(rows.map(r => String(r.gtm_tag_name || '').trim()).filter(Boolean)));
