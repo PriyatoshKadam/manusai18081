@@ -87,6 +87,7 @@ async function main() {
             ('events','params'),
             ('events','consent_state'),
             ('events','web_vitals'),
+            ('events','attribution_signals'),
             ('events','observed_parameters'),
             ('events','missing_parameters'),
             ('alerts','fix_steps'),
