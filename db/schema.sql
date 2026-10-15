@@ -110,6 +110,7 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS delivery_outcome TEXT DEFAULT 'unknown',
   ADD COLUMN IF NOT EXISTS consent_state JSONB DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS web_vitals JSONB DEFAULT '{}'::jsonb,
+  ADD COLUMN IF NOT EXISTS attribution_signals JSONB NOT NULL DEFAULT '{}'::jsonb,
   ADD COLUMN IF NOT EXISTS received_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 UPDATE events SET delivery_outcome = 'unknown'
