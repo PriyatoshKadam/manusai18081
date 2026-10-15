@@ -240,6 +240,8 @@ export function parsePlatformConsent(vendorInput: unknown, row: AnyRow): ParsedC
   const src = paramSources(row);
   const result: ParsedConsent = { signalPresent: false, source: 'none' };
   const set = (key: keyof ParsedConsent, value: unknown) => {
+    if (value === true) { (result as any)[key] = 'granted'; return; }
+    if (value === false) { (result as any)[key] = 'denied'; return; }
     const normalized = String(value ?? '').trim().toLowerCase();
     if (['granted', 'accepted', 'allow', 'allowed', '1', 'g'].includes(normalized)) (result as any)[key] = 'granted';
     else if (['denied', 'rejected', 'deny', 'disallowed', '0', 'd'].includes(normalized)) (result as any)[key] = 'denied';
@@ -307,22 +309,32 @@ export function classifyAttribution(row: AnyRow) {
   const vendor = normaliseGovernanceVendor(row.vendor);
   const clickIds = vendor ? PLATFORM_DETECTION[vendor].clickIds : [];
   const cookieIds = vendor ? PLATFORM_DETECTION[vendor].attributionCookies : [];
+  const hints = asObject(row.attribution_signals || row.attributionSignals);
+  const hintedIds = asObject(hints.click_ids);
   const clickId = src.find(clickIds) || src.find(cookieIds) ||
     String(state.click_id || state.attribution_click_id || state[clickIds[0] || '__none'] || '');
-  const utmSource = src.find(['utm_source']) || String(state.utm_source || '');
-  const utmMedium = src.find(['utm_medium']) || String(state.utm_medium || '');
-  const utmCampaign = src.find(['utm_campaign']) || String(state.utm_campaign || '');
-  const referrer = src.find(['dr','referrer','document_referrer']) || String(row.page_referrer || state.page_referrer || '');
+  const clickIdPresent = Boolean(clickId) || clickIds.some((key) => hintedIds[key.toLowerCase()] === true) ||
+    (vendor === 'ga4' && (hintedIds.gclid === true || hintedIds.gbraid === true || hintedIds.wbraid === true)) ||
+    (vendor === 'gads' && (hintedIds.gclid === true || hintedIds.gbraid === true || hintedIds.wbraid === true)) ||
+    (vendor === 'meta' && hintedIds.fbclid === true) ||
+    (vendor === 'bing' && hintedIds.msclkid === true) ||
+    (vendor === 'tiktok' && hintedIds.ttclid === true) ||
+    (vendor === 'linkedin' && hintedIds.li_fat_id === true) ||
+    (vendor === 'snapchat' && hintedIds.scclid === true);
+  const utmSource = src.find(['utm_source']) || String(hints.utm_source || state.utm_source || '');
+  const utmMedium = src.find(['utm_medium']) || String(hints.utm_medium || state.utm_medium || '');
+  const utmCampaign = src.find(['utm_campaign']) || String(hints.utm_campaign || state.utm_campaign || '');
+  const referrer = src.find(['dr','referrer','document_referrer']) || String(row.page_referrer || hints.referrer || state.page_referrer || '');
   const landing = Boolean(state.landing_page || state.first_landing_page || row.is_landing_page);
   const sourceMedium = src.find(['source','medium','traffic_source','traffic_medium']);
-  const paid = Boolean(clickId || utmMedium.toLowerCase().includes('paid') || /cpc|ppc|paid|social_paid|display|affiliate/i.test(utmMedium) || /gclid|fbclid|msclkid|ttclid|li_fat_id|sccid|scCid/i.test(String(row.raw_url || row.page_url || '')));
+  const paid = Boolean(clickIdPresent || hints.paid_context === true || utmMedium.toLowerCase().includes('paid') || /cpc|ppc|paid|social_paid|display|affiliate/i.test(utmMedium));
   const campaignData = Boolean(utmSource || utmMedium || utmCampaign || sourceMedium || referrer);
-  const attributionPresent = Boolean(clickId || utmSource || utmMedium || utmCampaign || sourceMedium || referrer);
-  const clickIdPersisted = Boolean(clickId || state.click_id || state.attribution_click_id);
+  const attributionPresent = Boolean(clickIdPresent || utmSource || utmMedium || utmCampaign || sourceMedium || referrer);
+  const clickIdPersisted = Boolean(clickIdPresent || state.click_id || state.attribution_click_id);
   return {
     paid,
     attributionPresent,
-    clickIdPresent: Boolean(clickId),
+    clickIdPresent,
     clickIdPersisted,
     campaignPresent: Boolean(utmCampaign || state.utm_campaign),
     source: utmSource || sourceMedium || null,
@@ -331,6 +343,6 @@ export function classifyAttribution(row: AnyRow) {
     referrer: referrer || null,
     landing,
     state,
-    absentForPaid: paid && !attributionPresent,
+    absentForPaid: paid && !clickIdPersisted,
   };
 }
