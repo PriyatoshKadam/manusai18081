@@ -49,24 +49,32 @@ function paramSources(row: AnyRow) {
   const params = asObject(row.params);
   const flat = flatten(params);
   const query: Record<string, string> = {};
+  const pageQuery: Record<string, string> = {};
   const rawUrl = String(row.raw_url || '');
+  const pageUrl = String(row.page_url || '');
   try {
     const parsed = new URL(rawUrl, 'https://gafix.invalid');
     parsed.searchParams.forEach((value, key) => { query[key] = value; });
   } catch {}
+  try {
+    const parsedPage = new URL(pageUrl, 'https://gafix.invalid');
+    parsedPage.searchParams.forEach((value, key) => { pageQuery[key] = value; });
+  } catch {}
   const find = (names: string[]): string => {
     for (const name of names) {
-      const direct = flat[name] ?? params[name] ?? query[name];
+      const direct = flat[name] ?? params[name] ?? query[name] ?? pageQuery[name];
       if (direct !== undefined && direct !== null && String(direct).trim() !== '') return String(direct).trim();
       const lower = name.toLowerCase();
       const match = Object.entries(flat).find(([key, value]) => key.toLowerCase() === lower && value != null && String(value).trim() !== '');
       if (match) return String(match[1]).trim();
       const queryMatch = Object.entries(query).find(([key, value]) => key.toLowerCase() === lower && value.trim() !== '');
       if (queryMatch) return queryMatch[1].trim();
+      const pageMatch = Object.entries(pageQuery).find(([key, value]) => key.toLowerCase() === lower && value.trim() !== '');
+      if (pageMatch) return pageMatch[1].trim();
     }
     return '';
   };
-  return { params, flat, query, rawUrl, find };
+  return { params, flat, query, pageQuery, rawUrl, pageUrl, find };
 }
 
 function cleanEvent(vendor: GovernanceVendor, raw: string) {
@@ -77,7 +85,8 @@ function cleanEvent(vendor: GovernanceVendor, raw: string) {
 function gadsRouteIdentity(rawUrl: string) {
   const sendTo = /(?:^|[?&])send_to=([^&]+)/i.exec(rawUrl);
   if (sendTo) {
-    const decoded = decodeURIComponent(sendTo[1].replace(/\+/g, ' '));
+    let decoded = sendTo[1];
+    try { decoded = decodeURIComponent(decoded.replace(/\+/g, ' ')); } catch {}
     const m = /^(AW-?\d+)(?:\/([^&?#]+))?/i.exec(decoded);
     if (m) return { id: m[1].toUpperCase().startsWith('AW-') ? m[1].toUpperCase() : `AW-${m[1].replace(/^AW/i, '')}`, label: m[2] || '' };
   }
@@ -143,8 +152,10 @@ export function extractPlatformRuntimeIdentity(vendorInput: unknown, row: AnyRow
     requestKind = 'event';
   } else if (vendor === 'linkedin') {
     destinationId = find(['pid', 'partner_id', 'partnerId', '_linkedin_partner_id']);
-    conversionId = find(['conversionId', 'conversion_id', 'conversion_id', 'conversion']);
-    // eventId is a deduplication identifier, not the LinkedIn conversion identifier.
+    conversionId = find(['conversionId', 'conversion_id']);
+    // A LinkedIn conversion ID is a numeric Campaign Manager identifier.
+    // pid is the Insight Tag partner ID, not the conversion ID; eventId is a deduplication key.
+    if (conversionId && !/^\d+$/.test(conversionId)) conversionId = '';
     conversionLabel = '';
     if (conversionId) {
       identityType = 'conversion_id';
@@ -200,10 +211,14 @@ export function classifyImplementationSource(row: AnyRow): ImplementationSource 
   const plugin = /plugin|cms|shopify|woocommerce|wordpress|wix|squarespace/.test(source);
   const sdk = /sdk|mobile.?app|ios|android/.test(source);
   const server = /server|capi|conversion.?api|measurement.?protocol|stape|ssgtm|gateway/.test(source + ' ' + mode);
-  if (tag && confidence !== 'unmatched' && confidence !== 'none') return 'gtm';
-  if (tag) return 'gtm';
+  const hasGtm = Boolean(tag && confidence !== 'unmatched' && confidence !== 'none');
+  if (hasGtm && (direct || plugin || sdk)) return 'hybrid';
+  if (hasGtm) return 'gtm';
+  if (server && (direct || plugin || sdk)) return 'hybrid';
   if (server) return 'server';
+  if (plugin && direct) return 'hybrid';
   if (plugin) return 'plugin';
+  if (sdk && direct) return 'hybrid';
   if (sdk) return 'sdk';
   if (direct) return 'direct';
   return 'unknown';
@@ -291,10 +306,12 @@ export function classifyAttribution(row: AnyRow) {
   const state = asObject(row.consent_state);
   const vendor = normaliseGovernanceVendor(row.vendor);
   const clickIds = vendor ? PLATFORM_DETECTION[vendor].clickIds : [];
-  const clickId = src.find(clickIds);
-  const utmSource = src.find(['utm_source']);
-  const utmMedium = src.find(['utm_medium']);
-  const utmCampaign = src.find(['utm_campaign']);
+  const cookieIds = vendor ? PLATFORM_DETECTION[vendor].attributionCookies : [];
+  const clickId = src.find(clickIds) || src.find(cookieIds) ||
+    String(state.click_id || state.attribution_click_id || state[clickIds[0] || '__none'] || '');
+  const utmSource = src.find(['utm_source']) || String(state.utm_source || '');
+  const utmMedium = src.find(['utm_medium']) || String(state.utm_medium || '');
+  const utmCampaign = src.find(['utm_campaign']) || String(state.utm_campaign || '');
   const referrer = src.find(['dr','referrer','document_referrer']) || String(row.page_referrer || state.page_referrer || '');
   const landing = Boolean(state.landing_page || state.first_landing_page || row.is_landing_page);
   const sourceMedium = src.find(['source','medium','traffic_source','traffic_medium']);
