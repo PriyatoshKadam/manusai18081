@@ -63,6 +63,7 @@ export type NormalizedTelemetryEvent = {
   vendor: string;
   eventName: string | null;
   pageUrl: string | null;
+  attributionSignals: Record<string, unknown>;
   clientId: string | null;
   params: Record<string, unknown>;
   rawUrl: string | null;
@@ -94,6 +95,58 @@ export type NormalizedTelemetryEvent = {
   isSynthetic: boolean;
 };
 
+function collectAttributionSignals(pageUrl: unknown, rawUrl: unknown, params: Record<string, unknown>) {
+  const urls = [boundedString(pageUrl, MAX_STRING), boundedString(rawUrl, MAX_STRING)].filter((value): value is string => Boolean(value));
+  const query: Record<string, string> = {};
+  const referrerHosts: string[] = [];
+  for (const value of urls) {
+    try {
+      const parsed = new URL(value);
+      parsed.searchParams.forEach((paramValue, key) => {
+        if (paramValue.trim() && query[key.toLowerCase()] === undefined) query[key.toLowerCase()] = paramValue.trim();
+      });
+      if (parsed.hostname) referrerHosts.push(parsed.hostname.toLowerCase());
+    } catch {}
+  }
+  const paramValue = (keys: string[]) => {
+    for (const key of keys) {
+      const fromQuery = query[key.toLowerCase()];
+      const direct = params[key];
+      const value = direct === undefined || direct === null ? fromQuery : String(direct);
+      if (value !== undefined && value !== null && String(value).trim() && !/^(undefined|null|\[object object\])$/i.test(String(value).trim())) {
+        return String(value).trim();
+      }
+    }
+    return '';
+  };
+  const clickIds = {
+    gclid: Boolean(paramValue(['gclid'])),
+    gbraid: Boolean(paramValue(['gbraid'])),
+    wbraid: Boolean(paramValue(['wbraid'])),
+    fbclid: Boolean(paramValue(['fbclid','fbc'])),
+    msclkid: Boolean(paramValue(['msclkid'])),
+    ttclid: Boolean(paramValue(['ttclid'])),
+    li_fat_id: Boolean(paramValue(['li_fat_id'])),
+    scclid: Boolean(paramValue(['sccid','sccid','scclid','_scid','scCid'])),
+  };
+  const utmSource = paramValue(['utm_source']);
+  const utmMedium = paramValue(['utm_medium']);
+  const utmCampaign = paramValue(['utm_campaign']);
+  const referrer = paramValue(['document.referrer','document_referrer','referrer','dr']);
+  const paidMedium = /paid|cpc|ppc|display|affiliate|sponsored|paid_social|paid_search/i.test(utmMedium);
+  const knownPaidSource = /google|bing|microsoft|facebook|instagram|meta|tiktok|linkedin|snapchat/i.test(utmSource) && paidMedium;
+  return {
+    click_ids: clickIds,
+    has_click_id: Object.values(clickIds).some(Boolean),
+    utm_source: utmSource || null,
+    utm_medium: utmMedium || null,
+    utm_campaign: utmCampaign || null,
+    referrer: referrer || null,
+    observed_hosts: [...new Set(referrerHosts)].slice(0, 4),
+    paid_context: paidMedium || knownPaidSource,
+  };
+}
+
 export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEvent {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Each event must be an object');
   const event = value as Record<string, unknown>;
@@ -102,6 +155,9 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
   const params = rawParams && typeof rawParams === 'object' && !Array.isArray(rawParams)
     ? rawParams as Record<string, unknown>
     : {};
+  // Capture only identifier presence and campaign/referrer metadata before URL
+  // redaction. Click-ID values themselves are deliberately not persisted.
+  const attributionSignals = collectAttributionSignals(event.pageUrl ?? event.page_url, event.rawUrl ?? event.raw_url, params);
   const rawName = boundedString(event.eventName ?? event.event_name, MAX_EVENT_NAME);
   const eventName = rawName?.trim() || null;
   const rawUrl = boundedString(event.rawUrl);
@@ -136,6 +192,7 @@ export function normalizeTelemetryEvent(value: unknown): NormalizedTelemetryEven
     vendor: (boundedString(event.vendor, 40)?.trim().toLowerCase() || 'unknown').replace(/[^a-z0-9_-]/g, '').slice(0, 40) || 'unknown',
     eventName,
     pageUrl: redactTelemetryUrl(boundedString(event.pageUrl)),
+    attributionSignals,
     clientId: pseudonymize(rawClientId),
     params,
     rawUrl: redactTelemetryUrl(rawUrl),
