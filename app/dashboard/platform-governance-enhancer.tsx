@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 
-type VendorSummary={vendor:string;label:string;summary:{events_defined:number;events_observed:number;healthy:number;warnings:number;custom:number;missing_events:number;parameters:number;issues:number;duplicates:number;delivery_failures:number;consent_affected:number;blocker_signals:number}};
+type VendorSummary={vendor:string;label:string;summary:{events_defined:number;events_observed:number;healthy:number;warnings:number;custom:number;missing_events:number;parameters:number;issues:number;duplicates:number;delivery_failures:number;consent_affected:number;blocker_signals:number;offline_events?:number;page_issues?:number;revenue_issues?:number;snapshot_usable?:boolean;snapshot_stale?:boolean}};
 
 export default function PlatformGovernanceEnhancer({vendor}:{vendor:string}){
  const search=useSearchParams(); const siteId=search.get('siteId')||'';
