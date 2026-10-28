@@ -129,7 +129,7 @@ export async function GET(req:NextRequest){
   missingEventCount=Number(missingExpected.rows[0]?.count||0);
   const healthy=eventRows.filter(e=>e.status==='OK').length; const warnings=eventRows.filter(e=>e.status==='Warn').length; const custom=eventRows.filter(e=>e.status==='New').length;
   issueCount=eventRows.reduce((n,e)=>n+e.issues.length,0);
-  out.push({vendor,label:catalog.label,summary:{events_defined:catalog.events.length,events_observed:eventRows.length,healthy,warnings,custom,missing_events:missingEventCount,parameters:parameters.length,issues:issueCount,duplicates:duplicateCount,delivery_failures:deliveryFailures,consent_affected:consentIssues,blocker_signals:Number(blockers.rows[0]?.count||0)},events:eventRows,parameters,pages,catalog:{events:catalog.events,common:catalog.common}});
+  out.push({vendor,label:catalog.label,summary:{events_defined:catalog.events.length,events_observed:eventRows.length,healthy,warnings,custom,missing_events:missingEventCount,parameters:parameters.length,issues:issueCount,duplicates:duplicateCount,delivery_failures:deliveryFailures,consent_affected:consentIssues,blocker_signals:Number(blockers.rows[0]?.count||0)},events:eventRows,parameters,pages,catalog:{events:catalog.events,common:catalog.common},logic:PLATFORM_DETECTION[vendor],logic_applied:{network_identity:true,implementation_detection:true,event_governance:true,parameter_governance:true,page_governance:true,consent_governance:true,adblock_governance:true,revenue_governance:true,attribution_governance:true}});
  }
  return NextResponse.json({siteId,vendors:out,generated_at:new Date().toISOString()});
 }
